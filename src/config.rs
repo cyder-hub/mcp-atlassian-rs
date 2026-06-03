@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
-use crate::error::ConfigError;
 use crate::tool_registry::{all_toolsets, default_toolsets};
+use crate::{error::ConfigError, jira::config::JiraConfig};
 
 pub const DEFAULT_HTTP_HOST: &str = "127.0.0.1";
 pub const DEFAULT_HTTP_PORT: u16 = 8000;
@@ -10,7 +10,6 @@ pub const DEFAULT_HTTP_PATH: &str = "/mcp";
 pub const ENV_READ_ONLY_MODE: &str = "READ_ONLY_MODE";
 pub const ENV_ENABLED_TOOLS: &str = "ENABLED_TOOLS";
 pub const ENV_TOOLSETS: &str = "TOOLSETS";
-pub const ENV_JIRA_URL: &str = "JIRA_URL";
 pub const ENV_CONFLUENCE_URL: &str = "CONFLUENCE_URL";
 pub const ENV_HTTP_HOST: &str = "MCP_HTTP_HOST";
 pub const ENV_HTTP_PORT: &str = "MCP_HTTP_PORT";
@@ -21,7 +20,7 @@ pub struct RuntimeConfig {
     pub read_only: bool,
     pub enabled_tools: Option<BTreeSet<String>>,
     pub enabled_toolsets: BTreeSet<String>,
-    pub jira_url: Option<String>,
+    pub jira: Option<JiraConfig>,
     pub confluence_url: Option<String>,
     pub http: HttpConfig,
 }
@@ -47,7 +46,7 @@ impl RuntimeConfig {
         let read_only = parse_extended_truthy(get_var(ENV_READ_ONLY_MODE).ok().as_deref());
         let enabled_tools = parse_enabled_tools(get_var(ENV_ENABLED_TOOLS).ok().as_deref());
         let enabled_toolsets = parse_toolsets(get_var(ENV_TOOLSETS).ok().as_deref());
-        let jira_url = parse_optional_string(get_var(ENV_JIRA_URL).ok());
+        let jira = JiraConfig::from_var_provider(&mut get_var)?;
         let confluence_url = parse_optional_string(get_var(ENV_CONFLUENCE_URL).ok());
         let http = HttpConfig::from_var_provider(&mut get_var, http_overrides)?;
 
@@ -55,7 +54,7 @@ impl RuntimeConfig {
             read_only,
             enabled_tools,
             enabled_toolsets,
-            jira_url,
+            jira,
             confluence_url,
             http,
         })
@@ -68,7 +67,7 @@ impl Default for RuntimeConfig {
             read_only: false,
             enabled_tools: None,
             enabled_toolsets: all_toolsets(),
-            jira_url: None,
+            jira: None,
             confluence_url: None,
             http: HttpConfig::default(),
         }
@@ -218,6 +217,11 @@ fn normalize_http_path(value: Option<String>) -> String {
 mod tests {
     use std::collections::BTreeMap;
 
+    use crate::{
+        atlassian::auth::AtlassianAuth,
+        jira::config::{ENV_JIRA_PERSONAL_TOKEN, ENV_JIRA_URL, JiraDeployment},
+    };
+
     use super::*;
 
     fn config_from_pairs(pairs: &[(&str, &str)]) -> Result<RuntimeConfig, ConfigError> {
@@ -239,7 +243,7 @@ mod tests {
         assert!(!config.read_only);
         assert_eq!(config.enabled_tools, None);
         assert_eq!(config.enabled_toolsets, all_toolsets());
-        assert_eq!(config.jira_url, None);
+        assert_eq!(config.jira, None);
         assert_eq!(config.confluence_url, None);
         assert_eq!(config.http, HttpConfig::default());
     }
@@ -312,14 +316,23 @@ mod tests {
     }
 
     #[test]
-    fn service_urls_are_trimmed_and_empty_values_are_ignored() {
+    fn service_configs_are_trimmed_and_empty_values_are_ignored() {
         let config = config_from_pairs(&[
             (ENV_JIRA_URL, " https://jira.example "),
+            (ENV_JIRA_PERSONAL_TOKEN, "test-pat-value"),
             (ENV_CONFLUENCE_URL, " "),
         ])
         .unwrap();
+        let jira = config.jira.unwrap();
 
-        assert_eq!(config.jira_url.as_deref(), Some("https://jira.example"));
+        assert_eq!(jira.base_url, "https://jira.example");
+        assert_eq!(jira.deployment, JiraDeployment::ServerDataCenter);
+        assert_eq!(
+            jira.auth,
+            AtlassianAuth::Pat {
+                personal_token: "test-pat-value".to_string(),
+            }
+        );
         assert_eq!(config.confluence_url, None);
     }
 

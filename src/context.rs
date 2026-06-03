@@ -1,12 +1,13 @@
 use std::collections::BTreeSet;
 
-use crate::config::RuntimeConfig;
+use crate::{config::RuntimeConfig, jira::config::JiraConfig};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppContext {
     read_only: bool,
     enabled_tools: Option<BTreeSet<String>>,
     enabled_toolsets: BTreeSet<String>,
+    jira: Option<JiraConfig>,
     service_availability: ServiceAvailability,
 }
 
@@ -16,6 +17,7 @@ impl AppContext {
             read_only: config.read_only,
             enabled_tools: config.enabled_tools.clone(),
             enabled_toolsets: config.enabled_toolsets.clone(),
+            jira: config.jira.clone(),
             service_availability: ServiceAvailability::from_config(config),
         }
     }
@@ -35,6 +37,11 @@ impl AppContext {
     pub fn service_availability(&self) -> &ServiceAvailability {
         &self.service_availability
     }
+
+    #[allow(dead_code)]
+    pub fn jira_config(&self) -> Option<&JiraConfig> {
+        self.jira.as_ref()
+    }
 }
 
 impl Default for AppContext {
@@ -52,7 +59,10 @@ pub struct ServiceAvailability {
 impl ServiceAvailability {
     pub fn from_config(config: &RuntimeConfig) -> Self {
         Self {
-            jira: config.jira_url.is_some(),
+            jira: config
+                .jira
+                .as_ref()
+                .is_some_and(JiraConfig::is_auth_configured),
             confluence: config.confluence_url.is_some(),
         }
     }
@@ -63,7 +73,9 @@ mod tests {
     use std::collections::BTreeSet;
 
     use crate::{
+        atlassian::auth::AtlassianAuth,
         config::{HttpConfig, RuntimeConfig},
+        jira::config::{JiraConfig, JiraDeployment},
         tool_registry::default_toolsets,
     };
 
@@ -75,6 +87,7 @@ mod tests {
 
         assert!(!context.read_only());
         assert_eq!(context.enabled_tools(), None);
+        assert_eq!(context.jira_config(), None);
         assert_eq!(
             context.service_availability(),
             &ServiceAvailability {
@@ -88,11 +101,12 @@ mod tests {
     fn context_preserves_control_plane_config() {
         let enabled_tools = BTreeSet::from(["migration_status".to_string()]);
         let enabled_toolsets = default_toolsets();
+        let jira = jira_config();
         let config = RuntimeConfig {
             read_only: true,
             enabled_tools: Some(enabled_tools.clone()),
             enabled_toolsets: enabled_toolsets.clone(),
-            jira_url: Some("https://jira.example".to_string()),
+            jira: Some(jira.clone()),
             confluence_url: Some("https://confluence.example".to_string()),
             http: HttpConfig::default(),
         };
@@ -102,6 +116,7 @@ mod tests {
         assert!(context.read_only());
         assert_eq!(context.enabled_tools(), Some(&enabled_tools));
         assert_eq!(context.enabled_toolsets(), &enabled_toolsets);
+        assert_eq!(context.jira_config(), Some(&jira));
         assert_eq!(
             context.service_availability(),
             &ServiceAvailability {
@@ -109,5 +124,18 @@ mod tests {
                 confluence: true,
             }
         );
+    }
+
+    fn jira_config() -> JiraConfig {
+        JiraConfig {
+            base_url: "https://jira.example".to_string(),
+            deployment: JiraDeployment::ServerDataCenter,
+            auth: AtlassianAuth::Pat {
+                personal_token: "test-pat-value".to_string(),
+            },
+            ssl_verify: true,
+            projects_filter: BTreeSet::new(),
+            timeout_seconds: 75,
+        }
     }
 }

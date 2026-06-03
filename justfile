@@ -20,8 +20,12 @@ smoke-stdio:
 smoke-http:
 	cd '{{justfile_directory()}}' && bash scripts/smoke-http.sh
 
+# Run the Jira read-only MCP smoke check against a local mock Jira.
+smoke-jira:
+	cd '{{justfile_directory()}}' && bash scripts/smoke-jira.sh
+
 # Run all local MCP smoke checks.
-smoke: smoke-stdio smoke-http
+smoke: smoke-stdio smoke-http smoke-jira
 
 # Build the release binary.
 build:

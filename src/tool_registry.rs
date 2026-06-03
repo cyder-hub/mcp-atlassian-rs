@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use rmcp::{ErrorData, model::Tool};
 
-use crate::context::AppContext;
+use crate::{context::AppContext, jira::tools};
 
 pub const MIGRATION_STATUS_TOOL_NAME: &str = "migration_status";
 
@@ -75,7 +75,99 @@ pub const MIGRATION_STATUS_METADATA: ToolMetadata = ToolMetadata {
     description: "Reports the current Rust migration state.",
 };
 
-const REGISTERED_TOOLS: &[ToolMetadata] = &[MIGRATION_STATUS_METADATA];
+pub const JIRA_GET_ISSUE_METADATA: ToolMetadata = ToolMetadata {
+    name: tools::JIRA_GET_ISSUE_TOOL_NAME,
+    service: ToolService::Jira,
+    access: ToolAccess::Read,
+    toolset: Some("jira_issues"),
+    title: "Get Jira issue",
+    description: "Get a Jira issue by key.",
+};
+
+pub const JIRA_SEARCH_METADATA: ToolMetadata = ToolMetadata {
+    name: tools::JIRA_SEARCH_TOOL_NAME,
+    service: ToolService::Jira,
+    access: ToolAccess::Read,
+    toolset: Some("jira_issues"),
+    title: "Search Jira issues",
+    description: "Search Jira issues with JQL.",
+};
+
+pub const JIRA_GET_PROJECT_ISSUES_METADATA: ToolMetadata = ToolMetadata {
+    name: tools::JIRA_GET_PROJECT_ISSUES_TOOL_NAME,
+    service: ToolService::Jira,
+    access: ToolAccess::Read,
+    toolset: Some("jira_issues"),
+    title: "Get Jira project issues",
+    description: "List Jira issues for a project.",
+};
+
+pub const JIRA_SEARCH_FIELDS_METADATA: ToolMetadata = ToolMetadata {
+    name: tools::JIRA_SEARCH_FIELDS_TOOL_NAME,
+    service: ToolService::Jira,
+    access: ToolAccess::Read,
+    toolset: Some("jira_fields"),
+    title: "Search Jira fields",
+    description: "Search Jira fields by keyword.",
+};
+
+pub const JIRA_GET_FIELD_OPTIONS_METADATA: ToolMetadata = ToolMetadata {
+    name: tools::JIRA_GET_FIELD_OPTIONS_TOOL_NAME,
+    service: ToolService::Jira,
+    access: ToolAccess::Read,
+    toolset: Some("jira_fields"),
+    title: "Get Jira field options",
+    description: "Get options for a Jira field.",
+};
+
+pub const JIRA_ADD_COMMENT_METADATA: ToolMetadata = ToolMetadata {
+    name: tools::JIRA_ADD_COMMENT_TOOL_NAME,
+    service: ToolService::Jira,
+    access: ToolAccess::Write,
+    toolset: Some("jira_comments"),
+    title: "Add Jira comment",
+    description: "Add a comment to a Jira issue.",
+};
+
+pub const JIRA_EDIT_COMMENT_METADATA: ToolMetadata = ToolMetadata {
+    name: tools::JIRA_EDIT_COMMENT_TOOL_NAME,
+    service: ToolService::Jira,
+    access: ToolAccess::Write,
+    toolset: Some("jira_comments"),
+    title: "Edit Jira comment",
+    description: "Edit a Jira issue comment.",
+};
+
+pub const JIRA_GET_TRANSITIONS_METADATA: ToolMetadata = ToolMetadata {
+    name: tools::JIRA_GET_TRANSITIONS_TOOL_NAME,
+    service: ToolService::Jira,
+    access: ToolAccess::Read,
+    toolset: Some("jira_transitions"),
+    title: "Get Jira transitions",
+    description: "Get available transitions for a Jira issue.",
+};
+
+pub const JIRA_TRANSITION_ISSUE_METADATA: ToolMetadata = ToolMetadata {
+    name: tools::JIRA_TRANSITION_ISSUE_TOOL_NAME,
+    service: ToolService::Jira,
+    access: ToolAccess::Write,
+    toolset: Some("jira_transitions"),
+    title: "Transition Jira issue",
+    description: "Transition a Jira issue.",
+};
+
+const REGISTERED_TOOLS: &[ToolMetadata] = &[
+    MIGRATION_STATUS_METADATA,
+    JIRA_GET_ISSUE_METADATA,
+    JIRA_SEARCH_METADATA,
+    JIRA_GET_PROJECT_ISSUES_METADATA,
+    JIRA_SEARCH_FIELDS_METADATA,
+    JIRA_GET_FIELD_OPTIONS_METADATA,
+    JIRA_ADD_COMMENT_METADATA,
+    JIRA_EDIT_COMMENT_METADATA,
+    JIRA_GET_TRANSITIONS_METADATA,
+    JIRA_TRANSITION_ISSUE_METADATA,
+];
 
 pub fn all_toolsets() -> BTreeSet<String> {
     ALL_TOOLSETS
@@ -197,8 +289,11 @@ mod tests {
     use rmcp::model::{JsonObject, Tool};
 
     use crate::{
+        atlassian::auth::AtlassianAuth,
         config::{HttpConfig, RuntimeConfig},
         context::AppContext,
+        jira::config::{JiraConfig, JiraDeployment},
+        jira::tools,
     };
 
     use super::*;
@@ -254,11 +349,38 @@ mod tests {
         }
     }
 
+    fn jira_config() -> JiraConfig {
+        JiraConfig {
+            base_url: "https://jira.example".to_string(),
+            deployment: JiraDeployment::ServerDataCenter,
+            auth: AtlassianAuth::Pat {
+                personal_token: "test-pat-value".to_string(),
+            },
+            ssl_verify: true,
+            projects_filter: BTreeSet::new(),
+            timeout_seconds: 75,
+        }
+    }
+
     fn names(tools: Vec<Tool>) -> Vec<String> {
         tools
             .into_iter()
             .map(|tool| tool.name.to_string())
             .collect()
+    }
+
+    fn stage_two_jira_tool_names() -> Vec<String> {
+        vec![
+            tools::JIRA_ADD_COMMENT_TOOL_NAME.to_string(),
+            tools::JIRA_EDIT_COMMENT_TOOL_NAME.to_string(),
+            tools::JIRA_GET_FIELD_OPTIONS_TOOL_NAME.to_string(),
+            tools::JIRA_GET_ISSUE_TOOL_NAME.to_string(),
+            tools::JIRA_GET_PROJECT_ISSUES_TOOL_NAME.to_string(),
+            tools::JIRA_GET_TRANSITIONS_TOOL_NAME.to_string(),
+            tools::JIRA_SEARCH_TOOL_NAME.to_string(),
+            tools::JIRA_SEARCH_FIELDS_TOOL_NAME.to_string(),
+            tools::JIRA_TRANSITION_ISSUE_TOOL_NAME.to_string(),
+        ]
     }
 
     #[test]
@@ -285,6 +407,35 @@ mod tests {
         assert_eq!(metadata.toolset, None);
         assert!(!metadata.title.is_empty());
         assert!(!metadata.description.is_empty());
+    }
+
+    #[test]
+    fn stage_two_jira_core_metadata_is_registered() {
+        let names = stage_two_jira_tool_names();
+
+        for name in &names {
+            let metadata = metadata_for(name).unwrap_or_else(|| panic!("{name} missing metadata"));
+            assert_eq!(metadata.service, ToolService::Jira);
+            assert!(metadata.toolset.is_some());
+            assert!(!metadata.title.is_empty());
+            assert!(!metadata.description.is_empty());
+        }
+
+        assert_eq!(
+            metadata_for(tools::JIRA_GET_ISSUE_TOOL_NAME)
+                .unwrap()
+                .access,
+            ToolAccess::Read
+        );
+        assert_eq!(
+            metadata_for(tools::JIRA_ADD_COMMENT_TOOL_NAME)
+                .unwrap()
+                .access,
+            ToolAccess::Write
+        );
+        assert!(metadata_for("jira_create_issue").is_none());
+        assert!(metadata_for("jira_update_issue").is_none());
+        assert!(metadata_for("jira_delete_issue").is_none());
     }
 
     #[test]
@@ -315,7 +466,7 @@ mod tests {
     fn enabled_tools_filter_by_exact_tool_name() {
         let config = RuntimeConfig {
             enabled_tools: Some(BTreeSet::from(["stage1_synthetic_jira_read".to_string()])),
-            jira_url: Some("https://jira.example".to_string()),
+            jira: Some(jira_config()),
             ..runtime_config()
         };
         let context = context(config);
@@ -336,7 +487,7 @@ mod tests {
     fn service_availability_filters_jira_and_confluence_tools() {
         let unavailable = AppContext::default();
         let available = context(RuntimeConfig {
-            jira_url: Some("https://jira.example".to_string()),
+            jira: Some(jira_config()),
             confluence_url: Some("https://confluence.example".to_string()),
             ..runtime_config()
         });
@@ -371,7 +522,7 @@ mod tests {
     #[test]
     fn toolset_filter_hides_synthetic_tools_outside_enabled_toolsets() {
         let context = context(RuntimeConfig {
-            jira_url: Some("https://jira.example".to_string()),
+            jira: Some(jira_config()),
             enabled_toolsets: BTreeSet::from(["jira_fields".to_string()]),
             ..runtime_config()
         });
@@ -389,7 +540,7 @@ mod tests {
     fn read_only_hides_write_tools_and_direct_call_guard_rejects_them() {
         let context = context(RuntimeConfig {
             read_only: true,
-            jira_url: Some("https://jira.example".to_string()),
+            jira: Some(jira_config()),
             ..runtime_config()
         });
 
@@ -416,7 +567,7 @@ mod tests {
     #[test]
     fn direct_call_guard_allows_write_tools_when_read_only_is_disabled() {
         let context = context(RuntimeConfig {
-            jira_url: Some("https://jira.example".to_string()),
+            jira: Some(jira_config()),
             ..runtime_config()
         });
 
@@ -427,6 +578,32 @@ mod tests {
                 metadata_for_test_tool,
             )
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn real_jira_tools_require_service_availability_and_obey_read_only() {
+        let unavailable = AppContext::default();
+        let read_write = context(RuntimeConfig {
+            jira: Some(jira_config()),
+            ..runtime_config()
+        });
+        let read_only = context(RuntimeConfig {
+            read_only: true,
+            jira: Some(jira_config()),
+            ..runtime_config()
+        });
+
+        assert!(
+            guard_tool_call(tools::JIRA_GET_ISSUE_TOOL_NAME, &unavailable).is_err(),
+            "Jira read tools must not be callable without complete Jira config"
+        );
+        assert!(guard_tool_call(tools::JIRA_ADD_COMMENT_TOOL_NAME, &read_write).is_ok());
+        assert_eq!(
+            guard_tool_call(tools::JIRA_ADD_COMMENT_TOOL_NAME, &read_only)
+                .unwrap_err()
+                .message,
+            READ_ONLY_BLOCK_MESSAGE
         );
     }
 

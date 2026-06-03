@@ -1,6 +1,8 @@
+mod atlassian;
 mod config;
 mod context;
 mod error;
+mod jira;
 mod mcp;
 mod tool_registry;
 
