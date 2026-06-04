@@ -7,7 +7,7 @@ use crate::jira::formatting::extract_adf_text;
 #[serde(rename_all = "camelCase")]
 pub struct JiraIssue {
     pub id: Option<String>,
-    pub key: String,
+    pub key: Option<String>,
     #[serde(default)]
     pub fields: Value,
     #[serde(flatten)]
@@ -84,6 +84,13 @@ impl JiraField {
             "schema": self.schema,
         })
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct JiraFieldSearchResponse {
+    #[serde(default)]
+    pub values: Vec<JiraField>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

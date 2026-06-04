@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use crate::{
     atlassian::error::AtlassianError,
@@ -72,7 +72,9 @@ impl AtlassianMcpServer {
 
     fn current_tools_result(&self) -> ListToolsResult {
         ListToolsResult {
-            tools: self.filtered_tools_from(self.tool_router.list_all()),
+            tools: sanitize_tools_for_clients(
+                self.filtered_tools_from(self.tool_router.list_all()),
+            ),
             ..Default::default()
         }
     }
@@ -1491,6 +1493,94 @@ fn jira_error(error: AtlassianError) -> ErrorData {
     }
 }
 
+const TOOL_LOG_REDACTED: &str = "[redacted]";
+const TOOL_LOG_TRUNCATED: &str = "[truncated]";
+const TOOL_LOG_MAX_DEPTH: usize = 8;
+const TOOL_LOG_MAX_ARRAY_ITEMS: usize = 50;
+const TOOL_LOG_MAX_STRING_CHARS: usize = 1_000;
+
+fn sanitize_tool_log_arguments(arguments: Option<&Map<String, Value>>) -> Value {
+    arguments.map_or_else(
+        || Value::Object(Map::new()),
+        |arguments| Value::Object(sanitize_tool_log_object(arguments, 0)),
+    )
+}
+
+fn sanitize_tool_log_object(arguments: &Map<String, Value>, depth: usize) -> Map<String, Value> {
+    arguments
+        .iter()
+        .map(|(key, value)| {
+            let value = if is_sensitive_log_key(key) {
+                Value::String(TOOL_LOG_REDACTED.to_string())
+            } else {
+                sanitize_tool_log_value(value, depth + 1)
+            };
+            (key.clone(), value)
+        })
+        .collect()
+}
+
+fn sanitize_tool_log_value(value: &Value, depth: usize) -> Value {
+    if depth > TOOL_LOG_MAX_DEPTH {
+        return Value::String(TOOL_LOG_TRUNCATED.to_string());
+    }
+
+    match value {
+        Value::Array(values) => {
+            let mut sanitized = values
+                .iter()
+                .take(TOOL_LOG_MAX_ARRAY_ITEMS)
+                .map(|value| sanitize_tool_log_value(value, depth + 1))
+                .collect::<Vec<_>>();
+            if values.len() > TOOL_LOG_MAX_ARRAY_ITEMS {
+                sanitized.push(json!({
+                    "truncated_items": values.len() - TOOL_LOG_MAX_ARRAY_ITEMS,
+                }));
+            }
+            Value::Array(sanitized)
+        }
+        Value::Object(object) => Value::Object(sanitize_tool_log_object(object, depth + 1)),
+        Value::String(value) => Value::String(truncate_tool_log_string(value)),
+        value => value.clone(),
+    }
+}
+
+fn is_sensitive_log_key(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    if matches!(
+        key.as_str(),
+        "page_token" | "next_page_token" | "nextpagetoken"
+    ) {
+        return false;
+    }
+
+    [
+        "authorization",
+        "cookie",
+        "password",
+        "secret",
+        "token",
+        "api_token",
+        "personal_token",
+        "pat",
+    ]
+    .iter()
+    .any(|sensitive| key.contains(sensitive))
+}
+
+fn truncate_tool_log_string(value: &str) -> String {
+    if value.chars().count() <= TOOL_LOG_MAX_STRING_CHARS {
+        return value.to_string();
+    }
+
+    let mut truncated = value
+        .chars()
+        .take(TOOL_LOG_MAX_STRING_CHARS)
+        .collect::<String>();
+    truncated.push_str(TOOL_LOG_TRUNCATED);
+    truncated
+}
+
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for AtlassianMcpServer {
     async fn call_tool(
@@ -1498,10 +1588,55 @@ impl ServerHandler for AtlassianMcpServer {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.guard_registered_tool_call(request.name.as_ref())?;
+        let tool_name = request.name.to_string();
+        let debug_arguments = tracing::enabled!(tracing::Level::DEBUG)
+            .then(|| sanitize_tool_log_arguments(request.arguments.as_ref()));
+        let started_at = Instant::now();
 
-        let tool_call_context = ToolCallContext::new(self, request, context);
-        self.tool_router.call(tool_call_context).await
+        if let Some(arguments) = debug_arguments.as_ref() {
+            tracing::debug!(
+                tool = %tool_name,
+                arguments = %arguments,
+                "MCP tool call started"
+            );
+        }
+
+        let result = async {
+            self.guard_registered_tool_call(tool_name.as_str())?;
+
+            let tool_call_context = ToolCallContext::new(self, request, context);
+            self.tool_router.call(tool_call_context).await
+        }
+        .await;
+        let elapsed_ms = started_at.elapsed().as_millis();
+
+        match &result {
+            Ok(_) => {
+                tracing::debug!(
+                    tool = %tool_name,
+                    elapsed_ms,
+                    "MCP tool call completed"
+                );
+            }
+            Err(error) => {
+                tracing::warn!(
+                    tool = %tool_name,
+                    "MCP tool call failed"
+                );
+                if let Some(arguments) = debug_arguments.as_ref() {
+                    tracing::debug!(
+                        tool = %tool_name,
+                        arguments = %arguments,
+                        error_code = error.code.0,
+                        error_message = %error.message,
+                        elapsed_ms,
+                        "MCP tool call failed details"
+                    );
+                }
+            }
+        }
+
+        result
     }
 
     async fn list_tools(
@@ -1517,6 +1652,7 @@ impl ServerHandler for AtlassianMcpServer {
             .get(name)
             .cloned()
             .filter(|tool| !self.filtered_tools_from([tool.clone()]).is_empty())
+            .map(sanitize_tool_for_clients)
     }
 
     fn get_info(&self) -> ServerInfo {
@@ -1531,6 +1667,87 @@ impl ServerHandler for AtlassianMcpServer {
             .with_instructions(format!(
                 "Rust MCP Atlassian Stage 2 migration. The MCP control plane is initialized in {access_mode} mode. Jira core tools are available when Jira configuration and authentication are complete; Confluence tools are not migrated yet."
             ))
+    }
+}
+
+fn sanitize_tools_for_clients(tools: Vec<Tool>) -> Vec<Tool> {
+    tools.into_iter().map(sanitize_tool_for_clients).collect()
+}
+
+fn sanitize_tool_for_clients(mut tool: Tool) -> Tool {
+    let mut schema = tool.input_schema.as_ref().clone();
+    sanitize_schema_object(&mut schema);
+    tool.input_schema = Arc::new(schema);
+    tool
+}
+
+fn sanitize_schema_object(object: &mut Map<String, Value>) {
+    if object.get("default").is_some_and(Value::is_null) {
+        object.remove("default");
+    }
+
+    if let Some(type_value) = object.get_mut("type") {
+        sanitize_type_value(type_value);
+        if type_value.as_array().is_some_and(Vec::is_empty) {
+            object.remove("type");
+        }
+    }
+
+    for (key, value) in object.iter_mut() {
+        if key == "additionalProperties" {
+            continue;
+        }
+        sanitize_schema_value(value);
+    }
+}
+
+fn sanitize_schema_value(value: &mut Value) {
+    match value {
+        Value::Bool(true) => {
+            *value = json!({
+                "type": "object",
+                "additionalProperties": true
+            });
+        }
+        Value::Bool(false) => {
+            *value = json!({ "not": {} });
+        }
+        Value::Array(values) => {
+            for value in values {
+                sanitize_schema_value(value);
+            }
+        }
+        Value::Object(object) => {
+            if object.get("default").is_some_and(Value::is_null) {
+                object.remove("default");
+            }
+
+            if let Some(type_value) = object.get_mut("type") {
+                sanitize_type_value(type_value);
+                if type_value.as_array().is_some_and(Vec::is_empty) {
+                    object.remove("type");
+                }
+            }
+
+            for (key, value) in object.iter_mut() {
+                if key == "additionalProperties" {
+                    continue;
+                }
+                sanitize_schema_value(value);
+            }
+        }
+        Value::Null | Value::Number(_) | Value::String(_) => {}
+    }
+}
+
+fn sanitize_type_value(type_value: &mut Value) {
+    let Value::Array(types) = type_value else {
+        return;
+    };
+
+    types.retain(|value| value.as_str() != Some("null"));
+    if types.len() == 1 {
+        *type_value = types[0].clone();
     }
 }
 
@@ -1612,6 +1829,30 @@ mod tests {
         jira_config_with_base_url("https://jira.example".to_string())
     }
 
+    #[test]
+    fn tool_log_arguments_redact_sensitive_fields_and_truncate_large_values() {
+        let long_value = "x".repeat(TOOL_LOG_MAX_STRING_CHARS + 1);
+        let mut nested = Map::new();
+        nested.insert("password".to_string(), json!("secret-password"));
+        let mut arguments = Map::new();
+        arguments.insert("jql".to_string(), json!("project = ABC"));
+        arguments.insert("page_token".to_string(), json!("visible-page-token"));
+        arguments.insert("api_token".to_string(), json!("test-api-token"));
+        arguments.insert("nested".to_string(), Value::Object(nested));
+        arguments.insert("description".to_string(), Value::String(long_value));
+
+        let sanitized = sanitize_tool_log_arguments(Some(&arguments));
+
+        assert_eq!(sanitized["jql"], "project = ABC");
+        assert_eq!(sanitized["page_token"], "visible-page-token");
+        assert_eq!(sanitized["api_token"], TOOL_LOG_REDACTED);
+        assert_eq!(sanitized["nested"]["password"], TOOL_LOG_REDACTED);
+        let description = sanitized["description"].as_str().unwrap();
+        assert!(description.ends_with(TOOL_LOG_TRUNCATED));
+        assert!(!sanitized.to_string().contains("test-api-token"));
+        assert!(!sanitized.to_string().contains("secret-password"));
+    }
+
     fn jira_config_with_base_url(base_url: String) -> JiraConfig {
         JiraConfig {
             base_url,
@@ -1638,6 +1879,73 @@ mod tests {
             .into_iter()
             .map(|tool| tool.name.to_string())
             .collect()
+    }
+
+    fn assert_client_compatible_tool_schemas(tools: &[Tool]) {
+        for tool in tools {
+            let schema = Value::Object(tool.input_schema.as_ref().clone());
+            assert_client_compatible_schema_value(&schema, &tool.name);
+            assert_explicit_property_schemas(&schema, &tool.name);
+        }
+    }
+
+    fn assert_client_compatible_schema_value(value: &Value, path: &str) {
+        match value {
+            Value::Bool(_) => panic!("{path} contains a boolean JSON schema"),
+            Value::Array(values) => {
+                for (index, value) in values.iter().enumerate() {
+                    assert_client_compatible_schema_value(value, &format!("{path}[{index}]"));
+                }
+            }
+            Value::Object(object) => {
+                if object.get("default").is_some_and(Value::is_null) {
+                    panic!("{path} contains default: null");
+                }
+                if object
+                    .get("type")
+                    .and_then(Value::as_array)
+                    .is_some_and(|types| types.iter().any(|value| value.as_str() == Some("null")))
+                {
+                    panic!("{path} contains nullable type array");
+                }
+
+                for (key, value) in object {
+                    if key == "additionalProperties" {
+                        continue;
+                    }
+                    assert_client_compatible_schema_value(value, &format!("{path}.{key}"));
+                }
+            }
+            Value::Null | Value::Number(_) | Value::String(_) => {}
+        }
+    }
+
+    fn assert_explicit_property_schemas(value: &Value, path: &str) {
+        let Value::Object(object) = value else {
+            return;
+        };
+
+        if let Some(properties) = object.get("properties").and_then(Value::as_object) {
+            for (name, property_schema) in properties {
+                let property_path = format!("{path}.properties.{name}");
+                let Some(property) = property_schema.as_object() else {
+                    panic!("{property_path} is not an object schema");
+                };
+                let has_explicit_shape = [
+                    "type", "anyOf", "oneOf", "allOf", "$ref", "not", "const", "enum",
+                ]
+                .iter()
+                .any(|key| property.contains_key(*key));
+                assert!(has_explicit_shape, "{property_path} has no explicit shape");
+            }
+        }
+
+        for (key, value) in object {
+            if key == "additionalProperties" || key == "properties" {
+                continue;
+            }
+            assert_explicit_property_schemas(value, &format!("{path}.{key}"));
+        }
     }
 
     fn stage_three_candidate_tools() -> Vec<Tool> {
@@ -4605,6 +4913,40 @@ mod tests {
 
         assert!(names.contains(&tools::JIRA_GET_ISSUE_DEVELOPMENT_INFO_TOOL_NAME.to_string()));
         assert!(names.contains(&tools::JIRA_GET_ISSUES_DEVELOPMENT_INFO_TOOL_NAME.to_string()));
+    }
+
+    #[test]
+    fn default_jira_tool_schemas_are_client_compatible() {
+        let server = server_with_config(RuntimeConfig {
+            jira: Some(jira_config()),
+            enabled_toolsets: BTreeSet::from([
+                "jira_issues".to_string(),
+                "jira_fields".to_string(),
+                "jira_comments".to_string(),
+                "jira_transitions".to_string(),
+            ]),
+            ..runtime_config()
+        });
+        let tools = server.current_tools_result().tools;
+        let names = tool_names(tools.clone());
+
+        assert!(names.contains(&tools::JIRA_GET_ISSUE_TOOL_NAME.to_string()));
+        assert!(names.contains(&tools::JIRA_SEARCH_TOOL_NAME.to_string()));
+        assert_client_compatible_tool_schemas(&tools);
+    }
+
+    #[test]
+    fn all_jira_tool_schemas_are_client_compatible() {
+        let server = server_with_config(RuntimeConfig {
+            jira: Some(jira_config()),
+            ..runtime_config()
+        });
+        let tools = server.current_tools_result().tools;
+        let names = tool_names(tools.clone());
+
+        assert!(names.contains(&tools::JIRA_GET_ISSUE_TOOL_NAME.to_string()));
+        assert!(names.contains(&tools::JIRA_GET_ISSUE_SLA_TOOL_NAME.to_string()));
+        assert_client_compatible_tool_schemas(&tools);
     }
 
     #[test]

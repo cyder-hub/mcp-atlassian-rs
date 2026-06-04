@@ -17,8 +17,9 @@ use crate::{
         },
         models::{
             JiraAttachment, JiraComment, JiraField, JiraFieldOption, JiraFieldOptionsResponse,
-            JiraIssue, JiraOperationResult, JiraSearchResult, JiraTransitionsResponse,
-            simplify_comment, simplify_fields, simplify_options,
+            JiraFieldSearchResponse, JiraIssue, JiraOperationResult, JiraPaginatedValues,
+            JiraSearchResult, JiraTransitionsResponse, simplify_comment, simplify_fields,
+            simplify_options,
         },
     },
 };
@@ -143,24 +144,35 @@ impl JiraClient {
         let jql = inject_project_filter(&request.jql, &projects);
         let result: JiraSearchResult = match self.config.deployment {
             JiraDeployment::Cloud => {
-                let mut body = json!({
-                    "jql": jql,
-                    "maxResults": limit,
-                });
-                insert_optional(&mut body, "fields", request.fields.map(Value::from));
-                insert_optional(
-                    &mut body,
-                    "expand",
-                    request.expand.map(|expand| Value::String(expand.join(","))),
-                );
-                insert_optional(
-                    &mut body,
-                    "nextPageToken",
-                    request.page_token.map(Value::String),
-                );
-                self.http
-                    .send_json(self.http.post_json("/rest/api/3/search/jql", &body)?)
-                    .await?
+                if request.start_at.unwrap_or(0) > 0 && request.page_token.is_none() {
+                    match self.search_cloud_legacy(&jql, &request, limit).await {
+                        Ok(result) => result,
+                        Err(error) if is_removed_cloud_legacy_search_error(&error) => {
+                            return Err(cloud_offset_pagination_removed_error());
+                        }
+                        Err(error) => return Err(error),
+                    }
+                } else {
+                    let enhanced_result = self.search_cloud_enhanced(&jql, &request, limit).await;
+                    match enhanced_result {
+                        Ok(result) => result,
+                        Err(error)
+                            if request.page_token.is_none()
+                                && is_cloud_unbounded_jql_error(&error) =>
+                        {
+                            match self.search_cloud_legacy(&jql, &request, limit).await {
+                                Ok(result) => result,
+                                Err(legacy_error)
+                                    if is_removed_cloud_legacy_search_error(&legacy_error) =>
+                                {
+                                    return Err(cloud_unbounded_jql_error(&jql));
+                                }
+                                Err(legacy_error) => return Err(legacy_error),
+                            }
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
             }
             JiraDeployment::ServerDataCenter => {
                 let body = json!({
@@ -186,6 +198,7 @@ impl JiraClient {
         start_at: Option<u64>,
     ) -> Result<Value, AtlassianError> {
         let project_key = safe_path_segment(&project_key, "project_key")?;
+        ensure_project_allowed(&project_key, &self.config)?;
         self.search(SearchRequest {
             jql: format!("project = \"{}\"", project_key.replace('"', "\\\"")),
             limit,
@@ -200,12 +213,31 @@ impl JiraClient {
         keyword: Option<String>,
         limit: Option<u64>,
     ) -> Result<Value, AtlassianError> {
-        let fields: Vec<JiraField> = self
-            .http
-            .send_json(self.http.get("/rest/api/2/field")?)
-            .await?;
+        let limit = limit.unwrap_or(DEFAULT_LIMIT);
+        let fields: Vec<JiraField> = match self.config.deployment {
+            JiraDeployment::Cloud => {
+                let mut query = vec![("maxResults".to_string(), limit.to_string())];
+                if let Some(keyword) = keyword
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|keyword| !keyword.is_empty())
+                {
+                    query.push(("query".to_string(), keyword.to_string()));
+                }
+                let response: JiraFieldSearchResponse = self
+                    .http
+                    .send_json(self.http.get("/rest/api/3/field/search")?.query(&query))
+                    .await?;
+                response.values
+            }
+            JiraDeployment::ServerDataCenter => {
+                self.http
+                    .send_json(self.http.get("/rest/api/2/field")?)
+                    .await?
+            }
+        };
         let keyword = keyword.map(|keyword| keyword.to_ascii_lowercase());
-        let limit = limit.unwrap_or(DEFAULT_LIMIT) as usize;
+        let limit = limit as usize;
         let filtered = fields
             .into_iter()
             .filter(|field| {
@@ -224,6 +256,55 @@ impl JiraClient {
         Ok(simplify_fields(&filtered))
     }
 
+    async fn search_cloud_enhanced(
+        &self,
+        jql: &str,
+        request: &SearchRequest,
+        limit: u64,
+    ) -> Result<JiraSearchResult, AtlassianError> {
+        let mut body = json!({
+            "jql": jql,
+            "maxResults": limit,
+        });
+        insert_optional(&mut body, "fields", request.fields.clone().map(Value::from));
+        insert_optional(
+            &mut body,
+            "expand",
+            request
+                .expand
+                .clone()
+                .map(|expand| Value::String(expand.join(","))),
+        );
+        insert_optional(
+            &mut body,
+            "nextPageToken",
+            request.page_token.clone().map(Value::String),
+        );
+
+        self.http
+            .send_json(self.http.post_json("/rest/api/3/search/jql", &body)?)
+            .await
+    }
+
+    async fn search_cloud_legacy(
+        &self,
+        jql: &str,
+        request: &SearchRequest,
+        limit: u64,
+    ) -> Result<JiraSearchResult, AtlassianError> {
+        let mut body = json!({
+            "jql": jql,
+            "startAt": request.start_at.unwrap_or(0),
+            "maxResults": limit,
+        });
+        insert_optional(&mut body, "fields", request.fields.clone().map(Value::from));
+        insert_optional(&mut body, "expand", request.expand.clone().map(Value::from));
+
+        self.http
+            .send_json(self.http.post_json("/rest/api/3/search", &body)?)
+            .await
+    }
+
     pub async fn get_field_options(
         &self,
         request: FieldOptionsRequest,
@@ -231,15 +312,9 @@ impl JiraClient {
         let field_id = safe_path_segment(&request.field_id, "field_id")?;
         let mut options = match self.config.deployment {
             JiraDeployment::Cloud => {
-                let context_id = request
-                    .context_id
-                    .as_deref()
-                    .ok_or_else(|| {
-                        AtlassianError::invalid_input(
-                            "context_id is required for Jira Cloud field options",
-                        )
-                    })
-                    .and_then(|context_id| safe_path_segment(context_id, "context_id"))?;
+                let context_id = self
+                    .resolve_cloud_field_context_id(&field_id, &request)
+                    .await?;
                 let query = vec![(
                     "maxResults".to_string(),
                     request.return_limit.unwrap_or(DEFAULT_LIMIT).to_string(),
@@ -298,6 +373,107 @@ impl JiraClient {
         options.truncate(request.return_limit.unwrap_or(DEFAULT_LIMIT) as usize);
 
         Ok(simplify_options(&options, request.values_only))
+    }
+
+    async fn resolve_cloud_field_context_id(
+        &self,
+        field_id: &str,
+        request: &FieldOptionsRequest,
+    ) -> Result<String, AtlassianError> {
+        if let Some(context_id) = request.context_id.as_deref() {
+            return safe_path_segment(context_id, "context_id");
+        }
+
+        let project_key = request.project_key.as_deref().ok_or_else(|| {
+            AtlassianError::invalid_input(
+                "context_id is required for Jira Cloud field options unless project_key and issue_type are provided",
+            )
+        })?;
+        let issue_type = request.issue_type.as_deref().ok_or_else(|| {
+            AtlassianError::invalid_input(
+                "context_id is required for Jira Cloud field options unless project_key and issue_type are provided",
+            )
+        })?;
+        let (project_id, issue_type_id) = self
+            .resolve_cloud_project_issue_type_ids(project_key, issue_type)
+            .await?;
+        let query = vec![("maxResults".to_string(), "1".to_string())];
+        let body = json!({
+            "mappings": [{
+                "projectId": project_id,
+                "issueTypeId": issue_type_id,
+            }]
+        });
+        let response: JiraPaginatedValues = self
+            .http
+            .send_json(
+                self.http
+                    .post_json(
+                        &format!("/rest/api/3/field/{field_id}/context/mapping"),
+                        &body,
+                    )?
+                    .query(&query),
+            )
+            .await?;
+
+        let mapping = response.values.first().ok_or_else(|| {
+            AtlassianError::unexpected_shape(format!(
+                "field `{field_id}` context mapping response did not include a mapping"
+            ))
+        })?;
+        let Some(context_id) = field_context_mapping_context_id(mapping)? else {
+            return Err(AtlassianError::invalid_input(format!(
+                "No Jira Cloud field context applies to field `{field_id}` for project `{project_key}` and issue type `{issue_type}`"
+            )));
+        };
+
+        safe_path_segment(&context_id, "context_id")
+    }
+
+    async fn resolve_cloud_project_issue_type_ids(
+        &self,
+        project_key: &str,
+        issue_type: &str,
+    ) -> Result<(String, String), AtlassianError> {
+        let project_key = safe_path_segment(project_key, "project_key")?;
+        let issue_type = issue_type.trim();
+        if issue_type.is_empty() {
+            return Err(AtlassianError::invalid_input(
+                "issue_type must not be empty",
+            ));
+        }
+
+        let project: Value = self
+            .http
+            .send_json(
+                self.http
+                    .get(&format!("/rest/api/3/project/{project_key}"))?,
+            )
+            .await?;
+        let project_id = field_value_id(&project, "id").ok_or_else(|| {
+            AtlassianError::unexpected_shape(format!(
+                "project `{project_key}` response did not include an id"
+            ))
+        })?;
+        let issue_types = project
+            .get("issueTypes")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                AtlassianError::unexpected_shape(format!(
+                    "project `{project_key}` response did not include issueTypes"
+                ))
+            })?;
+        let issue_type_id = issue_types
+            .iter()
+            .find(|candidate| cloud_issue_type_matches(candidate, issue_type))
+            .and_then(|candidate| field_value_id(candidate, "id"))
+            .ok_or_else(|| {
+                AtlassianError::invalid_input(format!(
+                    "issue_type `{issue_type}` was not found in Jira Cloud project `{project_key}`"
+                ))
+            })?;
+
+        Ok((project_id, issue_type_id))
     }
 
     pub async fn add_comment(
@@ -409,12 +585,13 @@ impl JiraClient {
 
     pub async fn create_issue(&self, fields: Value) -> Result<Value, AtlassianError> {
         let fields = parse_optional_object(Some(fields), "fields")?.unwrap_or_else(|| json!({}));
+        let path = match self.config.deployment {
+            JiraDeployment::Cloud => "/rest/api/3/issue",
+            JiraDeployment::ServerDataCenter => "/rest/api/2/issue",
+        };
         let issue: JiraIssue = self
             .http
-            .send_json(
-                self.http
-                    .post_json("/rest/api/2/issue", &json!({ "fields": fields }))?,
-            )
+            .send_json(self.http.post_json(path, &json!({ "fields": fields }))?)
             .await?;
         Ok(
             JiraOperationResult::success("Issue created successfully", issue.to_simplified_value())
@@ -484,14 +661,15 @@ impl JiraClient {
         if let Some(notify_users) = notify_users {
             query.push(("notifyUsers".to_string(), notify_users.to_string()));
         }
+        let path = match self.config.deployment {
+            JiraDeployment::Cloud => format!("/rest/api/3/issue/{issue_key}"),
+            JiraDeployment::ServerDataCenter => format!("/rest/api/2/issue/{issue_key}"),
+        };
         let response = self
             .http
             .send_json_value_or_null(
                 self.http
-                    .put_json(
-                        &format!("/rest/api/2/issue/{issue_key}"),
-                        &json!({ "fields": fields }),
-                    )?
+                    .put_json(&path, &json!({ "fields": fields }))?
                     .query(&query),
             )
             .await?;
@@ -1287,13 +1465,80 @@ impl JiraClient {
                     .query(&query),
             )
             .await?;
-        ensure_issue_allowed(&issue.key, &self.config)?;
+        let issue_key = issue.key.as_deref().ok_or_else(|| {
+            AtlassianError::invalid_input(format!(
+                "issue `{issue_key_or_id}` response did not include a key"
+            ))
+        })?;
+        ensure_issue_allowed(issue_key, &self.config)?;
         issue.id.ok_or_else(|| {
             AtlassianError::invalid_input(format!(
                 "issue `{issue_key_or_id}` response did not include a numeric id"
             ))
         })
     }
+}
+
+fn is_cloud_unbounded_jql_error(error: &AtlassianError) -> bool {
+    matches!(
+        error,
+        AtlassianError::HttpStatus { status: 400, message }
+            if message.contains("Unbounded JQL queries are not allowed here")
+    )
+}
+
+fn is_removed_cloud_legacy_search_error(error: &AtlassianError) -> bool {
+    matches!(
+        error,
+        AtlassianError::HttpStatus { status: 410, message }
+            if message.contains("/rest/api/3/search/jql")
+    )
+}
+
+fn cloud_unbounded_jql_error(jql: &str) -> AtlassianError {
+    AtlassianError::invalid_input(format!(
+        "Jira Cloud rejected an unbounded JQL query and the legacy search API is removed. Add a search restriction such as `project = \"KEY\"`, `issuekey in (...)`, or a configured JIRA_PROJECTS_FILTER before the order clause. Rejected JQL: {jql}"
+    ))
+}
+
+fn cloud_offset_pagination_removed_error() -> AtlassianError {
+    AtlassianError::invalid_input(
+        "Jira Cloud offset pagination with start_at requires the removed /rest/api/3/search API. Use page_token from a previous jira_search response instead.",
+    )
+}
+
+fn field_context_mapping_context_id(value: &Value) -> Result<Option<String>, AtlassianError> {
+    let Some(context_id) = value.get("contextId") else {
+        return Err(AtlassianError::unexpected_shape(
+            "field context mapping response did not include contextId",
+        ));
+    };
+    if context_id.is_null() {
+        return Ok(None);
+    }
+
+    field_value_id(value, "contextId")
+        .map(Some)
+        .ok_or_else(|| AtlassianError::unexpected_shape("contextId must be a string or integer"))
+}
+
+fn cloud_issue_type_matches(value: &Value, requested: &str) -> bool {
+    value
+        .get("id")
+        .and_then(Value::as_str)
+        .is_some_and(|id| id == requested)
+        || value
+            .get("name")
+            .and_then(Value::as_str)
+            .is_some_and(|name| name.eq_ignore_ascii_case(requested))
+}
+
+fn field_value_id(value: &Value, field_name: &str) -> Option<String> {
+    value.get(field_name).and_then(|id| {
+        id.as_str()
+            .map(ToString::to_string)
+            .or_else(|| id.as_u64().map(|id| id.to_string()))
+    })
 }
 
 fn optional_query_params<const N: usize>(
@@ -1676,6 +1921,169 @@ mod tests {
         (StatusCode::OK, "not-json").into_response()
     }
 
+    async fn cloud_search_fallback_handler(
+        State(requests): State<Arc<Mutex<Vec<RecordedRequest>>>>,
+        method: Method,
+        headers: HeaderMap,
+        uri: axum::http::Uri,
+        body: Bytes,
+    ) -> Response {
+        let parsed_body = if body.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&body).unwrap()
+        };
+        requests.lock().await.push(RecordedRequest {
+            method,
+            path: uri
+                .path_and_query()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| uri.path().to_string()),
+            authorization: headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok())
+                .map(ToString::to_string),
+            body: parsed_body,
+        });
+
+        match uri.path() {
+            "/rest/api/3/search/jql" => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "errorMessages": [
+                        "Unbounded JQL queries are not allowed here. Please add a search restriction to your query."
+                    ]
+                })),
+            )
+                .into_response(),
+            "/rest/api/3/search" => Json(json!({
+                "issues": [{
+                    "id": "10001",
+                    "key": "ABC-1",
+                    "fields": {"summary": "Demo"}
+                }],
+                "total": 1,
+                "startAt": 0,
+                "maxResults": 50
+            }))
+            .into_response(),
+            _ => StatusCode::NOT_FOUND.into_response(),
+        }
+    }
+
+    async fn removed_cloud_legacy_search_handler(
+        State(requests): State<Arc<Mutex<Vec<RecordedRequest>>>>,
+        method: Method,
+        headers: HeaderMap,
+        uri: axum::http::Uri,
+        body: Bytes,
+    ) -> Response {
+        let parsed_body = if body.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&body).unwrap()
+        };
+        requests.lock().await.push(RecordedRequest {
+            method,
+            path: uri
+                .path_and_query()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| uri.path().to_string()),
+            authorization: headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok())
+                .map(ToString::to_string),
+            body: parsed_body,
+        });
+
+        match uri.path() {
+            "/rest/api/3/search/jql" => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "errorMessages": [
+                        "Unbounded JQL queries are not allowed here. Please add a search restriction to your query."
+                    ]
+                })),
+            )
+                .into_response(),
+            "/rest/api/3/search" => (
+                StatusCode::GONE,
+                Json(json!({
+                    "errorMessages": [
+                        "The requested API has been removed. Please migrate to the /rest/api/3/search/jql API."
+                    ]
+                })),
+            )
+                .into_response(),
+            _ => StatusCode::NOT_FOUND.into_response(),
+        }
+    }
+
+    async fn cloud_field_options_context_handler(
+        State(requests): State<Arc<Mutex<Vec<RecordedRequest>>>>,
+        method: Method,
+        headers: HeaderMap,
+        uri: axum::http::Uri,
+        body: Bytes,
+    ) -> Response {
+        let parsed_body = if body.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&body).unwrap()
+        };
+        let request_body = parsed_body.clone();
+        requests.lock().await.push(RecordedRequest {
+            method,
+            path: uri
+                .path_and_query()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| uri.path().to_string()),
+            authorization: headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok())
+                .map(ToString::to_string),
+            body: parsed_body,
+        });
+
+        match uri.path() {
+            "/rest/api/3/project/ABC" => Json(json!({
+                "id": "10000",
+                "key": "ABC",
+                "issueTypes": [
+                    {"id": "1", "name": "Bug"},
+                    {"id": "3", "name": "Task"}
+                ]
+            }))
+            .into_response(),
+            "/rest/api/3/field/customfield_10001/context/mapping" => {
+                let issue_type_id = request_body
+                    .pointer("/mappings/0/issueTypeId")
+                    .and_then(Value::as_str);
+                let context_id = if issue_type_id == Some("3") {
+                    Value::Null
+                } else {
+                    json!("20001")
+                };
+
+                Json(json!({
+                    "values": [{
+                        "projectId": "10000",
+                        "issueTypeId": issue_type_id.unwrap_or(""),
+                        "contextId": context_id
+                    }],
+                    "isLast": true
+                }))
+                .into_response()
+            }
+            "/rest/api/3/field/customfield_10001/context/20001/option" => Json(json!({
+                "values": [{"id": "1", "value": "High"}],
+                "isLast": true
+            }))
+            .into_response(),
+            _ => StatusCode::NOT_FOUND.into_response(),
+        }
+    }
+
     async fn stage_three_handler(
         State(requests): State<Arc<Mutex<Vec<RecordedRequest>>>>,
         method: Method,
@@ -1935,6 +2343,50 @@ mod tests {
         (format!("http://{address}"), requests)
     }
 
+    async fn cloud_search_fallback_mock_server() -> (String, Arc<Mutex<Vec<RecordedRequest>>>) {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let app = Router::new()
+            .fallback(any(cloud_search_fallback_handler))
+            .with_state(requests.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address: SocketAddr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        (format!("http://{address}"), requests)
+    }
+
+    async fn removed_cloud_legacy_search_mock_server() -> (String, Arc<Mutex<Vec<RecordedRequest>>>)
+    {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let app = Router::new()
+            .fallback(any(removed_cloud_legacy_search_handler))
+            .with_state(requests.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address: SocketAddr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        (format!("http://{address}"), requests)
+    }
+
+    async fn cloud_field_options_context_mock_server() -> (String, Arc<Mutex<Vec<RecordedRequest>>>)
+    {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let app = Router::new()
+            .fallback(any(cloud_field_options_context_handler))
+            .with_state(requests.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address: SocketAddr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        (format!("http://{address}"), requests)
+    }
+
     async fn stage_three_mock_server() -> (String, Arc<Mutex<Vec<RecordedRequest>>>) {
         let requests = Arc::new(Mutex::new(Vec::new()));
         let app = Router::new()
@@ -2028,6 +2480,85 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cloud_search_allows_issue_without_key() {
+        let (base_url, requests) = mock_server(json!({
+            "issues": [{
+                "id": "10001",
+                "fields": {"summary": "Demo"}
+            }],
+            "isLast": true
+        }))
+        .await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::Cloud)).unwrap();
+        let value = client
+            .search(SearchRequest {
+                jql: "project = SCRUM".to_string(),
+                limit: Some(20),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+
+        assert_eq!(requests[0].path, "/rest/api/3/search/jql");
+        assert_eq!(value["issues"][0]["id"], "10001");
+        assert!(value["issues"][0]["key"].is_null());
+        assert_eq!(value["issues"][0]["summary"], "Demo");
+    }
+
+    #[tokio::test]
+    async fn cloud_search_retries_legacy_search_when_enhanced_rejects_unbounded_jql() {
+        let (base_url, requests) = cloud_search_fallback_mock_server().await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::Cloud)).unwrap();
+        let value = client
+            .search(SearchRequest {
+                jql: "created >= -30d ORDER BY updated DESC".to_string(),
+                limit: Some(50),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+
+        assert_eq!(value["total"], 1);
+        assert_eq!(value["issues"][0]["key"], "ABC-1");
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].method, Method::POST);
+        assert_eq!(requests[0].path, "/rest/api/3/search/jql");
+        assert_eq!(requests[1].method, Method::POST);
+        assert_eq!(requests[1].path, "/rest/api/3/search");
+        assert_eq!(
+            requests[1].body["jql"],
+            "created >= -30d ORDER BY updated DESC"
+        );
+        assert_eq!(requests[1].body["startAt"], 0);
+        assert_eq!(requests[1].body["maxResults"], 50);
+    }
+
+    #[tokio::test]
+    async fn cloud_search_reports_unbounded_jql_when_legacy_search_is_removed() {
+        let (base_url, requests) = removed_cloud_legacy_search_mock_server().await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::Cloud)).unwrap();
+        let error = client
+            .search(SearchRequest {
+                jql: "ORDER BY created DESC".to_string(),
+                limit: Some(20),
+                ..Default::default()
+            })
+            .await
+            .unwrap_err()
+            .to_string();
+        let requests = requests.lock().await;
+
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].path, "/rest/api/3/search/jql");
+        assert_eq!(requests[1].path, "/rest/api/3/search");
+        assert!(error.contains("unbounded JQL"));
+        assert!(error.contains("project = \"KEY\""));
+        assert!(error.contains("ORDER BY created DESC"));
+    }
+
+    #[tokio::test]
     async fn server_search_uses_v2_search_and_start_at() {
         let (base_url, requests) = mock_server(json!({"issues": [], "total": 0})).await;
         let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
@@ -2081,6 +2612,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cloud_search_fields_uses_paginated_v3_endpoint() {
+        let (base_url, requests) = mock_server(json!({
+            "values": [
+                {"id": "project", "key": "project", "name": "Project", "schema": {"type": "project"}},
+                {"id": "summary", "name": "Summary"}
+            ]
+        }))
+        .await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::Cloud)).unwrap();
+        let value = client
+            .search_fields(Some("project".to_string()), Some(2))
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+
+        assert!(requests[0].path.starts_with("/rest/api/3/field/search?"));
+        assert!(requests[0].path.contains("maxResults=2"));
+        assert!(requests[0].path.contains("query=project"));
+        assert_eq!(value.as_array().unwrap().len(), 1);
+        assert_eq!(value[0]["id"], "project");
+    }
+
+    #[tokio::test]
     async fn field_options_support_cloud_context_options() {
         let (base_url, requests) =
             mock_server(json!({"values": [{"id": "1", "value": "High"}]})).await;
@@ -2102,6 +2656,84 @@ mod tests {
                 .path
                 .starts_with("/rest/api/3/field/customfield_10001/context/20001/option")
         );
+    }
+
+    #[tokio::test]
+    async fn field_options_resolves_cloud_context_with_project_and_issue_type() {
+        let (base_url, requests) = cloud_field_options_context_mock_server().await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::Cloud)).unwrap();
+        let value = client
+            .get_field_options(FieldOptionsRequest {
+                field_id: "customfield_10001".to_string(),
+                project_key: Some("ABC".to_string()),
+                issue_type: Some("Bug".to_string()),
+                values_only: true,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+
+        assert_eq!(value, json!(["High"]));
+        assert_eq!(requests.len(), 3);
+        assert_eq!(requests[0].method, Method::GET);
+        assert!(requests[0].path.starts_with("/rest/api/3/project/ABC"));
+        assert_eq!(requests[1].method, Method::POST);
+        assert!(
+            requests[1]
+                .path
+                .starts_with("/rest/api/3/field/customfield_10001/context/mapping?")
+        );
+        assert_eq!(
+            requests[1].body["mappings"][0],
+            json!({"projectId": "10000", "issueTypeId": "1"})
+        );
+        assert_eq!(requests[2].method, Method::GET);
+        assert!(
+            requests[2]
+                .path
+                .starts_with("/rest/api/3/field/customfield_10001/context/20001/option")
+        );
+    }
+
+    #[tokio::test]
+    async fn field_options_requires_cloud_context_or_project_issue_type() {
+        let (base_url, requests) = mock_server(json!({})).await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::Cloud)).unwrap();
+        let error = client
+            .get_field_options(FieldOptionsRequest {
+                field_id: "customfield_10001".to_string(),
+                values_only: true,
+                ..Default::default()
+            })
+            .await
+            .unwrap_err();
+        let requests = requests.lock().await;
+
+        assert!(requests.is_empty());
+        let error = error.to_string();
+        assert!(error.contains("context_id is required for Jira Cloud field options"));
+    }
+
+    #[tokio::test]
+    async fn field_options_reports_cloud_context_mapping_miss() {
+        let (base_url, requests) = cloud_field_options_context_mock_server().await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::Cloud)).unwrap();
+        let error = client
+            .get_field_options(FieldOptionsRequest {
+                field_id: "customfield_10001".to_string(),
+                project_key: Some("ABC".to_string()),
+                issue_type: Some("Task".to_string()),
+                values_only: true,
+                ..Default::default()
+            })
+            .await
+            .unwrap_err();
+        let requests = requests.lock().await;
+
+        assert_eq!(requests.len(), 2);
+        let error = error.to_string();
+        assert!(error.contains("No Jira Cloud field context applies"));
     }
 
     #[tokio::test]
@@ -2311,7 +2943,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn invalid_json_response_is_mapped_without_request_details() {
+    async fn invalid_json_response_includes_safe_request_context() {
         let (base_url, requests) = invalid_json_mock_server().await;
         let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
         let error = client
@@ -2325,6 +2957,7 @@ mod tests {
         let requests = requests.lock().await;
 
         assert!(error.contains("JSON decode error"));
+        assert!(error.contains("GET /rest/api/2/issue/ABC-1"));
         assert!(!error.contains("Bearer"));
         assert!(!error.contains("test-pat-value"));
         assert_eq!(requests.len(), 1);
@@ -2435,6 +3068,48 @@ mod tests {
             requests[3].path,
             "/rest/api/2/issue/ABC-1?deleteSubtasks=true"
         );
+    }
+
+    #[tokio::test]
+    async fn cloud_issue_create_and_update_use_v3_for_adf_fields() {
+        let (base_url, requests) =
+            mock_server(json!({"id": "10001", "key": "ABC-1", "fields": {}})).await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::Cloud)).unwrap();
+        let description = json!({
+            "type": "doc",
+            "version": 1,
+            "content": [{
+                "type": "paragraph",
+                "content": [{"type": "text", "text": "Cloud description"}]
+            }]
+        });
+
+        client
+            .create_issue(json!({
+                "project": {"key": "ABC"},
+                "summary": "Demo",
+                "issuetype": {"name": "Task"},
+                "description": description.clone()
+            }))
+            .await
+            .unwrap();
+        client
+            .update_issue(
+                "ABC-1".to_string(),
+                json!({"description": description}),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+
+        assert_eq!(requests[0].method, Method::POST);
+        assert_eq!(requests[0].path, "/rest/api/3/issue");
+        assert_eq!(requests[0].body["fields"]["description"]["type"], "doc");
+        assert_eq!(requests[1].method, Method::PUT);
+        assert_eq!(requests[1].path, "/rest/api/3/issue/ABC-1");
+        assert_eq!(requests[1].body["fields"]["description"]["type"], "doc");
     }
 
     #[tokio::test]

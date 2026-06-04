@@ -2,6 +2,38 @@ use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+fn string_list_or_string_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "oneOf": [
+            {
+                "type": "string",
+                "description": "Comma-separated list of strings"
+            },
+            {
+                "type": "array",
+                "items": { "type": "string" }
+            }
+        ]
+    })
+}
+
+fn object_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "object",
+        "additionalProperties": true
+    })
+}
+
+fn object_list_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "array",
+        "items": {
+            "type": "object",
+            "additionalProperties": true
+        }
+    })
+}
+
 pub const JIRA_GET_ISSUE_TOOL_NAME: &str = "jira_get_issue";
 pub const JIRA_SEARCH_TOOL_NAME: &str = "jira_search";
 pub const JIRA_GET_PROJECT_ISSUES_TOOL_NAME: &str = "jira_get_project_issues";
@@ -99,12 +131,15 @@ pub const STAGE3_JIRA_TOOL_NAMES: &[&str] = &[
 pub struct JiraGetIssueArgs {
     pub issue_key: String,
     #[serde(default)]
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub fields: Option<Value>,
     #[serde(default)]
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub expand: Option<Value>,
     #[serde(default)]
     pub comment_limit: Option<u64>,
     #[serde(default)]
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub properties: Option<Value>,
     #[serde(default)]
     pub update_history: Option<bool>,
@@ -114,14 +149,17 @@ pub struct JiraGetIssueArgs {
 pub struct JiraSearchArgs {
     pub jql: String,
     #[serde(default)]
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub fields: Option<Value>,
     #[serde(default)]
     pub limit: Option<u64>,
     #[serde(default)]
     pub start_at: Option<u64>,
     #[serde(default)]
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub projects_filter: Option<Value>,
     #[serde(default)]
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub expand: Option<Value>,
     #[serde(default)]
     pub page_token: Option<String>,
@@ -168,6 +206,7 @@ pub struct JiraAddCommentArgs {
     pub issue_key: String,
     pub body: String,
     #[serde(default)]
+    #[schemars(schema_with = "object_schema")]
     pub visibility: Option<Value>,
 }
 
@@ -177,6 +216,7 @@ pub struct JiraEditCommentArgs {
     pub comment_id: String,
     pub body: String,
     #[serde(default)]
+    #[schemars(schema_with = "object_schema")]
     pub visibility: Option<Value>,
 }
 
@@ -190,6 +230,7 @@ pub struct JiraTransitionIssueArgs {
     pub issue_key: String,
     pub transition_id: String,
     #[serde(default)]
+    #[schemars(schema_with = "object_schema")]
     pub fields: Option<Value>,
     #[serde(default)]
     pub comment: Option<String>,
@@ -205,13 +246,16 @@ pub struct JiraCreateIssueArgs {
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub components: Option<Value>,
     #[serde(default)]
+    #[schemars(schema_with = "object_schema")]
     pub additional_fields: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct JiraBatchCreateIssuesArgs {
+    #[schemars(schema_with = "object_list_schema")]
     pub issues: Value,
     #[serde(default)]
     pub validate_only: Option<bool>,
@@ -219,8 +263,10 @@ pub struct JiraBatchCreateIssuesArgs {
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct JiraBatchGetChangelogsArgs {
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub issue_ids_or_keys: Value,
     #[serde(default)]
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub fields: Option<Value>,
     #[serde(default)]
     pub limit: Option<i64>,
@@ -229,10 +275,13 @@ pub struct JiraBatchGetChangelogsArgs {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct JiraUpdateIssueArgs {
     pub issue_key: String,
+    #[schemars(schema_with = "object_schema")]
     pub fields: Value,
     #[serde(default)]
+    #[schemars(schema_with = "object_schema")]
     pub additional_fields: Option<Value>,
     #[serde(default)]
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub components: Option<Value>,
     #[serde(default)]
     pub notify_users: Option<bool>,
@@ -274,6 +323,7 @@ pub struct JiraCreateVersionArgs {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct JiraBatchCreateVersionsArgs {
     pub project_key: String,
+    #[schemars(schema_with = "object_list_schema")]
     pub versions: Value,
 }
 
@@ -314,6 +364,7 @@ pub struct JiraAddWorklogArgs {
     #[serde(default)]
     pub comment: Option<String>,
     #[serde(default)]
+    #[schemars(schema_with = "object_schema")]
     pub visibility: Option<Value>,
     #[serde(default)]
     pub adjust_estimate: Option<String>,
@@ -358,6 +409,7 @@ pub struct JiraCreateRemoteIssueLinkArgs {
     #[serde(default)]
     pub icon_url: Option<String>,
     #[serde(default)]
+    #[schemars(schema_with = "object_schema")]
     pub status: Option<Value>,
 }
 
@@ -370,6 +422,7 @@ pub struct JiraRemoveIssueLinkArgs {
 pub struct JiraDownloadAttachmentsArgs {
     pub issue_key: String,
     #[serde(default)]
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub attachment_ids: Option<Value>,
     #[serde(default)]
     pub include_content: Option<bool>,
@@ -404,6 +457,7 @@ pub struct JiraGetBoardIssuesArgs {
     #[serde(default)]
     pub jql: Option<String>,
     #[serde(default)]
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub fields: Option<Value>,
     #[serde(default)]
     pub start_at: Option<u64>,
@@ -415,6 +469,7 @@ pub struct JiraGetBoardIssuesArgs {
 pub struct JiraGetSprintsFromBoardArgs {
     pub board_id: u64,
     #[serde(default)]
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub state: Option<Value>,
     #[serde(default)]
     pub start_at: Option<u64>,
@@ -426,6 +481,7 @@ pub struct JiraGetSprintsFromBoardArgs {
 pub struct JiraGetSprintIssuesArgs {
     pub sprint_id: u64,
     #[serde(default)]
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub fields: Option<Value>,
     #[serde(default)]
     pub start_at: Option<u64>,
@@ -463,6 +519,7 @@ pub struct JiraUpdateSprintArgs {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct JiraAddIssuesToSprintArgs {
     pub sprint_id: u64,
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub issue_keys: Value,
 }
 
@@ -505,6 +562,7 @@ pub struct JiraGetProformaFormDetailsArgs {
 pub struct JiraUpdateProformaFormAnswersArgs {
     pub issue_key: String,
     pub form_id: String,
+    #[schemars(schema_with = "object_list_schema")]
     pub answers: Value,
 }
 
@@ -521,6 +579,7 @@ pub struct JiraGetIssueDatesArgs {
 pub struct JiraGetIssueSlaArgs {
     pub issue_key: String,
     #[serde(default)]
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub metrics: Option<Value>,
     #[serde(default)]
     pub working_hours_only: Option<bool>,
@@ -539,6 +598,7 @@ pub struct JiraGetIssueDevelopmentInfoArgs {
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct JiraGetIssuesDevelopmentInfoArgs {
+    #[schemars(schema_with = "string_list_or_string_schema")]
     pub issue_keys: Value,
     #[serde(default)]
     pub application_type: Option<String>,
@@ -573,6 +633,18 @@ mod tests {
         assert_eq!(JIRA_EDIT_COMMENT_TOOL_NAME, "jira_edit_comment");
         assert_eq!(JIRA_GET_TRANSITIONS_TOOL_NAME, "jira_get_transitions");
         assert_eq!(JIRA_TRANSITION_ISSUE_TOOL_NAME, "jira_transition_issue");
+    }
+
+    #[test]
+    fn string_list_schema_allows_comma_separated_string_or_array() {
+        let mut generator = schemars::SchemaGenerator::default();
+        let schema = string_list_or_string_schema(&mut generator);
+        let value = serde_json::to_value(schema).unwrap();
+        let one_of = value["oneOf"].as_array().unwrap();
+
+        assert_eq!(one_of[0]["type"], "string");
+        assert_eq!(one_of[1]["type"], "array");
+        assert_eq!(one_of[1]["items"]["type"], "string");
     }
 
     #[test]

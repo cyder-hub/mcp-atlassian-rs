@@ -12,6 +12,10 @@ dev:
 dev-http host="127.0.0.1" port="8000":
 	cd '{{justfile_directory()}}' && cargo run -- streamhttp --host "{{host}}" --port "{{port}}"
 
+# Run the streamable HTTP server with MCP tool-call diagnostics enabled.
+dev-http-debug host="127.0.0.1" port="8000":
+	cd '{{justfile_directory()}}' && RUST_LOG="${RUST_LOG:-mcp_atlassian_rs::mcp=debug,mcp_atlassian_rs=info,rmcp=info}" cargo run -- streamhttp --host "{{host}}" --port "{{port}}"
+
 # Run the stdio MCP smoke check.
 smoke-stdio:
 	cd '{{justfile_directory()}}' && bash scripts/smoke-stdio.sh

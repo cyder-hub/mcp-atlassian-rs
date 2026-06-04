@@ -27,6 +27,19 @@ impl AtlassianError {
         }
     }
 
+    pub fn json_decode_body(error: serde_json::Error, request_context: Option<&str>) -> Self {
+        let error = error.to_string();
+        let message = request_context
+            .map(str::trim)
+            .filter(|context| !context.is_empty())
+            .map_or_else(
+                || format!("error decoding response body: {error}"),
+                |context| format!("error decoding response body from {context}: {error}"),
+            );
+
+        Self::JsonDecode { message }
+    }
+
     pub fn invalid_base_url(message: impl Into<String>) -> Self {
         Self::InvalidBaseUrl {
             message: message.into(),

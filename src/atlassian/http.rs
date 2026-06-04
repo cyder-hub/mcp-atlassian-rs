@@ -95,6 +95,7 @@ impl AtlassianHttpClient {
     where
         T: DeserializeOwned,
     {
+        let request_context = request_context(&builder);
         let response = builder.send().await.map_err(AtlassianError::transport)?;
         let status = response.status();
 
@@ -106,13 +107,16 @@ impl AtlassianHttpClient {
             return Err(AtlassianError::http_status(status, message));
         }
 
-        response.json().await.map_err(AtlassianError::json_decode)
+        let bytes = response.bytes().await.map_err(AtlassianError::transport)?;
+        serde_json::from_slice(&bytes)
+            .map_err(|error| AtlassianError::json_decode_body(error, request_context.as_deref()))
     }
 
     pub async fn send_json_value_or_null(
         &self,
         builder: RequestBuilder,
     ) -> Result<Value, AtlassianError> {
+        let request_context = request_context(&builder);
         let response = builder.send().await.map_err(AtlassianError::transport)?;
         let status = response.status();
 
@@ -129,9 +133,8 @@ impl AtlassianHttpClient {
             return Ok(Value::Null);
         }
 
-        serde_json::from_slice(&bytes).map_err(|error| AtlassianError::JsonDecode {
-            message: error.to_string(),
-        })
+        serde_json::from_slice(&bytes)
+            .map_err(|error| AtlassianError::json_decode_body(error, request_context.as_deref()))
     }
 
     pub async fn send_bytes_limited(
@@ -211,6 +214,11 @@ fn same_origin(left: &Url, right: &Url) -> bool {
     left.scheme() == right.scheme()
         && left.host_str() == right.host_str()
         && left.port_or_known_default() == right.port_or_known_default()
+}
+
+fn request_context(builder: &RequestBuilder) -> Option<String> {
+    let request = builder.try_clone()?.build().ok()?;
+    Some(format!("{} {}", request.method(), request.url().path()))
 }
 
 #[cfg(test)]
