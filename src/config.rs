@@ -11,6 +11,7 @@ pub const ENV_READ_ONLY_MODE: &str = "READ_ONLY_MODE";
 pub const ENV_ENABLED_TOOLS: &str = "ENABLED_TOOLS";
 pub const ENV_TOOLSETS: &str = "TOOLSETS";
 pub const ENV_CONFLUENCE_URL: &str = "CONFLUENCE_URL";
+pub const ENV_ATLASSIAN_OAUTH_CLOUD_ID: &str = "ATLASSIAN_OAUTH_CLOUD_ID";
 pub const ENV_HTTP_HOST: &str = "MCP_HTTP_HOST";
 pub const ENV_HTTP_PORT: &str = "MCP_HTTP_PORT";
 pub const ENV_HTTP_PATH: &str = "MCP_HTTP_PATH";
@@ -22,6 +23,7 @@ pub struct RuntimeConfig {
     pub enabled_toolsets: BTreeSet<String>,
     pub jira: Option<JiraConfig>,
     pub confluence_url: Option<String>,
+    pub atlassian_oauth_cloud_id: Option<String>,
     pub http: HttpConfig,
 }
 
@@ -48,6 +50,8 @@ impl RuntimeConfig {
         let enabled_toolsets = parse_toolsets(get_var(ENV_TOOLSETS).ok().as_deref());
         let jira = JiraConfig::from_var_provider(&mut get_var)?;
         let confluence_url = parse_optional_string(get_var(ENV_CONFLUENCE_URL).ok());
+        let atlassian_oauth_cloud_id =
+            parse_optional_string(get_var(ENV_ATLASSIAN_OAUTH_CLOUD_ID).ok());
         let http = HttpConfig::from_var_provider(&mut get_var, http_overrides)?;
 
         Ok(Self {
@@ -56,6 +60,7 @@ impl RuntimeConfig {
             enabled_toolsets,
             jira,
             confluence_url,
+            atlassian_oauth_cloud_id,
             http,
         })
     }
@@ -69,6 +74,7 @@ impl Default for RuntimeConfig {
             enabled_toolsets: all_toolsets(),
             jira: None,
             confluence_url: None,
+            atlassian_oauth_cloud_id: None,
             http: HttpConfig::default(),
         }
     }
@@ -245,6 +251,7 @@ mod tests {
         assert_eq!(config.enabled_toolsets, all_toolsets());
         assert_eq!(config.jira, None);
         assert_eq!(config.confluence_url, None);
+        assert_eq!(config.atlassian_oauth_cloud_id, None);
         assert_eq!(config.http, HttpConfig::default());
     }
 
@@ -321,6 +328,7 @@ mod tests {
             (ENV_JIRA_URL, " https://jira.example "),
             (ENV_JIRA_PERSONAL_TOKEN, "test-pat-value"),
             (ENV_CONFLUENCE_URL, " "),
+            (ENV_ATLASSIAN_OAUTH_CLOUD_ID, " cloud-123 "),
         ])
         .unwrap();
         let jira = config.jira.unwrap();
@@ -334,6 +342,27 @@ mod tests {
             }
         );
         assert_eq!(config.confluence_url, None);
+        assert_eq!(
+            config.atlassian_oauth_cloud_id.as_deref(),
+            Some("cloud-123")
+        );
+    }
+
+    #[test]
+    fn atlassian_oauth_cloud_id_is_trimmed_and_optional() {
+        assert_eq!(
+            config_from_pairs(&[(ENV_ATLASSIAN_OAUTH_CLOUD_ID, " cloud-123 ")])
+                .unwrap()
+                .atlassian_oauth_cloud_id
+                .as_deref(),
+            Some("cloud-123")
+        );
+        assert_eq!(
+            config_from_pairs(&[(ENV_ATLASSIAN_OAUTH_CLOUD_ID, " ")])
+                .unwrap()
+                .atlassian_oauth_cloud_id,
+            None
+        );
     }
 
     #[test]

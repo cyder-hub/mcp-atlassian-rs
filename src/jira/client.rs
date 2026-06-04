@@ -1,29 +1,37 @@
 use std::collections::BTreeSet;
 
-use serde_json::{Value, json};
+use reqwest::Url;
+use serde_json::{Map, Value, json};
 
 use crate::{
-    atlassian::{error::AtlassianError, http::AtlassianHttpClient},
+    atlassian::{
+        error::AtlassianError,
+        http::{AtlassianHttpClient, DownloadedContent},
+    },
     jira::{
         config::{JiraConfig, JiraDeployment},
         formatting::{
-            comment_body_for_deployment, ensure_issue_allowed, inject_project_filter,
-            parse_optional_object, safe_path_segment,
+            base64_encode, comment_body_for_deployment, ensure_issue_allowed,
+            ensure_project_allowed, inject_project_filter, merge_optional_objects,
+            parse_optional_object, redact_url_query, safe_path_segment,
         },
         models::{
-            JiraComment, JiraField, JiraFieldOption, JiraFieldOptionsResponse, JiraIssue,
-            JiraSearchResult, JiraTransitionsResponse, simplify_comment, simplify_fields,
-            simplify_options,
+            JiraAttachment, JiraComment, JiraField, JiraFieldOption, JiraFieldOptionsResponse,
+            JiraIssue, JiraOperationResult, JiraSearchResult, JiraTransitionsResponse,
+            simplify_comment, simplify_fields, simplify_options,
         },
     },
 };
 
 pub const DEFAULT_LIMIT: u64 = 50;
+pub const DEFAULT_ATTACHMENT_MAX_BYTES: u64 = 1_048_576;
+const ATLASSIAN_API_BASE_URL: &str = "https://api.atlassian.com";
 
 #[derive(Clone, Debug)]
 pub struct JiraClient {
     config: JiraConfig,
     http: AtlassianHttpClient,
+    atlassian_api_http: AtlassianHttpClient,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -34,6 +42,25 @@ pub struct GetIssueRequest {
     pub comment_limit: Option<u64>,
     pub properties: Option<Vec<String>>,
     pub update_history: Option<bool>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AttachmentFetchOptions {
+    pub attachment_ids: Option<Vec<String>>,
+    pub include_content: bool,
+    pub images_only: bool,
+    pub max_bytes: u64,
+}
+
+impl Default for AttachmentFetchOptions {
+    fn default() -> Self {
+        Self {
+            attachment_ids: None,
+            include_content: false,
+            images_only: false,
+            max_bytes: DEFAULT_ATTACHMENT_MAX_BYTES,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -66,7 +93,17 @@ impl JiraClient {
             config.timeout_seconds,
             config.ssl_verify,
         )?;
-        Ok(Self { config, http })
+        let atlassian_api_http = AtlassianHttpClient::new(
+            &atlassian_api_base_url(&config),
+            config.auth.clone(),
+            config.timeout_seconds,
+            config.ssl_verify,
+        )?;
+        Ok(Self {
+            config,
+            http,
+            atlassian_api_http,
+        })
     }
 
     pub async fn get_issue(&self, request: GetIssueRequest) -> Result<Value, AtlassianError> {
@@ -370,6 +407,795 @@ impl JiraClient {
         }))
     }
 
+    pub async fn create_issue(&self, fields: Value) -> Result<Value, AtlassianError> {
+        let fields = parse_optional_object(Some(fields), "fields")?.unwrap_or_else(|| json!({}));
+        let issue: JiraIssue = self
+            .http
+            .send_json(
+                self.http
+                    .post_json("/rest/api/2/issue", &json!({ "fields": fields }))?,
+            )
+            .await?;
+        Ok(
+            JiraOperationResult::success("Issue created successfully", issue.to_simplified_value())
+                .to_simplified_value(),
+        )
+    }
+
+    pub async fn batch_create_issues(
+        &self,
+        issues: Vec<Value>,
+        validate_only: bool,
+    ) -> Result<Value, AtlassianError> {
+        let body = json!({
+            "issueUpdates": issues,
+            "validateOnly": validate_only,
+        });
+        let value: Value = self
+            .http
+            .send_json_value_or_null(self.http.post_json("/rest/api/2/issue/bulk", &body)?)
+            .await?;
+        Ok(
+            JiraOperationResult::success("Issues processed successfully", value)
+                .to_simplified_value(),
+        )
+    }
+
+    pub async fn batch_get_changelogs(
+        &self,
+        issue_ids_or_keys: Vec<String>,
+        fields: Option<Vec<String>>,
+        limit: Option<i64>,
+    ) -> Result<Value, AtlassianError> {
+        if self.config.deployment != JiraDeployment::Cloud {
+            return Ok(JiraOperationResult::product_unavailable(
+                "Jira Cloud changelog bulk endpoint",
+                "Batch get issue changelogs is only available on Jira Cloud.",
+            )
+            .to_simplified_value());
+        }
+
+        let mut body = json!({
+            "issueIdsOrKeys": issue_ids_or_keys,
+        });
+        insert_optional(&mut body, "fieldIds", fields.map(Value::from));
+        insert_optional(&mut body, "maxResults", limit.map(Value::from));
+        let value: Value = self
+            .http
+            .send_json(
+                self.http
+                    .post_json("/rest/api/3/changelog/bulkfetch", &body)?,
+            )
+            .await?;
+        Ok(value)
+    }
+
+    pub async fn update_issue(
+        &self,
+        issue_key: String,
+        fields: Value,
+        additional_fields: Option<Value>,
+        notify_users: Option<bool>,
+    ) -> Result<Value, AtlassianError> {
+        ensure_issue_allowed(&issue_key, &self.config)?;
+        let issue_key = safe_path_segment(&issue_key, "issue_key")?;
+        let fields = merge_optional_objects(fields, additional_fields, "additional_fields")?;
+        let mut query = Vec::new();
+        if let Some(notify_users) = notify_users {
+            query.push(("notifyUsers".to_string(), notify_users.to_string()));
+        }
+        let response = self
+            .http
+            .send_json_value_or_null(
+                self.http
+                    .put_json(
+                        &format!("/rest/api/2/issue/{issue_key}"),
+                        &json!({ "fields": fields }),
+                    )?
+                    .query(&query),
+            )
+            .await?;
+        Ok(
+            JiraOperationResult::success("Issue updated successfully", response)
+                .to_simplified_value(),
+        )
+    }
+
+    pub async fn delete_issue(
+        &self,
+        issue_key: String,
+        delete_subtasks: bool,
+    ) -> Result<Value, AtlassianError> {
+        ensure_issue_allowed(&issue_key, &self.config)?;
+        let issue_key = safe_path_segment(&issue_key, "issue_key")?;
+        let query = vec![("deleteSubtasks".to_string(), delete_subtasks.to_string())];
+        let response = self
+            .http
+            .send_json_value_or_null(
+                self.http
+                    .delete(&format!("/rest/api/2/issue/{issue_key}"))?
+                    .query(&query),
+            )
+            .await?;
+        Ok(json!({
+            "success": true,
+            "issue_key": issue_key,
+            "response": response,
+        }))
+    }
+
+    pub async fn get_all_projects(&self, include_archived: bool) -> Result<Value, AtlassianError> {
+        let query = vec![("includeArchived".to_string(), include_archived.to_string())];
+        let mut projects: Vec<Value> = self
+            .http
+            .send_json(self.http.get("/rest/api/2/project")?.query(&query))
+            .await?;
+        if !self.config.projects_filter.is_empty() {
+            projects.retain(|project| {
+                project
+                    .get("key")
+                    .and_then(Value::as_str)
+                    .is_some_and(|key| self.config.projects_filter.contains(key))
+            });
+        }
+        Ok(Value::Array(projects))
+    }
+
+    pub async fn get_project_versions(&self, project_key: String) -> Result<Value, AtlassianError> {
+        let project_key = safe_path_segment(&project_key, "project_key")?;
+        ensure_project_allowed(&project_key, &self.config)?;
+        self.http
+            .send_json(
+                self.http
+                    .get(&format!("/rest/api/2/project/{project_key}/versions"))?,
+            )
+            .await
+    }
+
+    pub async fn get_project_components(
+        &self,
+        project_key: String,
+    ) -> Result<Value, AtlassianError> {
+        let project_key = safe_path_segment(&project_key, "project_key")?;
+        ensure_project_allowed(&project_key, &self.config)?;
+        self.http
+            .send_json(
+                self.http
+                    .get(&format!("/rest/api/2/project/{project_key}/components"))?,
+            )
+            .await
+    }
+
+    pub async fn create_version(&self, mut version: Value) -> Result<Value, AtlassianError> {
+        version = parse_optional_object(Some(version), "version")?.unwrap_or_else(|| json!({}));
+        self.http
+            .send_json(self.http.post_json("/rest/api/2/version", &version)?)
+            .await
+    }
+
+    pub async fn batch_create_versions(
+        &self,
+        versions: Vec<Value>,
+    ) -> Result<Value, AtlassianError> {
+        let mut results = Vec::new();
+        for version in versions {
+            match self.create_version(version).await {
+                Ok(value) => results.push(json!({"success": true, "version": value})),
+                Err(error) => results.push(json!({"success": false, "error": error.to_string()})),
+            }
+        }
+        Ok(json!({ "versions": results }))
+    }
+
+    pub async fn get_user_profile(&self, user_identifier: String) -> Result<Value, AtlassianError> {
+        let query_key = match self.config.deployment {
+            JiraDeployment::Cloud => "accountId",
+            JiraDeployment::ServerDataCenter => "username",
+        };
+        self.http
+            .send_json(
+                self.http
+                    .get("/rest/api/2/user")?
+                    .query(&[(query_key, user_identifier)]),
+            )
+            .await
+    }
+
+    pub async fn get_issue_watchers(&self, issue_key: String) -> Result<Value, AtlassianError> {
+        ensure_issue_allowed(&issue_key, &self.config)?;
+        let issue_key = safe_path_segment(&issue_key, "issue_key")?;
+        self.http
+            .send_json(
+                self.http
+                    .get(&format!("/rest/api/2/issue/{issue_key}/watchers"))?,
+            )
+            .await
+    }
+
+    pub async fn add_watcher(
+        &self,
+        issue_key: String,
+        user_identifier: String,
+    ) -> Result<Value, AtlassianError> {
+        self.watcher_mutation(issue_key, user_identifier, true)
+            .await
+    }
+
+    pub async fn remove_watcher(
+        &self,
+        issue_key: String,
+        user_identifier: String,
+    ) -> Result<Value, AtlassianError> {
+        self.watcher_mutation(issue_key, user_identifier, false)
+            .await
+    }
+
+    pub async fn get_worklog(
+        &self,
+        issue_key: String,
+        start_at: Option<u64>,
+        limit: Option<u64>,
+    ) -> Result<Value, AtlassianError> {
+        ensure_issue_allowed(&issue_key, &self.config)?;
+        let issue_key = safe_path_segment(&issue_key, "issue_key")?;
+        let query = optional_query_params([
+            ("startAt", start_at.map(|value| value.to_string())),
+            ("maxResults", limit.map(|value| value.to_string())),
+        ]);
+        self.http
+            .send_json(
+                self.http
+                    .get(&format!("/rest/api/2/issue/{issue_key}/worklog"))?
+                    .query(&query),
+            )
+            .await
+    }
+
+    pub async fn add_worklog(
+        &self,
+        issue_key: String,
+        payload: Value,
+        query: Vec<(String, String)>,
+    ) -> Result<Value, AtlassianError> {
+        ensure_issue_allowed(&issue_key, &self.config)?;
+        let issue_key = safe_path_segment(&issue_key, "issue_key")?;
+        self.http
+            .send_json(
+                self.http
+                    .post_json(&format!("/rest/api/2/issue/{issue_key}/worklog"), &payload)?
+                    .query(&query),
+            )
+            .await
+    }
+
+    pub async fn get_link_types(&self) -> Result<Value, AtlassianError> {
+        self.http
+            .send_json(self.http.get("/rest/api/2/issueLinkType")?)
+            .await
+    }
+
+    pub async fn link_to_epic(
+        &self,
+        issue_key: String,
+        epic_key: String,
+    ) -> Result<Value, AtlassianError> {
+        self.update_issue(
+            issue_key,
+            json!({ "parent": { "key": epic_key } }),
+            None,
+            None,
+        )
+        .await
+    }
+
+    pub async fn create_issue_link(&self, payload: Value) -> Result<Value, AtlassianError> {
+        self.http
+            .send_json_value_or_null(self.http.post_json("/rest/api/2/issueLink", &payload)?)
+            .await
+    }
+
+    pub async fn create_remote_issue_link(
+        &self,
+        issue_key: String,
+        payload: Value,
+    ) -> Result<Value, AtlassianError> {
+        ensure_issue_allowed(&issue_key, &self.config)?;
+        let issue_key = safe_path_segment(&issue_key, "issue_key")?;
+        let path = match self.config.deployment {
+            JiraDeployment::Cloud => format!("/rest/api/3/issue/{issue_key}/remotelink"),
+            JiraDeployment::ServerDataCenter => {
+                format!("/rest/api/2/issue/{issue_key}/remotelink")
+            }
+        };
+        self.http
+            .send_json_value_or_null(self.http.post_json(&path, &payload)?)
+            .await
+    }
+
+    pub async fn remove_issue_link(&self, link_id: String) -> Result<Value, AtlassianError> {
+        let link_id = safe_path_segment(&link_id, "link_id")?;
+        let response = self
+            .http
+            .send_json_value_or_null(
+                self.http
+                    .delete(&format!("/rest/api/2/issueLink/{link_id}"))?,
+            )
+            .await?;
+        Ok(json!({ "success": true, "link_id": link_id, "response": response }))
+    }
+
+    pub async fn get_issue_attachments(
+        &self,
+        issue_key: String,
+    ) -> Result<Vec<JiraAttachment>, AtlassianError> {
+        let issue = self
+            .get_issue(GetIssueRequest {
+                issue_key,
+                fields: Some(vec!["attachment".to_string()]),
+                ..Default::default()
+            })
+            .await?;
+        issue
+            .get("fields")
+            .and_then(|fields| fields.get("attachment"))
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .map(serde_json::from_value)
+            .collect::<Result<Vec<JiraAttachment>, _>>()
+            .map_err(|error| AtlassianError::unexpected_shape(error.to_string()))
+    }
+
+    pub async fn fetch_attachment_content(
+        &self,
+        content_path: &str,
+        max_bytes: u64,
+    ) -> Result<DownloadedContent, AtlassianError> {
+        self.http
+            .send_bytes_limited(
+                self.http
+                    .get_same_origin_or_relative_url(content_path, "attachment content URL")?,
+                max_bytes,
+            )
+            .await
+    }
+
+    pub async fn get_safe_issue_attachments(
+        &self,
+        issue_key: String,
+        options: AttachmentFetchOptions,
+    ) -> Result<Value, AtlassianError> {
+        if options.include_content && options.max_bytes == 0 {
+            return Err(AtlassianError::invalid_input("max_bytes must be positive"));
+        }
+
+        let attachments = self.get_issue_attachments(issue_key.clone()).await?;
+        let mut values = Vec::new();
+        for attachment in attachments {
+            if options.images_only && !attachment.is_image() {
+                continue;
+            }
+            if let Some(attachment_ids) = options.attachment_ids.as_ref() {
+                let Some(id) = attachment.id.as_deref() else {
+                    continue;
+                };
+                if !attachment_ids.iter().any(|selected| selected == id) {
+                    continue;
+                }
+            }
+
+            let mut value = attachment.to_safe_metadata_value();
+            if options.include_content {
+                match self
+                    .safe_attachment_content_value(&attachment, options.max_bytes)
+                    .await
+                {
+                    Ok(content) => value["content"] = content,
+                    Err(error) => value["content_error"] = error,
+                }
+            }
+            values.push(value);
+        }
+
+        Ok(json!({
+            "issue_key": issue_key,
+            "count": values.len(),
+            "images_only": options.images_only,
+            "content_included": options.include_content,
+            "attachments": values,
+        }))
+    }
+
+    async fn safe_attachment_content_value(
+        &self,
+        attachment: &JiraAttachment,
+        max_bytes: u64,
+    ) -> Result<Value, Value> {
+        let Some(content_path) = attachment.content.as_deref() else {
+            return Err(json!({"message": "attachment content URL is missing"}));
+        };
+        let content = self
+            .fetch_attachment_content(content_path, max_bytes)
+            .await
+            .map_err(|error| json!({"message": redact_url_query(&error.to_string())}))?;
+        let content_type = content
+            .content_type
+            .or_else(|| attachment.mime_type.clone());
+
+        Ok(json!({
+            "encoding": "base64",
+            "content_type": content_type,
+            "size": content.bytes.len(),
+            "data": base64_encode(&content.bytes),
+        }))
+    }
+
+    pub async fn get_agile_boards(
+        &self,
+        project_key: Option<String>,
+        board_type: Option<String>,
+        start_at: Option<u64>,
+        limit: Option<u64>,
+    ) -> Result<Value, AtlassianError> {
+        let query = optional_query_params([
+            ("projectKeyOrId", project_key),
+            ("type", board_type),
+            ("startAt", start_at.map(|value| value.to_string())),
+            ("maxResults", limit.map(|value| value.to_string())),
+        ]);
+        self.http
+            .send_json(self.http.get("/rest/agile/1.0/board")?.query(&query))
+            .await
+            .or_else(jira_software_agile_unavailable)
+    }
+
+    pub async fn get_board_issues(
+        &self,
+        board_id: u64,
+        jql: Option<String>,
+        fields: Option<Vec<String>>,
+        start_at: Option<u64>,
+        limit: Option<u64>,
+    ) -> Result<Value, AtlassianError> {
+        let query = optional_query_params([
+            ("jql", jql),
+            ("fields", fields.map(|fields| fields.join(","))),
+            ("startAt", start_at.map(|value| value.to_string())),
+            ("maxResults", limit.map(|value| value.to_string())),
+        ]);
+        self.http
+            .send_json(
+                self.http
+                    .get(&format!("/rest/agile/1.0/board/{board_id}/issue"))?
+                    .query(&query),
+            )
+            .await
+            .or_else(jira_software_agile_unavailable)
+    }
+
+    pub async fn get_sprints_from_board(
+        &self,
+        board_id: u64,
+        state: Option<Vec<String>>,
+        start_at: Option<u64>,
+        limit: Option<u64>,
+    ) -> Result<Value, AtlassianError> {
+        let query = optional_query_params([
+            ("state", state.map(|state| state.join(","))),
+            ("startAt", start_at.map(|value| value.to_string())),
+            ("maxResults", limit.map(|value| value.to_string())),
+        ]);
+        self.http
+            .send_json(
+                self.http
+                    .get(&format!("/rest/agile/1.0/board/{board_id}/sprint"))?
+                    .query(&query),
+            )
+            .await
+            .or_else(jira_software_agile_unavailable)
+    }
+
+    pub async fn get_sprint_issues(
+        &self,
+        sprint_id: u64,
+        fields: Option<Vec<String>>,
+        start_at: Option<u64>,
+        limit: Option<u64>,
+    ) -> Result<Value, AtlassianError> {
+        let query = optional_query_params([
+            ("fields", fields.map(|fields| fields.join(","))),
+            ("startAt", start_at.map(|value| value.to_string())),
+            ("maxResults", limit.map(|value| value.to_string())),
+        ]);
+        self.http
+            .send_json(
+                self.http
+                    .get(&format!("/rest/agile/1.0/sprint/{sprint_id}/issue"))?
+                    .query(&query),
+            )
+            .await
+            .or_else(jira_software_agile_unavailable)
+    }
+
+    pub async fn create_sprint(&self, payload: Value) -> Result<Value, AtlassianError> {
+        self.http
+            .send_json(self.http.post_json("/rest/agile/1.0/sprint", &payload)?)
+            .await
+    }
+
+    pub async fn update_sprint(
+        &self,
+        sprint_id: u64,
+        payload: Value,
+    ) -> Result<Value, AtlassianError> {
+        self.http
+            .send_json(
+                self.http
+                    .put_json(&format!("/rest/agile/1.0/sprint/{sprint_id}"), &payload)?,
+            )
+            .await
+    }
+
+    pub async fn add_issues_to_sprint(
+        &self,
+        sprint_id: u64,
+        issue_keys: Vec<String>,
+    ) -> Result<Value, AtlassianError> {
+        self.http
+            .send_json_value_or_null(self.http.post_json(
+                &format!("/rest/agile/1.0/sprint/{sprint_id}/issue"),
+                &json!({ "issues": issue_keys }),
+            )?)
+            .await
+    }
+
+    pub async fn get_service_desk_for_project(
+        &self,
+        project_key: String,
+    ) -> Result<Value, AtlassianError> {
+        let project_key = safe_path_segment(&project_key, "project_key")?;
+        let desks: Value = match self
+            .http
+            .send_json(self.http.get("/rest/servicedeskapi/servicedesk")?)
+            .await
+        {
+            Ok(desks) => desks,
+            Err(error) => return jira_service_management_unavailable(error),
+        };
+        let desk = desks
+            .get("values")
+            .and_then(Value::as_array)
+            .and_then(|values| {
+                values.iter().find(|desk| {
+                    desk.get("projectKey")
+                        .and_then(Value::as_str)
+                        .is_some_and(|key| key == project_key)
+                })
+            })
+            .cloned()
+            .unwrap_or(Value::Null);
+        Ok(json!({ "project_key": project_key, "service_desk": desk }))
+    }
+
+    pub async fn get_service_desk_queues(
+        &self,
+        service_desk_id: String,
+        start_at: Option<u64>,
+        limit: Option<u64>,
+    ) -> Result<Value, AtlassianError> {
+        let service_desk_id = safe_path_segment(&service_desk_id, "service_desk_id")?;
+        let query = optional_query_params([
+            ("start", start_at.map(|value| value.to_string())),
+            ("limit", limit.map(|value| value.to_string())),
+        ]);
+        self.http
+            .send_json(
+                self.http
+                    .get(&format!(
+                        "/rest/servicedeskapi/servicedesk/{service_desk_id}/queue"
+                    ))?
+                    .query(&query),
+            )
+            .await
+            .or_else(jira_service_management_unavailable)
+    }
+
+    pub async fn get_queue_issues(
+        &self,
+        service_desk_id: String,
+        queue_id: String,
+        start_at: Option<u64>,
+        limit: Option<u64>,
+    ) -> Result<Value, AtlassianError> {
+        let service_desk_id = safe_path_segment(&service_desk_id, "service_desk_id")?;
+        let queue_id = safe_path_segment(&queue_id, "queue_id")?;
+        let query = optional_query_params([
+            ("start", start_at.map(|value| value.to_string())),
+            ("limit", limit.map(|value| value.to_string())),
+        ]);
+        self.http
+            .send_json(
+                self.http
+                    .get(&format!(
+                        "/rest/servicedeskapi/servicedesk/{service_desk_id}/queue/{queue_id}/issue"
+                    ))?
+                    .query(&query),
+            )
+            .await
+            .or_else(jira_service_management_unavailable)
+    }
+
+    pub async fn get_issue_proforma_forms(
+        &self,
+        issue_key: String,
+        cloud_id: Option<&str>,
+    ) -> Result<Value, AtlassianError> {
+        let Some(cloud_id) = forms_cloud_id_or_unavailable(cloud_id)? else {
+            return Ok(forms_cloud_id_missing_result());
+        };
+        let issue_key = safe_path_segment(&issue_key, "issue_key")?;
+        let path = forms_cloud_api_path(&cloud_id, &format!("/issue/{issue_key}/form"));
+        self.atlassian_api_http
+            .send_json(self.atlassian_api_http.get(&path)?)
+            .await
+            .or_else(jira_forms_unavailable)
+    }
+
+    pub async fn get_proforma_form_details(
+        &self,
+        issue_key: String,
+        form_id: String,
+        cloud_id: Option<&str>,
+    ) -> Result<Value, AtlassianError> {
+        let Some(cloud_id) = forms_cloud_id_or_unavailable(cloud_id)? else {
+            return Ok(forms_cloud_id_missing_result());
+        };
+        let issue_key = safe_path_segment(&issue_key, "issue_key")?;
+        let form_id = safe_path_segment(&form_id, "form_id")?;
+        let path = forms_cloud_api_path(&cloud_id, &format!("/issue/{issue_key}/form/{form_id}"));
+        self.atlassian_api_http
+            .send_json(self.atlassian_api_http.get(&path)?)
+            .await
+            .or_else(jira_forms_unavailable)
+    }
+
+    pub async fn update_proforma_form_answers(
+        &self,
+        issue_key: String,
+        form_id: String,
+        answers: Vec<Value>,
+        cloud_id: Option<&str>,
+    ) -> Result<Value, AtlassianError> {
+        let Some(cloud_id) = forms_cloud_id_or_unavailable(cloud_id)? else {
+            return Ok(forms_cloud_id_missing_result());
+        };
+        let issue_key = safe_path_segment(&issue_key, "issue_key")?;
+        let form_id = safe_path_segment(&form_id, "form_id")?;
+        let payload = proforma_answers_payload(answers)?;
+        let path = forms_cloud_api_path(&cloud_id, &format!("/issue/{issue_key}/form/{form_id}"));
+        self.atlassian_api_http
+            .send_json_value_or_null(self.atlassian_api_http.put_json(&path, &payload)?)
+            .await
+            .or_else(jira_forms_unavailable)
+    }
+
+    pub async fn get_issue_dates(
+        &self,
+        issue_key: String,
+        include_status_changes: bool,
+        include_status_summary: bool,
+    ) -> Result<Value, AtlassianError> {
+        let expand = include_status_changes.then(|| vec!["changelog".to_string()]);
+        let issue = self
+            .get_issue(GetIssueRequest {
+                issue_key: issue_key.clone(),
+                fields: Some(vec![
+                    "created".to_string(),
+                    "updated".to_string(),
+                    "duedate".to_string(),
+                    "resolutiondate".to_string(),
+                    "status".to_string(),
+                ]),
+                expand,
+                ..Default::default()
+            })
+            .await?;
+        Ok(json!({
+            "issue_key": issue_key,
+            "include_status_changes": include_status_changes,
+            "include_status_summary": include_status_summary,
+            "issue": issue,
+        }))
+    }
+
+    pub async fn get_issue_sla(
+        &self,
+        issue_key: String,
+        metrics: Option<Vec<String>>,
+        working_hours_only: Option<bool>,
+        include_raw_dates: bool,
+    ) -> Result<Value, AtlassianError> {
+        let requested_fields = metrics
+            .clone()
+            .filter(|metrics| !metrics.is_empty())
+            .unwrap_or_else(|| vec!["*all".to_string()]);
+        let issue = self
+            .get_issue(GetIssueRequest {
+                issue_key: issue_key.clone(),
+                fields: Some(requested_fields),
+                ..Default::default()
+            })
+            .await?;
+        let metric_values = extract_sla_metric_values(
+            issue.get("fields").and_then(Value::as_object),
+            metrics.as_deref(),
+            include_raw_dates,
+        );
+
+        Ok(json!({
+            "success": true,
+            "issue_key": issue_key,
+            "requested_metrics": metrics,
+            "working_hours_only": working_hours_only,
+            "include_raw_dates": include_raw_dates,
+            "count": metric_values.len(),
+            "metrics": metric_values,
+            "product_dependency": {
+                "product": "Jira Service Management SLA",
+                "available": true,
+                "message": "SLA fields were parsed from Jira issue fields; real Jira schema validation remains deferred to Stage 4."
+            },
+        }))
+    }
+
+    pub async fn get_issue_development_info(
+        &self,
+        issue_key: String,
+        application_type: Option<String>,
+        data_type: Option<String>,
+    ) -> Result<Value, AtlassianError> {
+        let issue_id = self.resolve_development_issue_id(&issue_key).await?;
+        let query = optional_query_params([
+            ("issueId", Some(issue_id)),
+            ("applicationType", application_type),
+            ("dataType", data_type),
+        ]);
+        self.http
+            .send_json(
+                self.http
+                    .get("/rest/dev-status/1.0/issue/detail")?
+                    .query(&query),
+            )
+            .await
+            .or_else(jira_development_unavailable)
+    }
+
+    pub async fn get_issues_development_info(
+        &self,
+        issue_keys: Vec<String>,
+        application_type: Option<String>,
+        data_type: Option<String>,
+    ) -> Result<Value, AtlassianError> {
+        let mut results = Vec::new();
+        for issue_key in issue_keys {
+            match self
+                .get_issue_development_info(
+                    issue_key.clone(),
+                    application_type.clone(),
+                    data_type.clone(),
+                )
+                .await
+            {
+                Ok(value) => results.push(json!({"issue_key": issue_key, "development": value})),
+                Err(error) => {
+                    results.push(json!({"issue_key": issue_key, "error": error.to_string()}))
+                }
+            }
+        }
+        Ok(json!({ "issues": results }))
+    }
+
     fn effective_projects(
         &self,
         request_projects: Option<&[String]>,
@@ -408,6 +1234,66 @@ impl JiraClient {
             JiraDeployment::ServerDataCenter => format!("/rest/api/2/issue/{issue_key}/comment"),
         }
     }
+
+    async fn watcher_mutation(
+        &self,
+        issue_key: String,
+        user_identifier: String,
+        add: bool,
+    ) -> Result<Value, AtlassianError> {
+        ensure_issue_allowed(&issue_key, &self.config)?;
+        let issue_key = safe_path_segment(&issue_key, "issue_key")?;
+        let path = format!("/rest/api/2/issue/{issue_key}/watchers");
+        let builder = if add {
+            self.http.post_json(&path, &user_identifier)?
+        } else {
+            let query_key = match self.config.deployment {
+                JiraDeployment::Cloud => "accountId",
+                JiraDeployment::ServerDataCenter => "username",
+            };
+            self.http
+                .delete(&path)?
+                .query(&[(query_key, user_identifier)])
+        };
+        let response = self.http.send_json_value_or_null(builder).await?;
+        Ok(json!({
+            "success": true,
+            "issue_key": issue_key,
+            "response": response,
+        }))
+    }
+
+    async fn resolve_development_issue_id(
+        &self,
+        issue_key_or_id: &str,
+    ) -> Result<String, AtlassianError> {
+        let issue_key_or_id = issue_key_or_id.trim();
+        let is_numeric_id = !issue_key_or_id.is_empty()
+            && issue_key_or_id.chars().all(|value| value.is_ascii_digit());
+        if is_numeric_id && self.config.projects_filter.is_empty() {
+            return Ok(issue_key_or_id.to_string());
+        }
+
+        if !is_numeric_id {
+            ensure_issue_allowed(issue_key_or_id, &self.config)?;
+        }
+        let issue_key_or_id = safe_path_segment(issue_key_or_id, "issue_key")?;
+        let query = [("fields", "id,key")];
+        let issue: JiraIssue = self
+            .http
+            .send_json(
+                self.http
+                    .get(&format!("/rest/api/2/issue/{issue_key_or_id}"))?
+                    .query(&query),
+            )
+            .await?;
+        ensure_issue_allowed(&issue.key, &self.config)?;
+        issue.id.ok_or_else(|| {
+            AtlassianError::invalid_input(format!(
+                "issue `{issue_key_or_id}` response did not include a numeric id"
+            ))
+        })
+    }
 }
 
 fn optional_query_params<const N: usize>(
@@ -417,6 +1303,236 @@ fn optional_query_params<const N: usize>(
         .into_iter()
         .filter_map(|(key, value)| value.map(|value| (key.to_string(), value)))
         .collect()
+}
+
+fn atlassian_api_base_url(config: &JiraConfig) -> String {
+    let Ok(url) = Url::parse(&config.base_url) else {
+        return ATLASSIAN_API_BASE_URL.to_string();
+    };
+
+    if url.host_str().is_some_and(|host| {
+        matches!(
+            host.to_ascii_lowercase().as_str(),
+            "localhost" | "127.0.0.1" | "::1"
+        )
+    }) {
+        config.base_url.clone()
+    } else {
+        ATLASSIAN_API_BASE_URL.to_string()
+    }
+}
+
+fn jira_software_agile_unavailable(error: AtlassianError) -> Result<Value, AtlassianError> {
+    match error {
+        AtlassianError::HttpStatus { status, message } if matches!(status, 403 | 404) => {
+            Ok(JiraOperationResult::product_unavailable(
+                "Jira Software Agile REST",
+                format!("Jira Software Agile REST is unavailable: {message}"),
+            )
+            .to_simplified_value())
+        }
+        error => Err(error),
+    }
+}
+
+fn jira_service_management_unavailable(error: AtlassianError) -> Result<Value, AtlassianError> {
+    match error {
+        AtlassianError::HttpStatus { status, message } if matches!(status, 403 | 404) => {
+            Ok(JiraOperationResult::product_unavailable(
+                "Jira Service Management",
+                format!("Jira Service Management REST is unavailable: {message}"),
+            )
+            .to_simplified_value())
+        }
+        error => Err(error),
+    }
+}
+
+fn jira_forms_unavailable(error: AtlassianError) -> Result<Value, AtlassianError> {
+    match error {
+        AtlassianError::HttpStatus { status, message } if matches!(status, 403 | 404) => {
+            Ok(JiraOperationResult::product_unavailable(
+                "Jira Forms/ProForma",
+                format!("Jira Forms API is unavailable: {message}"),
+            )
+            .to_simplified_value())
+        }
+        error => Err(error),
+    }
+}
+
+fn jira_development_unavailable(error: AtlassianError) -> Result<Value, AtlassianError> {
+    match error {
+        AtlassianError::HttpStatus { status, message } if matches!(status, 403 | 404) => {
+            Ok(JiraOperationResult::product_unavailable(
+                "Jira development/dev-status",
+                format!("Jira development/dev-status REST is unavailable: {message}"),
+            )
+            .to_simplified_value())
+        }
+        error => Err(error),
+    }
+}
+
+fn forms_cloud_id_or_unavailable(cloud_id: Option<&str>) -> Result<Option<String>, AtlassianError> {
+    let Some(cloud_id) = cloud_id.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+
+    safe_path_segment(cloud_id, "cloud_id").map(Some)
+}
+
+fn forms_cloud_id_missing_result() -> Value {
+    JiraOperationResult::product_unavailable(
+        "Jira Forms/ProForma Cloud ID",
+        "ATLASSIAN_OAUTH_CLOUD_ID is required before calling the Jira Forms API.",
+    )
+    .to_simplified_value()
+}
+
+fn forms_cloud_api_path(cloud_id: &str, endpoint: &str) -> String {
+    format!("/jira/forms/cloud/{cloud_id}{endpoint}")
+}
+
+fn extract_sla_metric_values(
+    fields: Option<&Map<String, Value>>,
+    requested_metrics: Option<&[String]>,
+    include_raw_dates: bool,
+) -> Vec<Value> {
+    let Some(fields) = fields else {
+        return Vec::new();
+    };
+    let requested = requested_metrics
+        .unwrap_or_default()
+        .iter()
+        .map(|metric| normalize_metric_key(metric))
+        .filter(|metric| !metric.is_empty())
+        .collect::<Vec<_>>();
+    let include_all_sla_like = requested.is_empty();
+
+    fields
+        .iter()
+        .filter(|(field_id, value)| {
+            sla_metric_matches(field_id, value, &requested, include_all_sla_like)
+        })
+        .map(|(field_id, value)| {
+            json!({
+                "field_id": field_id,
+                "name": value.get("name").and_then(Value::as_str),
+                "value": simplify_sla_value(value, include_raw_dates),
+            })
+        })
+        .collect()
+}
+
+fn sla_metric_matches(
+    field_id: &str,
+    value: &Value,
+    requested_metrics: &[String],
+    include_all_sla_like: bool,
+) -> bool {
+    let field_id = field_id.to_ascii_lowercase();
+    let name = value
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let field_id_normalized = normalize_metric_key(&field_id);
+    let name_normalized = normalize_metric_key(&name);
+
+    if include_all_sla_like {
+        field_id.contains("sla") || name.contains("sla")
+    } else {
+        requested_metrics.iter().any(|metric| {
+            metric == &field_id_normalized
+                || metric == &name_normalized
+                || (!name_normalized.is_empty() && name_normalized.contains(metric))
+                || (!name_normalized.is_empty() && metric.contains(&name_normalized))
+        })
+    }
+}
+
+fn normalize_metric_key(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn simplify_sla_value(value: &Value, include_raw_dates: bool) -> Value {
+    if include_raw_dates {
+        return value.clone();
+    }
+
+    let Some(object) = value.as_object() else {
+        return value.clone();
+    };
+    let mut simplified = object.clone();
+    for key in [
+        "startTime",
+        "stopTime",
+        "breachTime",
+        "pauseTime",
+        "rawStartTime",
+        "rawStopTime",
+        "rawBreachTime",
+    ] {
+        simplified.remove(key);
+    }
+    Value::Object(simplified)
+}
+
+fn proforma_answers_payload(answers: Vec<Value>) -> Result<Value, AtlassianError> {
+    let mut payload_answers = serde_json::Map::new();
+
+    for answer in answers {
+        let Value::Object(answer) = answer else {
+            return Err(AtlassianError::invalid_input(
+                "answers must be an array of JSON objects",
+            ));
+        };
+        let Some(question_id) = answer
+            .get("questionId")
+            .or_else(|| answer.get("question_id"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            return Err(AtlassianError::invalid_input(
+                "each answer must include a non-empty questionId",
+            ));
+        };
+
+        let answer_type = answer
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or("TEXT")
+            .trim()
+            .to_ascii_uppercase();
+        let field_name = match answer_type.as_str() {
+            "NUMBER" => "number",
+            "DATE" | "DATETIME" => "date",
+            "TIME" => "time",
+            "SELECT" | "MULTI_SELECT" | "CHECKBOX" => "choices",
+            "USER" | "MULTI_USER" => "users",
+            _ => "text",
+        };
+        let mut value = answer.get("value").cloned().unwrap_or(Value::Null);
+        if matches!(field_name, "choices" | "users") {
+            value = match value {
+                Value::Array(_) => value,
+                Value::Null => Value::Array(Vec::new()),
+                value => Value::Array(vec![value]),
+            };
+        }
+
+        let mut typed_answer = serde_json::Map::new();
+        typed_answer.insert(field_name.to_string(), value);
+        payload_answers.insert(question_id.to_string(), Value::Object(typed_answer));
+    }
+
+    Ok(json!({ "answers": payload_answers }))
 }
 
 fn insert_optional(target: &mut Value, key: &'static str, value: Option<Value>) {
@@ -560,6 +1676,222 @@ mod tests {
         (StatusCode::OK, "not-json").into_response()
     }
 
+    async fn stage_three_handler(
+        State(requests): State<Arc<Mutex<Vec<RecordedRequest>>>>,
+        method: Method,
+        headers: HeaderMap,
+        uri: axum::http::Uri,
+        body: Bytes,
+    ) -> Response {
+        let parsed_body = if body.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&body).unwrap()
+        };
+        let path = uri
+            .path_and_query()
+            .map(ToString::to_string)
+            .unwrap_or_else(|| uri.path().to_string());
+        requests.lock().await.push(RecordedRequest {
+            method: method.clone(),
+            path: path.clone(),
+            authorization: headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok())
+                .map(ToString::to_string),
+            body: parsed_body,
+        });
+
+        if method == Method::DELETE {
+            return StatusCode::NO_CONTENT.into_response();
+        }
+
+        let path_only = uri.path();
+        if path_only == "/secure/attachment/1/file.png" {
+            return (
+                StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, "image/png")],
+                "image-bytes",
+            )
+                .into_response();
+        }
+        if path_only == "/secure/attachment/2/notes.txt" {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "errorMessages": [
+                        "failed /secure/attachment/2/notes.txt?token=secret&client=abc"
+                    ]
+                })),
+            )
+                .into_response();
+        }
+        if method == Method::GET
+            && path.starts_with("/rest/agile/1.0/board?")
+            && path.contains("projectKeyOrId=NOAGILE")
+        {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"errorMessages": ["Jira Software is not available"]})),
+            )
+                .into_response();
+        }
+        if method == Method::GET && path_only.starts_with("/jsm-down/rest/servicedeskapi") {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"errorMessages": ["Jira Service Management is not available"]})),
+            )
+                .into_response();
+        }
+        if method == Method::GET && path_only.starts_with("/dev-down/rest/dev-status") {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"errorMessages": ["Jira development status is not available"]})),
+            )
+                .into_response();
+        }
+
+        match path_only {
+            "/rest/api/2/project" => Json(json!([
+                {"id": "10000", "key": "ABC", "name": "Alpha"},
+                {"id": "10001", "key": "XYZ", "name": "Other"}
+            ]))
+            .into_response(),
+            path if path.ends_with("/versions") => {
+                Json(json!([{"id": "1", "name": "v1"}])).into_response()
+            }
+            path if path.ends_with("/components") => {
+                Json(json!([{"id": "2", "name": "API"}])).into_response()
+            }
+            "/rest/api/2/version" => Json(json!({"id": "1", "name": "v1"})).into_response(),
+            "/rest/api/2/user" => {
+                Json(json!({"accountId": "abc", "displayName": "Ada"})).into_response()
+            }
+            path if path.ends_with("/watchers") && method == Method::GET => {
+                Json(json!({"watcherCount": 1, "watchers": [{"displayName": "Ada"}]}))
+                    .into_response()
+            }
+            path if path.ends_with("/worklog") && method == Method::GET => {
+                Json(json!({"worklogs": [{"id": "10", "timeSpent": "1h"}]})).into_response()
+            }
+            path if path.ends_with("/worklog") => {
+                Json(json!({"id": "10", "timeSpent": "1h"})).into_response()
+            }
+            "/rest/api/2/issueLinkType" => {
+                Json(json!({"issueLinkTypes": [{"id": "100", "name": "Blocks"}]})).into_response()
+            }
+            "/rest/api/2/issueLink" => Json(json!({"id": "200"})).into_response(),
+            path if path.ends_with("/remotelink") => Json(json!({"id": "300"})).into_response(),
+            "/rest/agile/1.0/board" => {
+                Json(json!({"values": [{"id": 1, "name": "Board"}]})).into_response()
+            }
+            path if path.ends_with("/board/1/issue") => {
+                Json(json!({"issues": [{"key": "ABC-1", "fields": {}}]})).into_response()
+            }
+            path if path.ends_with("/board/1/sprint") => {
+                Json(json!({"values": [{"id": 2, "name": "Sprint"}]})).into_response()
+            }
+            path if path.ends_with("/sprint/2/issue") => {
+                Json(json!({"issues": [{"key": "ABC-1", "fields": {}}]})).into_response()
+            }
+            "/rest/agile/1.0/sprint" => Json(json!({"id": 2, "name": "Sprint"})).into_response(),
+            path if path.ends_with("/sprint/2") => {
+                Json(json!({"id": 2, "name": "Sprint updated"})).into_response()
+            }
+            path if path.ends_with("/sprint/2/issue") => Json(Value::Null).into_response(),
+            "/rest/servicedeskapi/servicedesk" => Json(
+                json!({"values": [{"id": "4", "projectKey": "ABC", "serviceDeskName": "Support"}]}),
+            )
+            .into_response(),
+            path if path.ends_with("/servicedesk/4/queue") => {
+                Json(json!({"values": [{"id": "47", "name": "Open"}]})).into_response()
+            }
+            path if path.ends_with("/servicedesk/4/queue/47/issue") => {
+                Json(json!({"values": [{"key": "ABC-1"}]})).into_response()
+            }
+            "/jira/forms/cloud/cloud-123/issue/ABC-1/form" if method == Method::GET => {
+                Json(json!({"forms": [{
+                    "id": "form-1",
+                    "name": "Request form",
+                    "state": {"status": "o"},
+                    "submitted": false
+                }]}))
+                .into_response()
+            }
+            "/jira/forms/cloud/cloud-123/issue/ABC-1/form/form-1" if method == Method::GET => {
+                Json(json!({
+                    "id": "form-1",
+                    "name": "Request form",
+                    "state": {"status": "o"},
+                    "design": {"content": []},
+                    "answers": {"q1": {"text": "Existing"}}
+                }))
+                .into_response()
+            }
+            "/jira/forms/cloud/cloud-123/issue/ABC-1/form/form-1" if method == Method::PUT => {
+                Json(json!({"id": "form-1", "updated": true})).into_response()
+            }
+            path if path.starts_with("/jira/forms/cloud/forms-down/") => (
+                StatusCode::NOT_FOUND,
+                Json(json!({"errorMessages": ["Jira Forms is not available"]})),
+            )
+                .into_response(),
+            "/rest/dev-status/1.0/issue/detail" => {
+                Json(json!({"detail": [{"branches": [], "pullRequests": []}]})).into_response()
+            }
+            path if path.starts_with("/rest/api/2/issue/ABC-1") && method == Method::GET => {
+                Json(json!({
+                    "id": "10001",
+                    "key": "ABC-1",
+                    "fields": {
+                        "summary": "Demo",
+                        "customfield_sla": {
+                            "name": "Time to resolution SLA",
+                            "ongoingCycle": {
+                                "breached": false,
+                                "elapsedTime": {"millis": 60000},
+                                "remainingTime": {"millis": 120000},
+                                "startTime": "2026-01-01T00:00:00.000+0000"
+                            }
+                        },
+                        "attachment": [{
+                            "id": "1",
+                            "filename": "file.png",
+                            "mimeType": "image/png",
+                            "size": 11,
+                            "content": "/secure/attachment/1/file.png?token=secret"
+                        }, {
+                            "id": "2",
+                            "filename": "notes.txt",
+                            "mimeType": "text/plain",
+                            "size": 42,
+                            "content": "/secure/attachment/2/notes.txt?token=secret&client=abc"
+                        }]
+                    }
+                }))
+                .into_response()
+            }
+            path if path.starts_with("/rest/api/2/issue/ABC-1") => Json(json!({
+                "id": "10001",
+                "key": "ABC-1",
+                "fields": {"summary": "Demo"}
+            }))
+            .into_response(),
+            "/rest/api/2/issue" => Json(json!({
+                "id": "10001",
+                "key": "ABC-1",
+                "fields": {"summary": "Demo"}
+            }))
+            .into_response(),
+            "/rest/api/2/issue/bulk" => Json(json!({"issues": [{"key": "ABC-1"}]})).into_response(),
+            "/rest/api/3/changelog/bulkfetch" => {
+                Json(json!({"issueChangeLogs": [{"issueId": "10001", "changeHistories": []}]}))
+                    .into_response()
+            }
+            _ => Json(json!({"ok": true, "path": path})).into_response(),
+        }
+    }
+
     async fn mock_server(response: Value) -> (String, Arc<Mutex<Vec<RecordedRequest>>>) {
         mock_server_with_status(response, StatusCode::OK).await
     }
@@ -594,6 +1926,20 @@ mod tests {
         let app = Router::new()
             .fallback(any(invalid_json_handler))
             .with_state(state);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address: SocketAddr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        (format!("http://{address}"), requests)
+    }
+
+    async fn stage_three_mock_server() -> (String, Arc<Mutex<Vec<RecordedRequest>>>) {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let app = Router::new()
+            .fallback(any(stage_three_handler))
+            .with_state(requests.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address: SocketAddr = listener.local_addr().unwrap();
         tokio::spawn(async move {
@@ -1003,5 +2349,720 @@ mod tests {
 
         assert!(error.contains("outside the configured Jira project filter"));
         assert!(requests.is_empty());
+    }
+
+    #[tokio::test]
+    async fn project_filter_rejects_project_metadata_without_http_request() {
+        let (base_url, requests) = mock_server(json!([])).await;
+        let mut config = config(base_url, JiraDeployment::ServerDataCenter);
+        config.projects_filter = BTreeSet::from(["ABC".to_string()]);
+        let client = JiraClient::new(config).unwrap();
+        let versions_error = client
+            .get_project_versions("XYZ".to_string())
+            .await
+            .unwrap_err()
+            .to_string();
+        let components_error = client
+            .get_project_components("XYZ".to_string())
+            .await
+            .unwrap_err()
+            .to_string();
+        let requests = requests.lock().await;
+
+        assert!(versions_error.contains("outside the configured Jira project filter"));
+        assert!(components_error.contains("outside the configured Jira project filter"));
+        assert!(requests.is_empty());
+    }
+
+    #[tokio::test]
+    async fn stage_three_issue_helpers_use_expected_endpoints() {
+        let (base_url, requests) = stage_three_mock_server().await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
+
+        let created = client
+            .create_issue(json!({
+                "project": {"key": "ABC"},
+                "summary": "Demo",
+                "issuetype": {"name": "Task"}
+            }))
+            .await
+            .unwrap();
+        client
+            .batch_create_issues(
+                vec![json!({
+                    "fields": {
+                        "project": {"key": "ABC"},
+                        "summary": "Batch",
+                        "issuetype": {"name": "Task"}
+                    }
+                })],
+                false,
+            )
+            .await
+            .unwrap();
+        client
+            .update_issue(
+                "ABC-1".to_string(),
+                json!({"summary": "Updated"}),
+                Some(json!({"priority": {"name": "High"}})),
+                Some(false),
+            )
+            .await
+            .unwrap();
+        client
+            .delete_issue("ABC-1".to_string(), true)
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+
+        assert_eq!(created["data"]["key"], "ABC-1");
+        assert_eq!(requests[0].method, Method::POST);
+        assert_eq!(requests[0].path, "/rest/api/2/issue");
+        assert_eq!(requests[0].body["fields"]["summary"], "Demo");
+        assert_eq!(requests[1].path, "/rest/api/2/issue/bulk");
+        assert_eq!(
+            requests[1].body["issueUpdates"][0]["fields"]["summary"],
+            "Batch"
+        );
+        assert_eq!(requests[2].method, Method::PUT);
+        assert_eq!(
+            requests[2].path,
+            "/rest/api/2/issue/ABC-1?notifyUsers=false"
+        );
+        assert_eq!(requests[2].body["fields"]["priority"]["name"], "High");
+        assert_eq!(requests[3].method, Method::DELETE);
+        assert_eq!(
+            requests[3].path,
+            "/rest/api/2/issue/ABC-1?deleteSubtasks=true"
+        );
+    }
+
+    #[tokio::test]
+    async fn stage_three_changelog_and_product_dependency_helpers_are_safe() {
+        let (cloud_url, cloud_requests) = stage_three_mock_server().await;
+        let cloud = JiraClient::new(config(cloud_url, JiraDeployment::Cloud)).unwrap();
+        let changelog = cloud
+            .batch_get_changelogs(
+                vec!["ABC-1".to_string()],
+                Some(vec!["status".to_string()]),
+                Some(50),
+            )
+            .await
+            .unwrap();
+        let cloud_requests = cloud_requests.lock().await;
+
+        assert_eq!(changelog["issueChangeLogs"][0]["issueId"], "10001");
+        assert_eq!(cloud_requests[0].path, "/rest/api/3/changelog/bulkfetch");
+        assert_eq!(cloud_requests[0].body["issueIdsOrKeys"][0], "ABC-1");
+        assert_eq!(cloud_requests[0].body["fieldIds"][0], "status");
+        assert_eq!(cloud_requests[0].body["maxResults"], 50);
+
+        let (server_url, server_requests) = stage_three_mock_server().await;
+        let server = JiraClient::new(config(server_url, JiraDeployment::ServerDataCenter)).unwrap();
+        let unsupported = server
+            .batch_get_changelogs(vec!["ABC-1".to_string()], None, None)
+            .await
+            .unwrap();
+        let forms = server
+            .get_issue_proforma_forms("ABC-1".to_string(), None)
+            .await
+            .unwrap();
+        let sla = server
+            .get_issue_sla("ABC-1".to_string(), None, None, false)
+            .await
+            .unwrap();
+        let server_requests = server_requests.lock().await;
+
+        assert_eq!(unsupported["success"], false);
+        assert_eq!(unsupported["product_dependency"]["available"], false);
+        assert_eq!(forms["product_dependency"]["available"], false);
+        assert_eq!(sla["success"], true);
+        assert_eq!(sla["product_dependency"]["available"], true);
+        assert_eq!(sla["metrics"][0]["field_id"], "customfield_sla");
+        assert_eq!(
+            server_requests[0].path,
+            "/rest/api/2/issue/ABC-1?fields=*all"
+        );
+    }
+
+    #[tokio::test]
+    async fn stage_three_common_extension_helpers_use_expected_endpoints() {
+        let (base_url, requests) = stage_three_mock_server().await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
+
+        client.get_all_projects(false).await.unwrap();
+        client
+            .get_project_versions("ABC".to_string())
+            .await
+            .unwrap();
+        client
+            .get_project_components("ABC".to_string())
+            .await
+            .unwrap();
+        client
+            .create_version(json!({"project": "ABC", "name": "v1"}))
+            .await
+            .unwrap();
+        client.get_user_profile("ada".to_string()).await.unwrap();
+        client
+            .get_issue_watchers("ABC-1".to_string())
+            .await
+            .unwrap();
+        client
+            .add_watcher("ABC-1".to_string(), "ada".to_string())
+            .await
+            .unwrap();
+        client
+            .remove_watcher("ABC-1".to_string(), "ada".to_string())
+            .await
+            .unwrap();
+        client
+            .get_worklog("ABC-1".to_string(), Some(0), Some(10))
+            .await
+            .unwrap();
+        client
+            .add_worklog(
+                "ABC-1".to_string(),
+                json!({"timeSpent": "1h"}),
+                vec![("adjustEstimate".to_string(), "auto".to_string())],
+            )
+            .await
+            .unwrap();
+        client.get_link_types().await.unwrap();
+        client
+            .link_to_epic("ABC-1".to_string(), "ABC-EPIC".to_string())
+            .await
+            .unwrap();
+        client
+            .create_issue_link(json!({
+                "type": {"name": "Blocks"},
+                "inwardIssue": {"key": "ABC-1"},
+                "outwardIssue": {"key": "ABC-2"}
+            }))
+            .await
+            .unwrap();
+        client
+            .create_remote_issue_link(
+                "ABC-1".to_string(),
+                json!({"object": {"url": "https://example.invalid", "title": "Example"}}),
+            )
+            .await
+            .unwrap();
+        client.remove_issue_link("200".to_string()).await.unwrap();
+        let requests = requests.lock().await;
+
+        assert_eq!(
+            requests[0].path,
+            "/rest/api/2/project?includeArchived=false"
+        );
+        assert_eq!(requests[1].path, "/rest/api/2/project/ABC/versions");
+        assert_eq!(requests[2].path, "/rest/api/2/project/ABC/components");
+        assert_eq!(requests[3].path, "/rest/api/2/version");
+        assert_eq!(requests[4].path, "/rest/api/2/user?username=ada");
+        assert_eq!(requests[5].path, "/rest/api/2/issue/ABC-1/watchers");
+        assert_eq!(requests[6].method, Method::POST);
+        assert_eq!(requests[7].method, Method::DELETE);
+        assert_eq!(
+            requests[8].path,
+            "/rest/api/2/issue/ABC-1/worklog?startAt=0&maxResults=10"
+        );
+        assert_eq!(requests[9].body["timeSpent"], "1h");
+        assert_eq!(requests[10].path, "/rest/api/2/issueLinkType");
+        assert_eq!(requests[11].path, "/rest/api/2/issue/ABC-1");
+        assert_eq!(requests[12].path, "/rest/api/2/issueLink");
+        assert_eq!(requests[13].path, "/rest/api/2/issue/ABC-1/remotelink");
+        assert_eq!(requests[14].path, "/rest/api/2/issueLink/200");
+    }
+
+    #[tokio::test]
+    async fn cloud_remove_watcher_uses_account_id_query_parameter() {
+        let (base_url, requests) = stage_three_mock_server().await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::Cloud)).unwrap();
+
+        client
+            .remove_watcher("ABC-1".to_string(), "account-1".to_string())
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+
+        assert_eq!(requests[0].method, Method::DELETE);
+        assert_eq!(
+            requests[0].path,
+            "/rest/api/2/issue/ABC-1/watchers?accountId=account-1"
+        );
+    }
+
+    #[tokio::test]
+    async fn development_info_resolves_issue_key_to_numeric_id() {
+        let (base_url, requests) = stage_three_mock_server().await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
+
+        client
+            .get_issue_development_info(
+                "ABC-1".to_string(),
+                Some("github".to_string()),
+                Some("pullrequest".to_string()),
+            )
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+
+        assert_eq!(requests[0].path, "/rest/api/2/issue/ABC-1?fields=id%2Ckey");
+        assert_eq!(
+            requests[1].path,
+            "/rest/dev-status/1.0/issue/detail?issueId=10001&applicationType=github&dataType=pullrequest"
+        );
+    }
+
+    #[tokio::test]
+    async fn stage_three_product_extension_helpers_use_expected_endpoints() {
+        let (base_url, requests) = stage_three_mock_server().await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
+
+        client
+            .get_agile_boards(
+                Some("ABC".to_string()),
+                Some("scrum".to_string()),
+                Some(0),
+                Some(10),
+            )
+            .await
+            .unwrap();
+        client
+            .get_board_issues(
+                1,
+                Some("project = ABC".to_string()),
+                Some(vec!["summary".to_string()]),
+                Some(0),
+                Some(10),
+            )
+            .await
+            .unwrap();
+        client
+            .get_sprints_from_board(1, Some(vec!["active".to_string()]), Some(0), Some(10))
+            .await
+            .unwrap();
+        client
+            .get_sprint_issues(2, Some(vec!["summary".to_string()]), Some(0), Some(10))
+            .await
+            .unwrap();
+        client
+            .create_sprint(json!({"name": "Sprint", "originBoardId": 1}))
+            .await
+            .unwrap();
+        client
+            .update_sprint(2, json!({"name": "Sprint updated"}))
+            .await
+            .unwrap();
+        client
+            .add_issues_to_sprint(2, vec!["ABC-1".to_string()])
+            .await
+            .unwrap();
+        client
+            .get_service_desk_for_project("ABC".to_string())
+            .await
+            .unwrap();
+        client
+            .get_service_desk_queues("4".to_string(), Some(0), Some(50))
+            .await
+            .unwrap();
+        client
+            .get_queue_issues("4".to_string(), "47".to_string(), Some(0), Some(50))
+            .await
+            .unwrap();
+        client
+            .get_issue_development_info(
+                "10001".to_string(),
+                Some("github".to_string()),
+                Some("pullrequest".to_string()),
+            )
+            .await
+            .unwrap();
+        client
+            .get_issues_development_info(vec!["10001".to_string()], None, None)
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+
+        assert!(requests[0].path.starts_with("/rest/agile/1.0/board?"));
+        assert!(
+            requests[1]
+                .path
+                .starts_with("/rest/agile/1.0/board/1/issue?")
+        );
+        assert!(
+            requests[2]
+                .path
+                .starts_with("/rest/agile/1.0/board/1/sprint?")
+        );
+        assert!(
+            requests[3]
+                .path
+                .starts_with("/rest/agile/1.0/sprint/2/issue?")
+        );
+        assert_eq!(requests[4].path, "/rest/agile/1.0/sprint");
+        assert_eq!(requests[5].path, "/rest/agile/1.0/sprint/2");
+        assert_eq!(requests[6].path, "/rest/agile/1.0/sprint/2/issue");
+        assert_eq!(requests[7].path, "/rest/servicedeskapi/servicedesk");
+        assert_eq!(
+            requests[8].path,
+            "/rest/servicedeskapi/servicedesk/4/queue?start=0&limit=50"
+        );
+        assert_eq!(
+            requests[9].path,
+            "/rest/servicedeskapi/servicedesk/4/queue/47/issue?start=0&limit=50"
+        );
+        assert!(
+            requests[10]
+                .path
+                .starts_with("/rest/dev-status/1.0/issue/detail?")
+        );
+        assert!(
+            requests[11]
+                .path
+                .starts_with("/rest/dev-status/1.0/issue/detail?")
+        );
+    }
+
+    #[tokio::test]
+    async fn agile_helpers_return_product_unavailable_when_software_rest_is_missing() {
+        let (base_url, requests) = stage_three_mock_server().await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
+
+        let value = client
+            .get_agile_boards(Some("NOAGILE".to_string()), None, None, None)
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+
+        assert_eq!(value["success"], false);
+        assert_eq!(value["product_dependency"]["available"], false);
+        assert_eq!(
+            value["product_dependency"]["product"],
+            "Jira Software Agile REST"
+        );
+        assert!(
+            value["message"]
+                .as_str()
+                .unwrap()
+                .contains("Jira Software is not available")
+        );
+        assert_eq!(
+            requests[0].path,
+            "/rest/agile/1.0/board?projectKeyOrId=NOAGILE"
+        );
+    }
+
+    #[tokio::test]
+    async fn service_desk_helpers_return_product_unavailable_when_jsm_rest_is_missing() {
+        let (base_url, requests) = stage_three_mock_server().await;
+        let client = JiraClient::new(config(
+            format!("{base_url}/jsm-down"),
+            JiraDeployment::ServerDataCenter,
+        ))
+        .unwrap();
+
+        let value = client
+            .get_service_desk_for_project("ABC".to_string())
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+
+        assert_eq!(value["success"], false);
+        assert_eq!(value["product_dependency"]["available"], false);
+        assert_eq!(
+            value["product_dependency"]["product"],
+            "Jira Service Management"
+        );
+        assert!(
+            value["message"]
+                .as_str()
+                .unwrap()
+                .contains("Jira Service Management is not available")
+        );
+        assert_eq!(
+            requests[0].path,
+            "/jsm-down/rest/servicedeskapi/servicedesk"
+        );
+    }
+
+    #[tokio::test]
+    async fn development_helper_returns_product_unavailable_when_dev_status_is_missing() {
+        let (base_url, requests) = stage_three_mock_server().await;
+        let client = JiraClient::new(config(
+            format!("{base_url}/dev-down"),
+            JiraDeployment::ServerDataCenter,
+        ))
+        .unwrap();
+
+        let value = client
+            .get_issue_development_info("10001".to_string(), None, None)
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+
+        assert_eq!(value["success"], false);
+        assert_eq!(value["product_dependency"]["available"], false);
+        assert_eq!(
+            value["product_dependency"]["product"],
+            "Jira development/dev-status"
+        );
+        assert!(
+            value["message"]
+                .as_str()
+                .unwrap()
+                .contains("Jira development status is not available")
+        );
+        assert_eq!(
+            requests[0].path,
+            "/dev-down/rest/dev-status/1.0/issue/detail?issueId=10001"
+        );
+    }
+
+    #[tokio::test]
+    async fn forms_helpers_use_cloud_id_paths_and_config_auth_without_override() {
+        let (base_url, requests) = stage_three_mock_server().await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
+
+        let forms = client
+            .get_issue_proforma_forms("ABC-1".to_string(), Some("cloud-123"))
+            .await
+            .unwrap();
+        let details = client
+            .get_proforma_form_details("ABC-1".to_string(), "form-1".to_string(), Some("cloud-123"))
+            .await
+            .unwrap();
+        let updated = client
+            .update_proforma_form_answers(
+                "ABC-1".to_string(),
+                "form-1".to_string(),
+                vec![
+                    json!({"questionId": "q1", "type": "TEXT", "value": "Updated"}),
+                    json!({"questionId": "q2", "type": "SELECT", "value": "Product A"}),
+                    json!({"question_id": "q3", "type": "MULTI_USER", "value": ["abc"]}),
+                ],
+                Some("cloud-123"),
+            )
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+        let expected_header = format!("Bearer {}", "test-pat-value");
+
+        assert_eq!(forms["forms"][0]["id"], "form-1");
+        assert_eq!(details["answers"]["q1"]["text"], "Existing");
+        assert_eq!(updated["updated"], true);
+        assert_eq!(
+            requests[0].path,
+            "/jira/forms/cloud/cloud-123/issue/ABC-1/form"
+        );
+        assert_eq!(
+            requests[1].path,
+            "/jira/forms/cloud/cloud-123/issue/ABC-1/form/form-1"
+        );
+        assert_eq!(requests[2].method, Method::PUT);
+        assert_eq!(
+            requests[2].path,
+            "/jira/forms/cloud/cloud-123/issue/ABC-1/form/form-1"
+        );
+        for request in requests.iter() {
+            assert_eq!(
+                request.authorization.as_deref(),
+                Some(expected_header.as_str())
+            );
+        }
+        assert_eq!(requests[2].body["answers"]["q1"]["text"], "Updated");
+        assert_eq!(
+            requests[2].body["answers"]["q2"]["choices"],
+            json!(["Product A"])
+        );
+        assert_eq!(requests[2].body["answers"]["q3"]["users"], json!(["abc"]));
+    }
+
+    #[tokio::test]
+    async fn forms_helpers_return_product_unavailable_when_cloud_id_missing_without_http() {
+        let (base_url, requests) = stage_three_mock_server().await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
+
+        let missing = client
+            .get_issue_proforma_forms("ABC-1".to_string(), None)
+            .await
+            .unwrap();
+        let blank = client
+            .get_proforma_form_details("ABC-1".to_string(), "form-1".to_string(), Some(" "))
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+
+        assert_eq!(missing["success"], false);
+        assert_eq!(missing["product_dependency"]["available"], false);
+        assert_eq!(
+            missing["product_dependency"]["product"],
+            "Jira Forms/ProForma Cloud ID"
+        );
+        assert_eq!(blank["product_dependency"]["available"], false);
+        assert!(requests.is_empty());
+    }
+
+    #[tokio::test]
+    async fn forms_helpers_return_product_unavailable_when_forms_api_is_missing() {
+        let (base_url, requests) = stage_three_mock_server().await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
+
+        let value = client
+            .get_issue_proforma_forms("ABC-1".to_string(), Some("forms-down"))
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+
+        assert_eq!(value["success"], false);
+        assert_eq!(value["product_dependency"]["available"], false);
+        assert_eq!(
+            value["product_dependency"]["product"],
+            "Jira Forms/ProForma"
+        );
+        assert!(
+            value["message"]
+                .as_str()
+                .unwrap()
+                .contains("Jira Forms is not available")
+        );
+        assert_eq!(
+            requests[0].path,
+            "/jira/forms/cloud/forms-down/issue/ABC-1/form"
+        );
+    }
+
+    #[tokio::test]
+    async fn stage_three_attachment_helpers_use_bounded_content_fetch() {
+        let (base_url, requests) = stage_three_mock_server().await;
+        let client =
+            JiraClient::new(config(base_url.clone(), JiraDeployment::ServerDataCenter)).unwrap();
+
+        let attachments = client
+            .get_issue_attachments("ABC-1".to_string())
+            .await
+            .unwrap();
+        let content = client
+            .fetch_attachment_content("/secure/attachment/1/file.png", 20)
+            .await
+            .unwrap();
+        let oversized = client
+            .fetch_attachment_content("/secure/attachment/1/file.png", 2)
+            .await
+            .unwrap_err()
+            .to_string();
+        let absolute = client
+            .fetch_attachment_content(
+                &format!("{base_url}/secure/attachment/1/file.png?token=secret"),
+                20,
+            )
+            .await
+            .unwrap();
+        let blocked_external = client
+            .fetch_attachment_content("https://evil.example/attachment.png?token=secret", 20)
+            .await
+            .unwrap_err()
+            .to_string();
+        let requests = requests.lock().await;
+
+        assert_eq!(attachments.len(), 2);
+        assert!(attachments[0].is_image());
+        assert_eq!(content.content_type.as_deref(), Some("image/png"));
+        assert_eq!(content.bytes, b"image-bytes");
+        assert_eq!(absolute.bytes, b"image-bytes");
+        assert!(oversized.contains("exceeds configured limit"));
+        assert!(
+            blocked_external.contains("absolute URL must use the configured Atlassian base origin")
+        );
+        assert!(!blocked_external.contains("token=secret"));
+        assert_eq!(
+            requests[0].path,
+            "/rest/api/2/issue/ABC-1?fields=attachment"
+        );
+        assert_eq!(requests[1].path, "/secure/attachment/1/file.png");
+        assert_eq!(requests[2].path, "/secure/attachment/1/file.png");
+        assert_eq!(
+            requests[3].path,
+            "/secure/attachment/1/file.png?token=secret"
+        );
+    }
+
+    #[tokio::test]
+    async fn safe_attachment_helper_filters_images_and_redacts_content_errors() {
+        let (base_url, requests) = stage_three_mock_server().await;
+        let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
+
+        let with_content = client
+            .get_safe_issue_attachments(
+                "ABC-1".to_string(),
+                AttachmentFetchOptions {
+                    attachment_ids: Some(vec!["1".to_string(), "2".to_string()]),
+                    include_content: true,
+                    images_only: false,
+                    max_bytes: 20,
+                },
+            )
+            .await
+            .unwrap();
+        let images_only = client
+            .get_safe_issue_attachments(
+                "ABC-1".to_string(),
+                AttachmentFetchOptions {
+                    images_only: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let oversized = client
+            .get_safe_issue_attachments(
+                "ABC-1".to_string(),
+                AttachmentFetchOptions {
+                    attachment_ids: Some(vec!["1".to_string()]),
+                    include_content: true,
+                    max_bytes: 2,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let requests = requests.lock().await;
+
+        assert_eq!(with_content["count"], 2);
+        assert_eq!(with_content["attachments"][0]["filename"], "file.png");
+        assert_eq!(with_content["attachments"][0]["has_content_url"], true);
+        assert!(with_content["attachments"][0].get("thumbnail").is_none());
+        assert_eq!(
+            with_content["attachments"][0]["content"],
+            json!({
+                "encoding": "base64",
+                "content_type": "image/png",
+                "size": 11,
+                "data": "aW1hZ2UtYnl0ZXM="
+            })
+        );
+        let error = with_content["attachments"][1]["content_error"]["message"]
+            .as_str()
+            .unwrap();
+        assert!(error.contains("/secure/attachment/2/notes.txt?<redacted>"));
+        assert!(!error.contains("token=secret"));
+        assert!(!error.contains("client=abc"));
+        assert_eq!(images_only["count"], 1);
+        assert_eq!(images_only["attachments"][0]["filename"], "file.png");
+        assert_eq!(oversized["count"], 1);
+        assert!(
+            oversized["attachments"][0]["content_error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("exceeds configured limit")
+        );
+        assert_eq!(
+            requests[1].path,
+            "/secure/attachment/1/file.png?token=secret"
+        );
+        assert_eq!(
+            requests[2].path,
+            "/secure/attachment/2/notes.txt?token=secret&client=abc"
+        );
     }
 }

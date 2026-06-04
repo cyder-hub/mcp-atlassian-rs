@@ -113,6 +113,41 @@ class MockJiraHandler(BaseHTTPRequestHandler):
                 },
             )
             return
+        if path == "/rest/api/2/issue/ABC-1/worklog":
+            self.send_json(
+                200,
+                {
+                    "startAt": 0,
+                    "maxResults": 1,
+                    "total": 1,
+                    "worklogs": [
+                        {
+                            "id": "20001",
+                            "timeSpent": "1h",
+                            "author": {"displayName": "Smoke User"},
+                        }
+                    ],
+                },
+            )
+            return
+        if path == "/rest/agile/1.0/board":
+            self.send_json(
+                200,
+                {
+                    "startAt": 0,
+                    "maxResults": 1,
+                    "total": 1,
+                    "values": [
+                        {
+                            "id": 7,
+                            "name": "Smoke board",
+                            "type": "scrum",
+                            "location": {"projectKey": "ABC"},
+                        }
+                    ],
+                },
+            )
+            return
         if path == "/rest/api/2/field":
             self.send_json(
                 200,
@@ -217,12 +252,15 @@ def clean_env(jira_url, read_only):
         "MCP_HTTP_HOST",
         "MCP_HTTP_PORT",
         "MCP_HTTP_PATH",
+        "ATLASSIAN_OAUTH_CLOUD_ID",
     ):
         env.pop(key, None)
     env["JIRA_URL"] = jira_url
     env["JIRA_PERSONAL_TOKEN"] = MockJiraHandler.expected_token
     env["JIRA_SSL_VERIFY"] = "false"
     env["READ_ONLY_MODE"] = "true" if read_only else "false"
+    env["TOOLSETS"] = "default,jira_worklog,jira_agile"
+    env["ATLASSIAN_OAUTH_CLOUD_ID"] = "cloud-smoke"
     return env
 
 
@@ -313,6 +351,32 @@ def assert_jira_issue_result(response):
         raise RuntimeError(f"jira_get_issue did not return mock issue: {response}")
 
 
+def assert_tool_success(response, tool_name):
+    if "error" in response:
+        raise RuntimeError(f"{tool_name} returned JSON-RPC error: {response}")
+    result = response.get("result", {})
+    if result.get("isError") is True:
+        raise RuntimeError(f"{tool_name} returned tool error: {response}")
+    structured = result.get("structuredContent")
+    if structured is None:
+        raise RuntimeError(f"{tool_name} returned no structuredContent: {response}")
+    return structured
+
+
+def assert_worklog_result(response):
+    structured = assert_tool_success(response, "jira_get_worklog")
+    worklogs = structured.get("worklogs")
+    if not worklogs or worklogs[0].get("id") != "20001":
+        raise RuntimeError(f"jira_get_worklog did not return mock worklog: {response}")
+
+
+def assert_agile_boards_result(response):
+    structured = assert_tool_success(response, "jira_get_agile_boards")
+    boards = structured.get("values")
+    if not boards or boards[0].get("name") != "Smoke board":
+        raise RuntimeError(f"jira_get_agile_boards did not return mock board: {response}")
+
+
 def run_stdio(jira_url):
     proc = subprocess.Popen(
         [binary, "stdio"],
@@ -324,12 +388,18 @@ def run_stdio(jira_url):
         env=clean_env(jira_url, read_only=False),
     )
     try:
-        initialize_stdio(proc, "stage2-stdio-smoke")
+        initialize_stdio(proc, "stage3-stdio-smoke")
         names = list_stdio_tools(proc)
-        if "jira_get_issue" not in names:
-            raise RuntimeError(f"jira_get_issue missing from stdio tools/list: {sorted(names)}")
-        if "migration_status" not in names:
-            raise RuntimeError(f"migration_status missing from stdio tools/list: {sorted(names)}")
+        required_tools = {
+            "migration_status",
+            "jira_get_issue",
+            "jira_create_issue",
+            "jira_get_worklog",
+            "jira_get_agile_boards",
+        }
+        missing = required_tools - names
+        if missing:
+            raise RuntimeError(f"stdio tools/list missing {sorted(missing)}: {sorted(names)}")
         response = call_stdio_tool(
             proc,
             3,
@@ -337,7 +407,21 @@ def run_stdio(jira_url):
             {"issue_key": "ABC-1", "fields": ["summary", "status"]},
         )
         assert_jira_issue_result(response)
-        print("stdio smoke passed: jira_get_issue is discoverable and callable with mock Jira")
+        response = call_stdio_tool(
+            proc,
+            4,
+            "jira_get_worklog",
+            {"issue_key": "ABC-1", "limit": 1},
+        )
+        assert_worklog_result(response)
+        response = call_stdio_tool(
+            proc,
+            5,
+            "jira_get_agile_boards",
+            {"project_key": "ABC", "board_type": "scrum", "limit": 1},
+        )
+        assert_agile_boards_result(response)
+        print("stdio smoke passed: Stage 2 and Stage 3 representative Jira tools are discoverable and callable with mock Jira")
     finally:
         stop_process(proc)
 
@@ -445,7 +529,7 @@ def run_http(jira_url):
                         "params": {
                             "protocolVersion": "2025-03-26",
                             "capabilities": {},
-                            "clientInfo": {"name": "stage2-http-smoke", "version": "0.1.0"},
+                            "clientInfo": {"name": "stage3-http-smoke", "version": "0.1.0"},
                         },
                     },
                 )
@@ -471,8 +555,16 @@ def run_http(jira_url):
                     tool.get("name")
                     for tool in tools_message.get("result", {}).get("tools", [])
                 }
-                if "jira_get_issue" not in names:
-                    raise RuntimeError(f"jira_get_issue missing from HTTP tools/list: {sorted(names)}")
+                required_tools = {
+                    "migration_status",
+                    "jira_get_issue",
+                    "jira_create_issue",
+                    "jira_get_worklog",
+                    "jira_get_agile_boards",
+                }
+                missing = required_tools - names
+                if missing:
+                    raise RuntimeError(f"HTTP tools/list missing {sorted(missing)}: {sorted(names)}")
                 _, _, body = post_mcp(
                     port,
                     mcp_path,
@@ -489,7 +581,43 @@ def run_http(jira_url):
                 )
                 issue_message = expect_rpc_result(body, 3)
                 assert_jira_issue_result(issue_message)
-                print("HTTP smoke passed: /healthz ok and jira_get_issue is discoverable and callable with mock Jira")
+                _, _, body = post_mcp(
+                    port,
+                    mcp_path,
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 4,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "jira_get_worklog",
+                            "arguments": {"issue_key": "ABC-1", "limit": 1},
+                        },
+                    },
+                    session_id=session_id,
+                )
+                worklog_message = expect_rpc_result(body, 4)
+                assert_worklog_result(worklog_message)
+                _, _, body = post_mcp(
+                    port,
+                    mcp_path,
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 5,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "jira_get_agile_boards",
+                            "arguments": {
+                                "project_key": "ABC",
+                                "board_type": "scrum",
+                                "limit": 1,
+                            },
+                        },
+                    },
+                    session_id=session_id,
+                )
+                boards_message = expect_rpc_result(body, 5)
+                assert_agile_boards_result(boards_message)
+                print("HTTP smoke passed: /healthz ok and Stage 2/3 representative Jira tools are discoverable and callable with mock Jira")
             finally:
                 proc.terminate()
                 try:
@@ -510,30 +638,38 @@ def run_read_only(jira_url):
         env=clean_env(jira_url, read_only=True),
     )
     try:
-        initialize_stdio(proc, "stage2-read-only-smoke")
+        initialize_stdio(proc, "stage3-read-only-smoke")
         names = list_stdio_tools(proc)
         if "jira_get_issue" not in names:
             raise RuntimeError(f"jira_get_issue missing in read-only mode: {sorted(names)}")
-        if "jira_add_comment" in names:
-            raise RuntimeError(f"jira_add_comment should be hidden in read-only mode: {sorted(names)}")
+        if "jira_get_worklog" not in names:
+            raise RuntimeError(f"jira_get_worklog missing in read-only mode: {sorted(names)}")
+        if "jira_get_agile_boards" not in names:
+            raise RuntimeError(f"jira_get_agile_boards missing in read-only mode: {sorted(names)}")
+        if "jira_create_issue" in names:
+            raise RuntimeError(f"jira_create_issue should be hidden in read-only mode: {sorted(names)}")
         response = call_stdio_tool(
             proc,
             3,
-            "jira_add_comment",
-            {"issue_key": "ABC-1", "body": "blocked by read-only smoke"},
+            "jira_create_issue",
+            {
+                "project_key": "ABC",
+                "summary": "blocked by read-only smoke",
+                "issue_type": "Task",
+            },
         )
         error = response.get("error", {})
         if "read-only" not in error.get("message", ""):
-            raise RuntimeError(f"jira_add_comment was not blocked by read-only guard: {response}")
+            raise RuntimeError(f"jira_create_issue was not blocked by read-only guard: {response}")
         with MockJiraHandler.lock:
-            comment_requests = [
+            create_issue_requests = [
                 request
                 for request in MockJiraHandler.requests
-                if "/comment" in request["path"]
+                if request["method"] == "POST" and request["path"].split("?", 1)[0] == "/rest/api/2/issue"
             ]
-        if comment_requests:
-            raise RuntimeError(f"read-only write tool reached mock Jira: {comment_requests!r}")
-        print("Jira read-only smoke passed: jira_add_comment is hidden and blocked before HTTP")
+        if create_issue_requests:
+            raise RuntimeError(f"read-only C2 write tool reached mock Jira: {create_issue_requests!r}")
+        print("Jira read-only smoke passed: Stage 3 reads stay visible and jira_create_issue is blocked before HTTP")
     finally:
         stop_process(proc)
 

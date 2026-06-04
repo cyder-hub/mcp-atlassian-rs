@@ -8,6 +8,7 @@ pub struct AppContext {
     enabled_tools: Option<BTreeSet<String>>,
     enabled_toolsets: BTreeSet<String>,
     jira: Option<JiraConfig>,
+    atlassian_oauth_cloud_id: Option<String>,
     service_availability: ServiceAvailability,
 }
 
@@ -18,6 +19,7 @@ impl AppContext {
             enabled_tools: config.enabled_tools.clone(),
             enabled_toolsets: config.enabled_toolsets.clone(),
             jira: config.jira.clone(),
+            atlassian_oauth_cloud_id: config.atlassian_oauth_cloud_id.clone(),
             service_availability: ServiceAvailability::from_config(config),
         }
     }
@@ -36,6 +38,10 @@ impl AppContext {
 
     pub fn service_availability(&self) -> &ServiceAvailability {
         &self.service_availability
+    }
+
+    pub fn atlassian_oauth_cloud_id(&self) -> Option<&str> {
+        self.atlassian_oauth_cloud_id.as_deref()
     }
 
     #[allow(dead_code)]
@@ -108,6 +114,7 @@ mod tests {
             enabled_toolsets: enabled_toolsets.clone(),
             jira: Some(jira.clone()),
             confluence_url: Some("https://confluence.example".to_string()),
+            atlassian_oauth_cloud_id: Some("cloud-123".to_string()),
             http: HttpConfig::default(),
         };
 
@@ -117,6 +124,7 @@ mod tests {
         assert_eq!(context.enabled_tools(), Some(&enabled_tools));
         assert_eq!(context.enabled_toolsets(), &enabled_toolsets);
         assert_eq!(context.jira_config(), Some(&jira));
+        assert_eq!(context.atlassian_oauth_cloud_id(), Some("cloud-123"));
         assert_eq!(
             context.service_availability(),
             &ServiceAvailability {

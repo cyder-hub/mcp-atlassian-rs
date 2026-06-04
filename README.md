@@ -2,7 +2,7 @@
 
 Rust migration workspace for MCP Atlassian.
 
-This repository is migrating the Python `mcp-atlassian` Jira and Confluence MCP server to a Rust-native implementation. The Rust binary currently has the shared MCP runtime/control plane and the Stage 2 Jira core tool loop implemented. Confluence and broader Jira extension parity remain later stages.
+This repository is migrating the Python `mcp-atlassian` Jira and Confluence MCP server to a Rust-native implementation. The Rust binary currently has the shared MCP runtime/control plane, the Stage 2 Jira core tool loop, and all Stage 3 Jira extension tools implemented with local mock REST coverage. Real Jira validation for product-dependent extensions, Confluence, and production auth/security remain later stages.
 
 ## Current Status
 
@@ -11,11 +11,12 @@ Implemented in the Rust root project:
 - Package, binary, server name, Docker image, compose service, and CI image identity use `mcp-atlassian-rs`.
 - MCP server runs over `stdio` and streamable HTTP at `/mcp`.
 - Logging is configured to stderr so stdio MCP stdout remains protocol-only.
-- Runtime control-plane config parses `READ_ONLY_MODE`, `ENABLED_TOOLS`, `TOOLSETS`, `CONFLUENCE_URL`, `MCP_HTTP_HOST`, `MCP_HTTP_PORT`, and `MCP_HTTP_PATH`.
+- Runtime control-plane config parses `READ_ONLY_MODE`, `ENABLED_TOOLS`, `TOOLSETS`, `CONFLUENCE_URL`, `ATLASSIAN_OAUTH_CLOUD_ID`, `MCP_HTTP_HOST`, `MCP_HTTP_PORT`, and `MCP_HTTP_PATH`.
 - Jira config parses `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN`, `JIRA_PERSONAL_TOKEN`, `JIRA_SSL_VERIFY`, `JIRA_PROJECTS_FILTER`, and `JIRA_TIMEOUT`.
 - Jira Cloud uses username/API token auth for `*.atlassian.net`; Jira Server/Data Center uses PAT auth.
-- Shared Atlassian HTTP/auth/error helpers and Jira models/client/tool handlers are implemented for the Stage 2 core tools.
+- Shared Atlassian HTTP/auth/error helpers and Jira models/client/tool handlers are implemented for the Stage 2 core tools and the completed Stage 3 Jira extensions.
 - Tool registry metadata, service availability filtering, toolset filtering, enabled-tools filtering, and read-only write guards are in place for migrated tools.
+- Stage 3 Jira extension tools are implemented for local mock validation: create/update/delete issue, batch create, changelog bulk fetch, projects, versions, users, watchers, worklog, links, attachment download, issue image retrieval, agile boards/sprints, service desk queues, Forms/ProForma, metrics/SLA, and development information.
 - Streamable HTTP exposes `GET /healthz`.
 - Local stdio, streamable HTTP, and read-only smoke commands validate MCP initialization, Jira tool discovery, mock Jira read calls, `/healthz`, and write-tool blocking.
 - The temporary MCP tool `migration_status` reports the migration state.
@@ -23,10 +24,10 @@ Implemented in the Rust root project:
 Deferred:
 
 - Confluence config, auth, client, models, and MCP tools.
-- Stage 3 Jira extension tools such as create/update/delete issue, batch create, changelog, projects, agile, links, worklog, attachments, users, watchers, service desk, forms, metrics, and development.
+- Real Jira validation for Stage 3 product-dependent Jira extensions. Local mock coverage is complete, but Jira Software, Jira Service Management, Forms/ProForma, SLA, and dev-status behavior remain Stage 4 validation gates.
 - OAuth, BYOT, per-request HTTP header auth, SSRF protections, allowed domains, proxy/custom headers, mTLS, and full production security hardening.
 - Real Jira and Confluence smoke tests. Real Jira validation is a Stage 4 gate.
-- Release, Docker, compose, Helm, and parity audit gates beyond the local Stage 2 checks.
+- Release, Docker, compose, Helm, and parity audit gates beyond the local mock checks.
 
 ## Requirements
 
@@ -94,6 +95,9 @@ Optional Jira variables:
 | `JIRA_SSL_VERIFY` | `true` | Set `false`, `0`, `no`, or `off` to disable TLS certificate verification for Jira requests. |
 | `JIRA_PROJECTS_FILTER` | unset | Comma-separated project keys. Filters `jira_get_issue` by issue key prefix and injects a project filter into JQL search. |
 | `JIRA_TIMEOUT` | `75` | Jira HTTP request timeout in seconds. Must be a positive integer. |
+| `ATLASSIAN_OAUTH_CLOUD_ID` | unset | Optional Cloud ID used by Jira Forms/ProForma helpers. Missing values return a structured product-dependency response. |
+
+Stage 3 does not implement OAuth, BYOT, or per-request Authorization overrides.
 
 ## Runtime Control Plane
 
@@ -128,6 +132,51 @@ The Rust server exposes these Stage 2 Jira core tools when Jira is configured:
 | `jira_edit_comment` | write | `jira_comments` |
 | `jira_get_transitions` | read | `jira_transitions` |
 | `jira_transition_issue` | write | `jira_transitions` |
+
+The Rust server also exposes these Stage 3 Jira extension tools when Jira is configured. These are locally validated with mock Jira; real Jira acceptance remains deferred to Stage 4.
+
+| Tool | Access | Toolset |
+| --- | --- | --- |
+| `jira_create_issue` | write | `jira_issues` |
+| `jira_batch_create_issues` | write | `jira_issues` |
+| `jira_batch_get_changelogs` | read | `jira_issues` |
+| `jira_update_issue` | write | `jira_issues` |
+| `jira_delete_issue` | write | `jira_issues` |
+| `jira_get_all_projects` | read | `jira_projects` |
+| `jira_get_project_versions` | read | `jira_projects` |
+| `jira_get_project_components` | read | `jira_projects` |
+| `jira_create_version` | write | `jira_projects` |
+| `jira_batch_create_versions` | write | `jira_projects` |
+| `jira_get_user_profile` | read | `jira_users` |
+| `jira_get_issue_watchers` | read | `jira_watchers` |
+| `jira_add_watcher` | write | `jira_watchers` |
+| `jira_remove_watcher` | write | `jira_watchers` |
+| `jira_get_worklog` | read | `jira_worklog` |
+| `jira_add_worklog` | write | `jira_worklog` |
+| `jira_get_link_types` | read | `jira_links` |
+| `jira_link_to_epic` | write | `jira_links` |
+| `jira_create_issue_link` | write | `jira_links` |
+| `jira_create_remote_issue_link` | write | `jira_links` |
+| `jira_remove_issue_link` | write | `jira_links` |
+| `jira_download_attachments` | read | `jira_attachments` |
+| `jira_get_issue_images` | read | `jira_attachments` |
+| `jira_get_agile_boards` | read | `jira_agile` |
+| `jira_get_board_issues` | read | `jira_agile` |
+| `jira_get_sprints_from_board` | read | `jira_agile` |
+| `jira_get_sprint_issues` | read | `jira_agile` |
+| `jira_create_sprint` | write | `jira_agile` |
+| `jira_update_sprint` | write | `jira_agile` |
+| `jira_add_issues_to_sprint` | write | `jira_agile` |
+| `jira_get_service_desk_for_project` | read | `jira_service_desk` |
+| `jira_get_service_desk_queues` | read | `jira_service_desk` |
+| `jira_get_queue_issues` | read | `jira_service_desk` |
+| `jira_get_issue_proforma_forms` | read | `jira_forms` |
+| `jira_get_proforma_form_details` | read | `jira_forms` |
+| `jira_update_proforma_form_answers` | write | `jira_forms` |
+| `jira_get_issue_dates` | read | `jira_metrics` |
+| `jira_get_issue_sla` | read | `jira_metrics` |
+| `jira_get_issue_development_info` | read | `jira_development` |
+| `jira_get_issues_development_info` | read | `jira_development` |
 
 The Rust server also exposes one migration utility tool:
 
@@ -188,7 +237,7 @@ Set `MCP_PORT` to change the host port used by compose.
 
 ## Verification
 
-Stage 2 local checks:
+Local checks:
 
 ```bash
 cargo fmt --check
