@@ -39,13 +39,17 @@ type AppResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 const USAGE: &str = "\
 Usage:
   mcp-atlassian-rs [stdio]
-  mcp-atlassian-rs streamhttp [--host <host>] [--port <port>] [--path <path>]
+  mcp-atlassian-rs streamhttp [--host <host>] [--port <port>] [--path <path>] [--env-file <path>]
   mcp-atlassian-rs acceptance <jira|confluence|mcp> (--preflight | --run <binary>) [--env-file <path>]
 
 Commands:
   stdio       Run the MCP server over standard input/output.
   streamhttp  Run the MCP server over streamable HTTP.
   acceptance  Run Stage 5 acceptance checks from the Rust binary.
+
+Options:
+  --env-file <path>  Load environment variables from the specified file (streamhttp and acceptance only).
+                     Alternatively, set the ENV_FILE environment variable.
 
 Defaults:
   host  127.0.0.1
@@ -56,7 +60,7 @@ Defaults:
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RunMode {
     Stdio,
-    StreamHttp(HttpConfigOverrides),
+    StreamHttp(HttpConfigOverrides, Option<String>),
     Acceptance(acceptance::AcceptanceCommand),
 }
 
@@ -74,6 +78,7 @@ struct StreamHttpAuthState {
 #[tokio::main]
 async fn main() -> AppResult<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+
     if args.iter().any(|arg| arg == "-h" || arg == "--help") {
         println!("{USAGE}");
         return Ok(());
@@ -95,6 +100,21 @@ async fn main() -> AppResult<()> {
         return Ok(());
     }
 
+    if let RunMode::StreamHttp(_, ref env_file_path) = mode {
+        let env_path = env_file_path
+            .clone()
+            .or_else(|| std::env::var("ENV_FILE").ok());
+        if let Some(path) = env_path {
+            if let Err(error) = dotenvy::from_filename(&path) {
+                eprintln!("Failed to load env file {}: {}", path, error);
+                std::process::exit(1);
+            }
+            eprintln!("Loaded environment variables from: {}", path);
+        } else if let Ok(path) = dotenvy::dotenv() {
+            eprintln!("Loaded environment variables from: {}", path.display());
+        }
+    }
+
     let runtime_config = match mode.http_overrides() {
         Some(overrides) => config::RuntimeConfig::from_env_with_http_overrides(overrides)?,
         None => config::RuntimeConfig::from_env()?,
@@ -106,7 +126,7 @@ async fn main() -> AppResult<()> {
 
     match mode {
         RunMode::Stdio => run_stdio(context).await?,
-        RunMode::StreamHttp(_) => run_streamhttp(runtime_config.http, context).await?,
+        RunMode::StreamHttp(_, _) => run_streamhttp(runtime_config.http, context).await?,
         RunMode::Acceptance(_) => unreachable!("acceptance mode returns before runtime startup"),
     }
 
@@ -131,7 +151,7 @@ impl RunMode {
     fn http_overrides(&self) -> Option<HttpConfigOverrides> {
         match self {
             Self::Stdio => None,
-            Self::StreamHttp(overrides) => Some(overrides.clone()),
+            Self::StreamHttp(overrides, _) => Some(overrides.clone()),
             Self::Acceptance(_) => None,
         }
     }
@@ -253,7 +273,10 @@ where
         None => Ok(RunMode::Stdio),
         Some("stdio") if args.len() <= 1 => Ok(RunMode::Stdio),
         Some("stdio") => Err(format!("unexpected argument for stdio: `{}`", args[1])),
-        Some("streamhttp") => parse_streamhttp_args(&args[1..]).map(RunMode::StreamHttp),
+        Some("streamhttp") => {
+            let (overrides, env_file) = parse_streamhttp_args(&args[1..])?;
+            Ok(RunMode::StreamHttp(overrides, env_file))
+        }
         Some("acceptance") => {
             acceptance::parse_acceptance_args(&args[1..]).map(RunMode::Acceptance)
         }
@@ -261,8 +284,9 @@ where
     }
 }
 
-fn parse_streamhttp_args(args: &[String]) -> Result<HttpConfigOverrides, String> {
+fn parse_streamhttp_args(args: &[String]) -> Result<(HttpConfigOverrides, Option<String>), String> {
     let mut overrides = HttpConfigOverrides::default();
+    let mut env_file = None;
     let mut index = 0;
 
     while index < args.len() {
@@ -290,6 +314,14 @@ fn parse_streamhttp_args(args: &[String]) -> Result<HttpConfigOverrides, String>
                         .clone(),
                 );
             }
+            "--env-file" => {
+                index += 1;
+                env_file = Some(
+                    args.get(index)
+                        .ok_or_else(|| "--env-file requires a path".to_string())?
+                        .clone(),
+                );
+            }
             arg if arg.starts_with("--host=") => {
                 overrides.host = Some(
                     arg.strip_prefix("--host=")
@@ -310,12 +342,19 @@ fn parse_streamhttp_args(args: &[String]) -> Result<HttpConfigOverrides, String>
                         .to_string(),
                 );
             }
+            arg if arg.starts_with("--env-file=") => {
+                env_file = Some(
+                    arg.strip_prefix("--env-file=")
+                        .expect("prefix was just checked")
+                        .to_string(),
+                );
+            }
             arg => return Err(format!("unexpected streamhttp argument `{arg}`")),
         }
         index += 1;
     }
 
-    Ok(overrides)
+    Ok((overrides, env_file))
 }
 
 fn parse_cli_port(value: &str) -> Result<u16, String> {
@@ -343,7 +382,7 @@ mod tests {
     fn parse_args_accepts_streamhttp_env_defaults() {
         assert_eq!(
             parse_args(["streamhttp"]).unwrap(),
-            RunMode::StreamHttp(HttpConfigOverrides::default())
+            RunMode::StreamHttp(HttpConfigOverrides::default(), None)
         );
         assert_eq!(
             merge_http(HttpConfigOverrides::default()),
@@ -369,16 +408,19 @@ mod tests {
 
         assert_eq!(
             mode,
-            RunMode::StreamHttp(HttpConfigOverrides {
-                host: Some("0.0.0.0".to_string()),
-                port: Some(9000),
-                path: Some("alt-mcp".to_string()),
-            })
+            RunMode::StreamHttp(
+                HttpConfigOverrides {
+                    host: Some("0.0.0.0".to_string()),
+                    port: Some(9000),
+                    path: Some("alt-mcp".to_string()),
+                },
+                None
+            )
         );
 
         assert_eq!(
             merge_http(match mode {
-                RunMode::StreamHttp(overrides) => overrides,
+                RunMode::StreamHttp(overrides, _) => overrides,
                 RunMode::Stdio => unreachable!("test parsed streamhttp"),
                 RunMode::Acceptance(_) => unreachable!("test parsed streamhttp"),
             }),
