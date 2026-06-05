@@ -10,15 +10,19 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
-  contents: read
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  artifact:
-    name: Linux release artifact
+  validate:
+    name: Validate release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -37,9 +41,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-release-cargo-${{ hashFiles('Cargo.lock') }}
+          key: ${{ runner.os }}-validate-cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-release-cargo-
+            ${{ runner.os }}-validate-cargo-
 
       - name: Verify release version
         shell: bash
@@ -75,21 +79,160 @@ jobs:
       - name: Test MCP server
         run: cargo test
 
-      - name: Build release binary
-        run: cargo build --release
+  build-artifacts:
+    name: Build ${{ matrix.platform_target }}
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform_target: linux-x86_64
+            rust_target: x86_64-unknown-linux-gnu
+            binary: mcp-atlassian-rs
+            os: ubuntu-22.04
+          - platform_target: linux-aarch64
+            rust_target: aarch64-unknown-linux-gnu
+            binary: mcp-atlassian-rs
+            os: ubuntu-24.04-arm
+          - platform_target: darwin-x86_64
+            rust_target: x86_64-apple-darwin
+            binary: mcp-atlassian-rs
+            os: macos-15-intel
+          - platform_target: darwin-aarch64
+            rust_target: aarch64-apple-darwin
+            binary: mcp-atlassian-rs
+            os: macos-15
+          - platform_target: windows-x86_64
+            rust_target: x86_64-pc-windows-msvc
+            binary: mcp-atlassian-rs.exe
+            os: windows-latest
 
-      - name: Package release binary
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust 1.94
         shell: bash
         run: |
-          mkdir -p dist/package
-          cp target/release/mcp-atlassian-rs dist/package/mcp-atlassian-rs
-          tar -C dist/package -czf dist/mcp-atlassian-rs-linux-x86_64.tar.gz mcp-atlassian-rs
-          sha256sum dist/mcp-atlassian-rs-linux-x86_64.tar.gz > dist/mcp-atlassian-rs-linux-x86_64.tar.gz.sha256
+          rustup toolchain install 1.94.0 --profile minimal --target ${{ matrix.rust_target }}
+          rustup default 1.94.0
 
-      - name: Upload release artifact
+      - name: Cache cargo artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.rust_target }}-release-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.rust_target }}-release-cargo-
+
+      - name: Build target
+        run: cargo build --release --target ${{ matrix.rust_target }}
+
+      - name: Prepare release binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            output_binary="mcp-atlassian-rs-${{ matrix.platform_target }}.exe"
+          else
+            output_binary="mcp-atlassian-rs-${{ matrix.platform_target }}"
+          fi
+          
+          cp target/${{ matrix.rust_target }}/release/${{ matrix.binary }} dist/${output_binary}
+          cd dist
+          
+          sha256sum ${output_binary} > ${output_binary}.sha256
+
+      - name: Upload binary release asset
         uses: actions/upload-artifact@v4
         with:
-          name: mcp-atlassian-rs-linux-x86_64
-          path: |
-            dist/mcp-atlassian-rs-linux-x86_64.tar.gz
-            dist/mcp-atlassian-rs-linux-x86_64.tar.gz.sha256
+          name: mcp-atlassian-rs-${{ matrix.platform_target }}
+          path: dist/*
+          if-no-files-found: error
+
+  create-github-release:
+    name: Create draft GitHub Release
+    needs: build-artifacts
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/release-assets
+          pattern: mcp-atlassian-rs-*
+          merge-multiple: true
+
+      - name: Create or update draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          notes_file="${RUNNER_TEMP}/release-notes.md"
+          release_title="$(
+            gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+              -f tag_name="$tag" \
+              -f target_commitish="${GITHUB_SHA}" \
+              --jq .name
+          )"
+          gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="$tag" \
+            -f target_commitish="${GITHUB_SHA}" \
+            --jq .body >"$notes_file"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            is_draft="$(gh release view "$tag" --json isDraft --jq .isDraft)"
+            if [ "$is_draft" != "true" ]; then
+              echo "::error::Release ${tag} already exists and is not a draft"
+              exit 1
+            fi
+            echo "Draft release ${tag} already exists; uploading assets to it."
+            gh release edit "$tag" --title "$release_title" --notes-file "$notes_file"
+          else
+            gh release create "$tag" --draft --verify-tag --title "$release_title" --notes-file "$notes_file"
+          fi
+
+          gh release upload "$tag" dist/release-assets/* --clobber
+
+  publish-github-release:
+    name: Publish GitHub Release
+    needs: create-github-release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::Unable to find GitHub Release for ${tag}"
+            exit 1
+          fi
+
+          gh release edit "$tag" --draft=false
+          gh release edit "$tag" --latest
+
+          latest_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)"
+          if [ "$latest_tag" != "$tag" ]; then
+            echo "::error::Expected ${tag} to be latest release, but GitHub reports ${latest_tag}"
+            exit 1
+          fi
