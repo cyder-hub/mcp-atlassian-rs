@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.2 - 2026-06-08
+
+### Added
+- feat: Added `MCP_TOOL_CALL_DEBUG` to enable MCP tool-call diagnostics when `RUST_LOG` is unset, including tool names, elapsed time, failures, and redacted arguments.
+- docs: Added repository contributor guidelines in `AGENTS.md`.
+
+### Fixed
+- fix(jira): Fixed Server/Data Center search expand array payload handling.
+- fix(jira): Resolved `currentUser()` and `me` Jira user profile lookups.
+
 ## 0.1.1 - 2026-06-05
 
 ### Added
