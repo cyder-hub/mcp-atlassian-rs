@@ -3,7 +3,10 @@ use std::fmt::{Debug, Formatter};
 use reqwest::Url;
 
 use crate::{
-    atlassian::compat::{ENV_HTTP_PROXY, ENV_HTTPS_PROXY, ENV_NO_PROXY},
+    atlassian::compat::{
+        ENV_ATLASSIAN_HTTP_PROXY, ENV_ATLASSIAN_HTTPS_PROXY, ENV_ATLASSIAN_NO_PROXY,
+        ENV_HTTP_PROXY, ENV_HTTPS_PROXY, ENV_NO_PROXY,
+    },
     error::ConfigError,
 };
 
@@ -24,17 +27,32 @@ impl ProxyConfig {
     where
         F: FnMut(&str) -> Result<String, E>,
     {
-        let http_proxy = first_proxy_var(get_var, service_http_proxy, ENV_HTTP_PROXY)
-            .map(|(variable, value)| validate_proxy_url(variable, value))
-            .transpose()?;
-        let https_proxy = first_proxy_var(get_var, service_https_proxy, ENV_HTTPS_PROXY)
-            .map(|(variable, value)| validate_proxy_url(variable, value))
-            .transpose()?;
-        let no_proxy =
-            first_proxy_var(get_var, service_no_proxy, ENV_NO_PROXY).and_then(|(_, value)| {
-                let normalized = normalize_no_proxy(&value);
-                (!normalized.is_empty()).then_some(normalized)
-            });
+        let http_proxy = first_proxy_var(
+            get_var,
+            service_http_proxy,
+            ENV_ATLASSIAN_HTTP_PROXY,
+            ENV_HTTP_PROXY,
+        )
+        .map(|(variable, value)| validate_proxy_url(variable, value))
+        .transpose()?;
+        let https_proxy = first_proxy_var(
+            get_var,
+            service_https_proxy,
+            ENV_ATLASSIAN_HTTPS_PROXY,
+            ENV_HTTPS_PROXY,
+        )
+        .map(|(variable, value)| validate_proxy_url(variable, value))
+        .transpose()?;
+        let no_proxy = first_proxy_var(
+            get_var,
+            service_no_proxy,
+            ENV_ATLASSIAN_NO_PROXY,
+            ENV_NO_PROXY,
+        )
+        .and_then(|(_, value)| {
+            let normalized = normalize_no_proxy(&value);
+            (!normalized.is_empty()).then_some(normalized)
+        });
 
         Ok(Self {
             http_proxy,
@@ -69,6 +87,7 @@ impl Debug for ProxyConfig {
 fn first_proxy_var<F, E>(
     get_var: &mut F,
     service_variable: &'static str,
+    atlassian_variable: &'static str,
     global_variable: &'static str,
 ) -> Option<(&'static str, String)>
 where
@@ -76,6 +95,9 @@ where
 {
     optional_var(get_var, service_variable)
         .map(|value| (service_variable, value))
+        .or_else(|| {
+            optional_var(get_var, atlassian_variable).map(|value| (atlassian_variable, value))
+        })
         .or_else(|| optional_var(get_var, global_variable).map(|value| (global_variable, value)))
 }
 
@@ -142,7 +164,10 @@ fn redact_proxy_url(value: &str) -> String {
 mod tests {
     use std::collections::BTreeMap;
 
-    use crate::atlassian::compat::{ENV_JIRA_HTTP_PROXY, ENV_JIRA_HTTPS_PROXY, ENV_JIRA_NO_PROXY};
+    use crate::atlassian::compat::{
+        ENV_ATLASSIAN_HTTP_PROXY, ENV_ATLASSIAN_HTTPS_PROXY, ENV_ATLASSIAN_NO_PROXY,
+        ENV_JIRA_HTTP_PROXY, ENV_JIRA_HTTPS_PROXY, ENV_JIRA_NO_PROXY,
+    };
 
     use super::*;
 
@@ -164,13 +189,22 @@ mod tests {
     fn proxy_config_uses_service_specific_values_before_global() {
         let proxy = proxy_from_pairs(&[
             (ENV_HTTP_PROXY, "http://global-proxy.example:8080"),
+            (
+                ENV_ATLASSIAN_HTTP_PROXY,
+                "http://atlassian-proxy.example:8080",
+            ),
             (ENV_JIRA_HTTP_PROXY, "http://jira-proxy.example:8080"),
             (ENV_HTTPS_PROXY, "http://global-secure-proxy.example:8080"),
+            (
+                ENV_ATLASSIAN_HTTPS_PROXY,
+                "http://atlassian-secure-proxy.example:8080",
+            ),
             (
                 ENV_JIRA_HTTPS_PROXY,
                 "https://jira-secure-proxy.example:8443",
             ),
             (ENV_NO_PROXY, "global.example"),
+            (ENV_ATLASSIAN_NO_PROXY, "atlassian.example"),
             (ENV_JIRA_NO_PROXY, " example.atlassian.net,localhost "),
         ])
         .unwrap();
@@ -186,6 +220,38 @@ mod tests {
         assert_eq!(
             proxy.no_proxy.as_deref(),
             Some("example.atlassian.net,localhost")
+        );
+    }
+
+    #[test]
+    fn proxy_config_uses_atlassian_fallback_before_standard_proxy_values() {
+        let proxy = proxy_from_pairs(&[
+            (ENV_HTTP_PROXY, "http://global-proxy.example:8080"),
+            (
+                ENV_ATLASSIAN_HTTP_PROXY,
+                "http://atlassian-proxy.example:8080",
+            ),
+            (ENV_HTTPS_PROXY, "http://global-secure-proxy.example:8080"),
+            (
+                ENV_ATLASSIAN_HTTPS_PROXY,
+                "http://atlassian-secure-proxy.example:8080",
+            ),
+            (ENV_NO_PROXY, "global.example"),
+            (ENV_ATLASSIAN_NO_PROXY, " atlassian.example,localhost "),
+        ])
+        .unwrap();
+
+        assert_eq!(
+            proxy.http_proxy.as_deref(),
+            Some("http://atlassian-proxy.example:8080")
+        );
+        assert_eq!(
+            proxy.https_proxy.as_deref(),
+            Some("http://atlassian-secure-proxy.example:8080")
+        );
+        assert_eq!(
+            proxy.no_proxy.as_deref(),
+            Some("atlassian.example,localhost")
         );
     }
 

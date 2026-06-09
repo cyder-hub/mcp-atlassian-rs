@@ -13,9 +13,9 @@ Implemented in the Rust root project:
 - Package, binary, server name, Docker image, compose service, and CI image identity use `mcp-atlassian-rs`.
 - MCP server runs over `stdio` and streamable HTTP at `/mcp`.
 - Logging is configured to stderr so stdio MCP stdout remains protocol-only.
-- Runtime control-plane config parses `TOOL_PROFILE`, `TOOLSETS`, `ENABLED_TOOLS`, `DISABLED_TOOLS`, `ATLASSIAN_OAUTH_CLOUD_ID`, `ATLASSIAN_OAUTH_ENABLE`, `MCP_ALLOWED_URL_DOMAINS`, `IGNORE_HEADER_AUTH`, `MCP_HTTP_HOST`, `MCP_HTTP_PORT`, and `MCP_HTTP_PATH`.
-- Jira config parses `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN`, `JIRA_PERSONAL_TOKEN`, `ATLASSIAN_OAUTH_ACCESS_TOKEN`, `JIRA_OAUTH_ACCESS_TOKEN`, `JIRA_SSL_VERIFY`, `JIRA_PROJECTS_FILTER`, `JIRA_TIMEOUT`, `JIRA_HTTP_PROXY`, `JIRA_HTTPS_PROXY`, `JIRA_NO_PROXY`, `JIRA_CUSTOM_HEADERS`, `JIRA_CLIENT_CERT`, and `JIRA_CLIENT_KEY`.
-- Confluence config parses `CONFLUENCE_URL`, `CONFLUENCE_USERNAME`, `CONFLUENCE_API_TOKEN`, `CONFLUENCE_PERSONAL_TOKEN`, `ATLASSIAN_OAUTH_ACCESS_TOKEN`, `CONFLUENCE_OAUTH_ACCESS_TOKEN`, `CONFLUENCE_SSL_VERIFY`, `CONFLUENCE_SPACES_FILTER`, `CONFLUENCE_TIMEOUT`, `CONFLUENCE_HTTP_PROXY`, `CONFLUENCE_HTTPS_PROXY`, `CONFLUENCE_NO_PROXY`, `CONFLUENCE_CUSTOM_HEADERS`, `CONFLUENCE_CLIENT_CERT`, and `CONFLUENCE_CLIENT_KEY`.
+- Runtime control-plane config parses `TOOL_PROFILE`, `TOOLSETS`, `ENABLED_TOOLS`, `DISABLED_TOOLS`, `ATLASSIAN_OAUTH_CLOUD_ID`, `ATLASSIAN_OAUTH_ENABLE`, `MCP_ALLOWED_URL_DOMAINS`, and `IGNORE_HEADER_AUTH`. Streamable HTTP additionally parses `MCP_HTTP_HOST`, `MCP_HTTP_PORT`, and `MCP_HTTP_PATH`.
+- Jira config parses `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN`, `JIRA_PERSONAL_TOKEN`, `ATLASSIAN_USERNAME`, `ATLASSIAN_API_TOKEN`, `ATLASSIAN_PERSONAL_TOKEN`, `ATLASSIAN_OAUTH_ACCESS_TOKEN`, `JIRA_OAUTH_ACCESS_TOKEN`, `JIRA_SSL_VERIFY`, `ATLASSIAN_SSL_VERIFY`, `JIRA_PROJECTS_FILTER`, `JIRA_TIMEOUT`, `ATLASSIAN_TIMEOUT`, `JIRA_HTTP_PROXY`, `JIRA_HTTPS_PROXY`, `JIRA_NO_PROXY`, `ATLASSIAN_HTTP_PROXY`, `ATLASSIAN_HTTPS_PROXY`, `ATLASSIAN_NO_PROXY`, `JIRA_CUSTOM_HEADERS`, `ATLASSIAN_CUSTOM_HEADERS`, `JIRA_CLIENT_CERT`, `JIRA_CLIENT_KEY`, `ATLASSIAN_CLIENT_CERT`, and `ATLASSIAN_CLIENT_KEY`.
+- Confluence config parses `CONFLUENCE_URL`, `CONFLUENCE_USERNAME`, `CONFLUENCE_API_TOKEN`, `CONFLUENCE_PERSONAL_TOKEN`, `ATLASSIAN_USERNAME`, `ATLASSIAN_API_TOKEN`, `ATLASSIAN_PERSONAL_TOKEN`, `ATLASSIAN_OAUTH_ACCESS_TOKEN`, `CONFLUENCE_OAUTH_ACCESS_TOKEN`, `CONFLUENCE_SSL_VERIFY`, `ATLASSIAN_SSL_VERIFY`, `CONFLUENCE_SPACES_FILTER`, `CONFLUENCE_TIMEOUT`, `ATLASSIAN_TIMEOUT`, `CONFLUENCE_HTTP_PROXY`, `CONFLUENCE_HTTPS_PROXY`, `CONFLUENCE_NO_PROXY`, `ATLASSIAN_HTTP_PROXY`, `ATLASSIAN_HTTPS_PROXY`, `ATLASSIAN_NO_PROXY`, `CONFLUENCE_CUSTOM_HEADERS`, `ATLASSIAN_CUSTOM_HEADERS`, `CONFLUENCE_CLIENT_CERT`, `CONFLUENCE_CLIENT_KEY`, `ATLASSIAN_CLIENT_CERT`, and `ATLASSIAN_CLIENT_KEY`.
 - Jira Cloud uses username/API token auth for `*.atlassian.net`; Jira Server/Data Center uses PAT auth.
 - Confluence Cloud uses username/API token auth for `*.atlassian.net`; Confluence Server/Data Center uses PAT auth.
 - Cloud BYOT access tokens use `https://api.atlassian.com/ex/jira/{cloud_id}` for Jira and `https://api.atlassian.com/ex/confluence/{cloud_id}/wiki` for Confluence. Server/Data Center BYOT keeps the configured service base URL.
@@ -55,7 +55,6 @@ Deferred:
 
 - Rust 1.94 or newer
 - just
-- Python 3 when running local smoke scripts
 - curl for manual HTTP checks
 - Docker when validating container or compose behavior in later gates
 - An MCP client or MCP inspector for manual transport checks
@@ -116,7 +115,7 @@ Most users should choose a single profile and leave lower-level tool controls un
 
 | Variable | Default | Behavior |
 | --- | --- | --- |
-| `TOOL_PROFILE` | `basic` | Supports `basic`, `developer`, `manager`, `full`, or `custom`. Profiles expand to default toolsets. |
+| `TOOL_PROFILE` | `basic` | Supports `basic`, `developer`, `manager`, `full`, or `custom`. Profiles expand to default toolsets. Unknown values fail startup. |
 
 Profiles are ordered from least to most capable:
 
@@ -132,7 +131,7 @@ Advanced tool overrides:
 
 | Variable | Default | Behavior |
 | --- | --- | --- |
-| `TOOLSETS` | profile defaults | Comma-separated registered Jira/Confluence toolsets to add to the selected profile. `all` enables every toolset. |
+| `TOOLSETS` | profile defaults | Comma-separated registered Jira/Confluence toolsets to add to the selected profile. `all` enables every toolset. Unknown names fail startup. |
 | `ENABLED_TOOLS` | unset | Comma-separated tool names to add exactly, even when their toolset is not enabled. |
 | `DISABLED_TOOLS` | unset | Comma-separated tool names to remove exactly. This takes precedence over profile, toolset, and enabled-tool inclusion. |
 
@@ -166,6 +165,8 @@ BYOT access tokens:
 | `CONFLUENCE_OAUTH_ACCESS_TOKEN` | unset | Confluence-specific BYOT/OAuth access token. Takes precedence over `ATLASSIAN_OAUTH_ACCESS_TOKEN` for Confluence. |
 | `ATLASSIAN_OAUTH_CLOUD_ID` | unset | Required for Cloud BYOT access-token auth. Also used by Jira Forms/ProForma helpers. |
 | `ATLASSIAN_OAUTH_ENABLE` | `false` | Truthy values interpret streamable HTTP `Authorization: Bearer` as BYOT/OAuth access-token auth instead of PAT-compatible auth. |
+| `ATLASSIAN_USERNAME` / `ATLASSIAN_API_TOKEN` | unset | Shared username/API-token fallback for Jira and Confluence when service-specific values are unset. |
+| `ATLASSIAN_PERSONAL_TOKEN` | unset | Shared PAT fallback for Jira and Confluence Server/Data Center when service-specific PAT values are unset. |
 
 Full OAuth Cloud 3LO, OAuth proxy/DCR, refresh/token storage, and Data Center OAuth authorization-code/refresh flows are not implemented.
 
@@ -187,17 +188,26 @@ Confluence:
 | `CONFLUENCE_SPACES_FILTER` | unset | Comma-separated space keys. Applies to Confluence search when the tool call does not provide `spaces_filter`; an explicit empty `spaces_filter` disables the env filter. |
 | `CONFLUENCE_TIMEOUT` | `75` | Confluence HTTP request timeout in seconds. Must be a positive integer. |
 
+Shared fallback options:
+
+| Variable | Default | Behavior |
+| --- | --- | --- |
+| `ATLASSIAN_SSL_VERIFY` | `true` | Shared TLS verification fallback when `JIRA_SSL_VERIFY` or `CONFLUENCE_SSL_VERIFY` is unset. |
+| `ATLASSIAN_TIMEOUT` | `75` | Shared positive timeout fallback when `JIRA_TIMEOUT` or `CONFLUENCE_TIMEOUT` is unset. |
+
 ## Network And TLS
 
 Proxy and custom headers:
 
 | Variable | Behavior |
 | --- | --- |
-| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | Global fallback for Jira and Confluence when a service-specific proxy variable is unset. |
+| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | Standard proxy fallback when service-specific and `ATLASSIAN_*` proxy variables are unset. |
+| `ATLASSIAN_HTTP_PROXY` / `ATLASSIAN_HTTPS_PROXY` / `ATLASSIAN_NO_PROXY` | Shared Atlassian proxy fallback for Jira and Confluence. Takes precedence over standard proxy variables. |
 | `JIRA_HTTP_PROXY` / `JIRA_HTTPS_PROXY` / `JIRA_NO_PROXY` | Jira-specific proxy config. |
 | `CONFLUENCE_HTTP_PROXY` / `CONFLUENCE_HTTPS_PROXY` / `CONFLUENCE_NO_PROXY` | Confluence-specific proxy config. |
 | `JIRA_CUSTOM_HEADERS` | Jira outbound headers as comma-separated `Name=value` pairs. |
 | `CONFLUENCE_CUSTOM_HEADERS` | Confluence outbound headers as comma-separated `Name=value` pairs. |
+| `ATLASSIAN_CUSTOM_HEADERS` | Shared custom outbound headers fallback when service-specific custom headers are unset. |
 
 HTTP/HTTPS proxy URLs must use `http` or `https`. Reserved custom header names are rejected: `Authorization`, `Cookie`, `Set-Cookie`, `Proxy-Authorization`, `Host`, `Content-Type`, `Content-Length`, `Transfer-Encoding`, `Connection`, `X-Atlassian-Jira-Personal-Token`, `X-Atlassian-Confluence-Personal-Token`, `X-Atlassian-Jira-Url`, `X-Atlassian-Confluence-Url`, and `X-Atlassian-Cloud-Id`.
 
@@ -207,6 +217,7 @@ mTLS:
 | --- | --- |
 | `JIRA_CLIENT_CERT` / `JIRA_CLIENT_KEY` | Jira PEM client certificate and key paths. Must be set together. |
 | `CONFLUENCE_CLIENT_CERT` / `CONFLUENCE_CLIENT_KEY` | Confluence PEM client certificate and key paths. Must be set together. |
+| `ATLASSIAN_CLIENT_CERT` / `ATLASSIAN_CLIENT_KEY` | Shared mTLS fallback when service-specific mTLS variables are unset. Must be set together. |
 
 SOCKS proxy support is not compiled in.
 
@@ -349,10 +360,6 @@ Run `just --list` to see the local command surface.
 ```bash
 just dev           # run stdio transport
 just dev-http      # run streamable HTTP transport on 127.0.0.1:8000
-just smoke-stdio       # validate stdio MCP initialize, tools/list, and mock Jira jira_get_issue
-just smoke-http        # validate /healthz, HTTP MCP tools/list, and mock Jira jira_get_issue
-just smoke-jira        # validate restricted Jira write-tool hiding and blocking
-just smoke-confluence  # validate mock Confluence stdio, HTTP, and restricted tool blocking
 just smoke             # run all local smoke checks
 just acceptance-jira        # run real Jira acceptance using .env.dev by default
 just acceptance-confluence  # run real Confluence acceptance using .env.dev by default
@@ -362,6 +369,8 @@ just test              # run tests
 just check             # fmt, check, and tests
 just docker-build      # local Docker image build
 ```
+
+Detailed development-only smoke, acceptance, `xtask`, and test-object variable documentation lives in [`docs/development-tools.md`](docs/development-tools.md).
 
 ## Release Artifacts
 
@@ -414,7 +423,7 @@ Run with compose:
 docker compose up --build
 ```
 
-Set `MCP_PORT` to change the host port used by compose. Set `MCP_HTTP_PATH`, `TOOL_PROFILE`, `TOOLSETS`, `ENABLED_TOOLS`, `DISABLED_TOOLS`, and `MCP_ALLOWED_URL_DOMAINS` through the shell or compose environment when needed.
+Set `MCP_PORT` to change the host port used by compose. The compose file passes through runtime control variables plus Jira, Confluence, shared `ATLASSIAN_*`, and proxy variables from the shell or compose environment.
 
 The compose service includes a `/healthz` healthcheck and runs the binary as the non-root `app` user from the image. Keep secrets in your deployment secret manager or local shell environment; do not commit dotenv files with real Atlassian credentials.
 
@@ -431,19 +440,10 @@ cargo fmt --check
 cargo check
 cargo test
 just check
-just smoke-stdio
-just smoke-http
-just smoke-jira
-just smoke-confluence
 just smoke
-just acceptance-jira
-just acceptance-confluence
-just acceptance-mcp
 ```
 
-The smoke commands start local mock Jira and Confluence servers and do not require real Atlassian credentials.
-
-Real acceptance wrappers read `.env.dev` by default; set `ACCEPTANCE_ENV_FILE` to use another dotenv file. Do not store real token values in committed files or task records. Real acceptance requires only test objects, not production business objects. Common test-object variables include `JIRA_READ_ISSUE`, `JIRA_PROJECT_KEY`, `JIRA_FIELD_ID`, `JIRA_FIELD_CONTEXT_ID`, `JIRA_SERVICE_DESK_ID`, `JIRA_QUEUE_ID`, `JIRA_FORM_ID`, `CONFLUENCE_SEARCH_QUERY`, `CONFLUENCE_PAGE_ID`, `CONFLUENCE_SPACE_KEY`, `CONFLUENCE_TEST_PAGE_PREFIX`, `CONFLUENCE_MUTATION_PAGE_ID`, `CONFLUENCE_COMMENT_ID`, `CONFLUENCE_ATTACHMENT_ID`, `CONFLUENCE_ATTACHMENT_FILE`, and `CONFLUENCE_LABEL_NAME`.
+The smoke commands start local mock Jira and Confluence servers and do not require real Atlassian credentials. Real acceptance commands require disposable test objects and development-only credentials; see [`docs/development-tools.md`](docs/development-tools.md).
 
 ## License
 

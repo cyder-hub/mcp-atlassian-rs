@@ -10,10 +10,10 @@ Commands run:
 - [ ] `RUSTFLAGS="-Dwarnings" cargo check`
 - [ ] `cargo test`
 - [ ] `cargo build --release`
-- [ ] `bash scripts/smoke-stdio.sh`
-- [ ] `bash scripts/smoke-http.sh`
-- [ ] `bash scripts/smoke-jira.sh`
-- [ ] `bash scripts/smoke-confluence.sh`
+- [ ] `cargo xtask smoke jira stdio`
+- [ ] `cargo xtask smoke jira http`
+- [ ] `cargo xtask smoke jira restricted`
+- [ ] `cargo xtask smoke confluence all`
 - [ ] `docker compose -f docker-compose.yml config`
 - [ ] `docker build -t mcp-atlassian-rs:ci -f Dockerfile .`
 - [ ] Container `/healthz` smoke

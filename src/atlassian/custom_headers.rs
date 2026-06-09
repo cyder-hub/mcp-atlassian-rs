@@ -10,6 +10,7 @@ pub struct CustomHeaders {
 }
 
 impl CustomHeaders {
+    #[cfg(test)]
     pub fn from_var_provider<F, E>(
         get_var: &mut F,
         variable: &'static str,
@@ -18,6 +19,23 @@ impl CustomHeaders {
         F: FnMut(&str) -> Result<String, E>,
     {
         let Some(value) = optional_var(get_var, variable) else {
+            return Ok(Self::default());
+        };
+
+        parse_custom_headers(variable, &value)
+    }
+
+    pub fn from_var_provider_with_fallback<F, E>(
+        get_var: &mut F,
+        service_variable: &'static str,
+        atlassian_variable: &'static str,
+    ) -> Result<Self, ConfigError>
+    where
+        F: FnMut(&str) -> Result<String, E>,
+    {
+        let Some((variable, value)) = optional_named_var(get_var, service_variable)
+            .or_else(|| optional_named_var(get_var, atlassian_variable))
+        else {
             return Ok(Self::default());
         };
 
@@ -94,6 +112,13 @@ where
     F: FnMut(&str) -> Result<String, E>,
 {
     get_var(key).ok().and_then(non_empty_trimmed)
+}
+
+fn optional_named_var<F, E>(get_var: &mut F, key: &'static str) -> Option<(&'static str, String)>
+where
+    F: FnMut(&str) -> Result<String, E>,
+{
+    optional_var(get_var, key).map(|value| (key, value))
 }
 
 fn non_empty_trimmed(value: String) -> Option<String> {

@@ -31,6 +31,7 @@ pub const SENSITIVE_QUERY_KEYS: &[&str] = &[
 
 pub const SECRET_ENV_SUFFIXES: &[&str] = &["_TOKEN", "_SECRET", "_PASSWORD"];
 
+#[cfg(test)]
 pub fn redact_text(text: &str) -> String {
     redact_text_with_secrets(text, current_env_secret_values())
 }
@@ -129,6 +130,7 @@ where
         .collect()
 }
 
+#[cfg(test)]
 pub fn current_env_secret_values() -> Vec<String> {
     env_secret_values_from_pairs(std::env::vars())
 }
@@ -139,6 +141,7 @@ pub fn is_sensitive_header_name(name: &str) -> bool {
     SENSITIVE_HEADER_NAMES.contains(&name.as_str())
 }
 
+#[cfg(test)]
 pub fn is_sensitive_query_key(key: &str) -> bool {
     let key = key.trim().to_ascii_lowercase();
     SENSITIVE_QUERY_KEYS.contains(&key.as_str())

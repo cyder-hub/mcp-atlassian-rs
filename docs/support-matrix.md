@@ -123,11 +123,11 @@ All Confluence rows below are implemented in Rust and are registry-managed busin
 
 | Capability | Env or CLI surface | Rust status | Notes |
 | --- | --- | --- | --- |
-| Tool profile | `TOOL_PROFILE` | Supported | Supports `basic`, `developer`, `manager`, `full`, and `custom`; defaults to `basic`. |
-| Toolset filtering | `TOOLSETS` | Supported | Adds comma-separated registered toolsets to the selected profile. `all` enables every toolset. |
+| Tool profile | `TOOL_PROFILE` | Supported | Supports `basic`, `developer`, `manager`, `full`, and `custom`; defaults to `basic`; unknown values fail startup. |
+| Toolset filtering | `TOOLSETS` | Supported | Adds comma-separated registered toolsets to the selected profile. `all` enables every toolset; unknown names fail startup. |
 | Exact tool inclusion | `ENABLED_TOOLS` | Supported | Comma-separated MCP tool names to add exactly. |
 | Exact tool exclusion | `DISABLED_TOOLS` | Supported | Comma-separated MCP tool names to remove exactly. Takes precedence over profile/toolset inclusion. |
-| Streamable HTTP binding | `MCP_HTTP_HOST`, `MCP_HTTP_PORT`, `MCP_HTTP_PATH`, `streamhttp --host/--port/--path` | Supported | Default MCP path is `/mcp`; missing leading slash is normalized. |
+| Streamable HTTP binding | `MCP_HTTP_HOST`, `MCP_HTTP_PORT`, `MCP_HTTP_PATH`, `streamhttp --host/--port/--path` | Supported | Parsed only for streamable HTTP startup. Default MCP path is `/mcp`; missing leading slash is normalized. |
 | Health endpoint | `GET /healthz` | Supported | Available for streamable HTTP deployments and compose healthchecks. |
 | Request-scoped auth bypass | `IGNORE_HEADER_AUTH` | Supported | Truthy values ignore request-scoped auth/service headers and use only global environment config. |
 | Header URL allowlist | `MCP_ALLOWED_URL_DOMAINS` | Supported | Restricts header-provided Jira/Confluence service URLs to exact domains or subdomains. |
@@ -142,6 +142,8 @@ All Confluence rows below are implemented in Rust and are registry-managed busin
 | Jira Server/Data Center PAT | `JIRA_URL`, `JIRA_PERSONAL_TOKEN` | Supported | Used for non-Cloud Jira URLs. |
 | Confluence Cloud basic/API token | `CONFLUENCE_URL`, `CONFLUENCE_USERNAME`, `CONFLUENCE_API_TOKEN` | Supported | Used for Confluence Cloud URLs ending in `.atlassian.net`. |
 | Confluence Server/Data Center PAT | `CONFLUENCE_URL`, `CONFLUENCE_PERSONAL_TOKEN` | Supported | Used for non-Cloud Confluence URLs. |
+| Shared basic/API token fallback | `ATLASSIAN_USERNAME`, `ATLASSIAN_API_TOKEN` | Supported | Used when service-specific username/API-token variables are unset. Service-specific values take precedence. |
+| Shared Server/Data Center PAT fallback | `ATLASSIAN_PERSONAL_TOKEN` | Supported | Used when service-specific PAT variables are unset. Service-specific values take precedence. |
 | Shared BYOT access token | `ATLASSIAN_OAUTH_ACCESS_TOKEN` | Supported | Fallback access token for Jira and Confluence. Cloud mode requires `ATLASSIAN_OAUTH_CLOUD_ID`. |
 | Jira-specific BYOT access token | `JIRA_OAUTH_ACCESS_TOKEN` | Supported | Takes precedence over the shared access token for Jira. Jira Cloud uses `https://api.atlassian.com/ex/jira/{cloud_id}`. |
 | Confluence-specific BYOT access token | `CONFLUENCE_OAUTH_ACCESS_TOKEN` | Supported | Takes precedence over the shared access token for Confluence. Confluence Cloud uses `https://api.atlassian.com/ex/confluence/{cloud_id}/wiki`. |
@@ -173,13 +175,18 @@ All Confluence rows below are implemented in Rust and are registry-managed busin
 | --- | --- | --- | --- |
 | Jira HTTP/HTTPS proxy | `JIRA_HTTP_PROXY`, `JIRA_HTTPS_PROXY`, `JIRA_NO_PROXY` | Supported | Service-specific values take precedence over global proxy fallback. |
 | Confluence HTTP/HTTPS proxy | `CONFLUENCE_HTTP_PROXY`, `CONFLUENCE_HTTPS_PROXY`, `CONFLUENCE_NO_PROXY` | Supported | Service-specific values take precedence over global proxy fallback. |
-| Global HTTP/HTTPS proxy fallback | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | Supported | Used when service-specific proxy variables are unset. |
+| Shared Atlassian proxy fallback | `ATLASSIAN_HTTP_PROXY`, `ATLASSIAN_HTTPS_PROXY`, `ATLASSIAN_NO_PROXY` | Supported | Used when service-specific proxy variables are unset; takes precedence over standard proxy variables. |
+| Global HTTP/HTTPS proxy fallback | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | Supported | Used when service-specific and shared Atlassian proxy variables are unset. |
 | Jira custom outbound headers | `JIRA_CUSTOM_HEADERS` | Supported | Validated comma-separated `Name=value` pairs. Reserved auth, cookie, proxy, host, content, connection, and request-scoped Atlassian headers are rejected. |
 | Confluence custom outbound headers | `CONFLUENCE_CUSTOM_HEADERS` | Supported | Same validation policy as Jira custom headers. |
+| Shared custom outbound headers fallback | `ATLASSIAN_CUSTOM_HEADERS` | Supported | Used when service-specific custom headers are unset. |
 | Jira mTLS client cert/key | `JIRA_CLIENT_CERT`, `JIRA_CLIENT_KEY` | Supported | PEM certificate and key paths; both must be set together. |
 | Confluence mTLS client cert/key | `CONFLUENCE_CLIENT_CERT`, `CONFLUENCE_CLIENT_KEY` | Supported | PEM certificate and key paths; both must be set together. |
-| Jira TLS verification toggle | `JIRA_SSL_VERIFY` | Supported | `false`, `0`, `no`, and `off` disable verification. |
-| Confluence TLS verification toggle | `CONFLUENCE_SSL_VERIFY` | Supported | `false`, `0`, `no`, and `off` disable verification. |
+| Shared mTLS client cert/key fallback | `ATLASSIAN_CLIENT_CERT`, `ATLASSIAN_CLIENT_KEY` | Supported | Used when service-specific mTLS variables are unset; both must be set together. |
+| Jira TLS verification toggle | `JIRA_SSL_VERIFY` | Supported | `false`, `0`, `no`, and `off` disable verification. Service-specific value takes precedence over `ATLASSIAN_SSL_VERIFY`. |
+| Confluence TLS verification toggle | `CONFLUENCE_SSL_VERIFY` | Supported | `false`, `0`, `no`, and `off` disable verification. Service-specific value takes precedence over `ATLASSIAN_SSL_VERIFY`. |
+| Shared TLS verification fallback | `ATLASSIAN_SSL_VERIFY` | Supported | Shared fallback for Jira and Confluence TLS verification. |
+| Service timeout controls | `JIRA_TIMEOUT`, `CONFLUENCE_TIMEOUT`, `ATLASSIAN_TIMEOUT` | Supported | Positive integer seconds. Service-specific values take precedence over shared fallback. |
 | SSRF protection for header URLs | URL validation and optional domain allowlist | Supported | Validates scheme, hostname, blocked hostnames, non-global IP literals, DNS results, and `MCP_ALLOWED_URL_DOMAINS`. |
 | Outbound redirect policy | Atlassian HTTP client behavior | Supported | Redirects are same-origin only and limited to 3 hops. |
 | Session auth fingerprint | `Mcp-Session-Id` with auth fingerprint | Supported | Changing auth or token type within a streamable HTTP MCP session is rejected. |

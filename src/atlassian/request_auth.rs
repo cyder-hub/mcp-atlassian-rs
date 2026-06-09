@@ -498,7 +498,7 @@ mod tests {
     use reqwest::header::{AUTHORIZATION, HeaderValue};
 
     #[test]
-    fn request_auth_contract_exposes_stage_six_headers() {
+    fn request_auth_contract_exposes_headers() {
         assert_eq!(ENV_IGNORE_HEADER_AUTH, "IGNORE_HEADER_AUTH");
         assert_eq!(HEADER_AUTHORIZATION, "authorization");
         assert_eq!(HEADER_ATLASSIAN_CLOUD_ID, "x-atlassian-cloud-id");

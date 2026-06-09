@@ -1,6 +1,5 @@
 use std::{
     collections::BTreeMap,
-    env,
     io::{BufRead, BufReader, Write},
     net::TcpListener,
     path::PathBuf,
@@ -21,12 +20,13 @@ use axum::{
     response::{IntoResponse, Response},
     routing::any,
 };
+use clap::{Args, ValueEnum};
 use reqwest::header::HeaderMap as ReqwestHeaderMap;
 use serde_json::{Value, json};
 use tokio::{sync::Mutex, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
-use crate::AppResult;
+use crate::XtaskResult;
 
 type EnvMap = BTreeMap<String, String>;
 
@@ -41,14 +41,35 @@ pub struct SmokeCommand {
     path: Option<String>,
 }
 
+#[derive(Debug, Clone, Args, PartialEq, Eq)]
+pub struct SmokeArgs {
+    #[arg(value_enum, default_value_t = SmokeMode::All)]
+    pub mode: SmokeMode,
+    #[arg(long)]
+    pub port: Option<u16>,
+    #[arg(long)]
+    pub path: Option<String>,
+}
+
+impl SmokeArgs {
+    pub fn into_command(self, service: SmokeService) -> SmokeCommand {
+        SmokeCommand {
+            service,
+            mode: self.mode,
+            port: self.port,
+            path: self.path,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SmokeService {
+pub enum SmokeService {
     Jira,
     Confluence,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SmokeMode {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum SmokeMode {
     All,
     Stdio,
     Http,
@@ -73,76 +94,7 @@ struct MockServer {
     task: JoinHandle<std::io::Result<()>>,
 }
 
-pub fn parse_smoke_args(args: &[String]) -> Result<SmokeCommand, String> {
-    let Some(service) = args.first() else {
-        return Err("smoke requires a service: jira or confluence".to_string());
-    };
-    let service = match service.as_str() {
-        "jira" => SmokeService::Jira,
-        "confluence" => SmokeService::Confluence,
-        other => return Err(format!("unknown smoke service `{other}`")),
-    };
-
-    let mut mode = SmokeMode::All;
-    let mut port = None;
-    let mut path = None;
-    let mut index = 1;
-    if let Some(value) = args.get(index)
-        && !value.starts_with("--")
-    {
-        mode = match value.as_str() {
-            "all" => SmokeMode::All,
-            "stdio" => SmokeMode::Stdio,
-            "http" => SmokeMode::Http,
-            "restricted" => SmokeMode::Restricted,
-            other => return Err(format!("unknown smoke mode `{other}`")),
-        };
-        index += 1;
-    }
-
-    while index < args.len() {
-        match args[index].as_str() {
-            "--port" => {
-                index += 1;
-                let value = args
-                    .get(index)
-                    .ok_or_else(|| "--port requires a value".to_string())?;
-                port = Some(parse_port(value)?);
-            }
-            "--path" => {
-                index += 1;
-                path = Some(
-                    args.get(index)
-                        .ok_or_else(|| "--path requires a value".to_string())?
-                        .clone(),
-                );
-            }
-            arg if arg.starts_with("--port=") => {
-                port = Some(parse_port(
-                    arg.strip_prefix("--port=").expect("prefix checked"),
-                )?);
-            }
-            arg if arg.starts_with("--path=") => {
-                path = Some(
-                    arg.strip_prefix("--path=")
-                        .expect("prefix checked")
-                        .to_string(),
-                );
-            }
-            arg => return Err(format!("unexpected smoke argument `{arg}`")),
-        }
-        index += 1;
-    }
-
-    Ok(SmokeCommand {
-        service,
-        mode,
-        port,
-        path,
-    })
-}
-
-pub async fn run(command: SmokeCommand) -> AppResult<i32> {
+pub async fn run(command: SmokeCommand) -> XtaskResult<i32> {
     match run_inner(command).await {
         Ok(()) => Ok(0),
         Err(error) => {
@@ -152,8 +104,46 @@ pub async fn run(command: SmokeCommand) -> AppResult<i32> {
     }
 }
 
+pub async fn run_all() -> XtaskResult<i32> {
+    let commands = [
+        SmokeCommand {
+            service: SmokeService::Jira,
+            mode: SmokeMode::Stdio,
+            port: None,
+            path: None,
+        },
+        SmokeCommand {
+            service: SmokeService::Jira,
+            mode: SmokeMode::Http,
+            port: None,
+            path: None,
+        },
+        SmokeCommand {
+            service: SmokeService::Jira,
+            mode: SmokeMode::Restricted,
+            port: None,
+            path: None,
+        },
+        SmokeCommand {
+            service: SmokeService::Confluence,
+            mode: SmokeMode::All,
+            port: None,
+            path: None,
+        },
+    ];
+
+    for command in commands {
+        let exit_code = run(command).await?;
+        if exit_code != 0 {
+            return Ok(exit_code);
+        }
+    }
+
+    Ok(0)
+}
+
 async fn run_inner(command: SmokeCommand) -> Result<(), String> {
-    let binary = env::current_exe().map_err(|error| format!("current_exe failed: {error}"))?;
+    let binary = build_mcp_binary()?;
     let server = MockServer::start(command.service).await?;
     let url = server.url.clone();
     let result = async {
@@ -187,6 +177,31 @@ async fn run_inner(command: SmokeCommand) -> Result<(), String> {
     .await;
     server.shutdown().await;
     result
+}
+
+fn build_mcp_binary() -> Result<PathBuf, String> {
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or_else(|| "xtask manifest directory has no parent".to_string())?
+        .to_path_buf();
+    let status = Command::new("cargo")
+        .args(["build", "--quiet", "--bin", "mcp-atlassian-rs"])
+        .current_dir(&workspace_root)
+        .status()
+        .map_err(|error| format!("failed to run cargo build: {error}"))?;
+    if !status.success() {
+        return Err(format!("cargo build failed with status {status}"));
+    }
+
+    let binary_name = if cfg!(windows) {
+        "mcp-atlassian-rs.exe"
+    } else {
+        "mcp-atlassian-rs"
+    };
+    Ok(workspace_root
+        .join("target")
+        .join("debug")
+        .join(binary_name))
 }
 
 impl MockServer {
@@ -1302,12 +1317,6 @@ fn normalize_path(path: &str) -> String {
     }
 }
 
-fn parse_port(value: &str) -> Result<u16, String> {
-    value
-        .parse()
-        .map_err(|_| format!("invalid --port value `{value}`"))
-}
-
 impl SmokeService {
     fn default_path(self) -> &'static str {
         "/mcp"
@@ -1340,16 +1349,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_smoke_command() {
+    fn builds_smoke_command_from_clap_args() {
+        let args = SmokeArgs {
+            mode: SmokeMode::Http,
+            port: Some(9000),
+            path: Some("mcp".to_string()),
+        };
         assert_eq!(
-            parse_smoke_args(&[
-                "jira".to_string(),
-                "http".to_string(),
-                "--port=9000".to_string(),
-                "--path".to_string(),
-                "mcp".to_string(),
-            ])
-            .unwrap(),
+            args.into_command(SmokeService::Jira),
             SmokeCommand {
                 service: SmokeService::Jira,
                 mode: SmokeMode::Http,

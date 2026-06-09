@@ -54,21 +54,20 @@ jobs:
         run: cargo build --release
 
       - name: Smoke stdio transport
-        run: bash scripts/smoke-stdio.sh
+        run: cargo xtask smoke jira stdio
 
       - name: Smoke streamable HTTP transport
-        run: bash scripts/smoke-http.sh
+        run: cargo xtask smoke jira http
 
       - name: Smoke Jira mock tools
-        run: bash scripts/smoke-jira.sh
+        run: cargo xtask smoke jira restricted
 
       - name: Smoke Confluence mock tools
-        run: bash scripts/smoke-confluence.sh
+        run: cargo xtask smoke confluence all
 
   docker:
     name: Docker
     runs-on: ubuntu-latest
-    needs: [service]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6

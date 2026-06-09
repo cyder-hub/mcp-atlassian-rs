@@ -5,7 +5,8 @@ WORKDIR /build
 
 COPY Cargo.toml Cargo.lock ./
 COPY src/ src/
-RUN cargo build --release
+COPY xtask/ xtask/
+RUN cargo build --release --bin mcp-atlassian-rs
 
 FROM debian:bookworm-slim AS runtime
 

@@ -11,6 +11,7 @@ pub struct ClientTlsIdentityConfig {
 }
 
 impl ClientTlsIdentityConfig {
+    #[cfg(test)]
     pub fn from_var_provider<F, E>(
         get_var: &mut F,
         cert_variable: &'static str,
@@ -34,6 +35,35 @@ impl ClientTlsIdentityConfig {
         }
     }
 
+    pub fn from_var_provider_with_fallback<F, E>(
+        get_var: &mut F,
+        service_cert_variable: &'static str,
+        service_key_variable: &'static str,
+        atlassian_cert_variable: &'static str,
+        atlassian_key_variable: &'static str,
+    ) -> Result<Option<Self>, ConfigError>
+    where
+        F: FnMut(&str) -> Result<String, E>,
+    {
+        let service_cert_path = optional_var(get_var, service_cert_variable);
+        let service_key_path = optional_var(get_var, service_key_variable);
+        if service_cert_path.is_some() || service_key_path.is_some() {
+            return cert_key_pair_from_values(
+                service_cert_path,
+                service_key_path,
+                service_cert_variable,
+                service_key_variable,
+            );
+        }
+
+        cert_key_pair_from_values(
+            optional_var(get_var, atlassian_cert_variable),
+            optional_var(get_var, atlassian_key_variable),
+            atlassian_cert_variable,
+            atlassian_key_variable,
+        )
+    }
+
     pub fn load_identity(&self) -> Result<Identity, AtlassianError> {
         let cert = fs::read(&self.cert_path).map_err(|_| {
             AtlassianError::invalid_input("failed to read mTLS client certificate file")
@@ -47,6 +77,25 @@ impl ClientTlsIdentityConfig {
         pem.extend_from_slice(&key);
 
         Identity::from_pem(&pem).map_err(AtlassianError::transport)
+    }
+}
+
+fn cert_key_pair_from_values(
+    cert_path: Option<String>,
+    key_path: Option<String>,
+    cert_variable: &'static str,
+    key_variable: &'static str,
+) -> Result<Option<ClientTlsIdentityConfig>, ConfigError> {
+    match (cert_path, key_path) {
+        (None, None) => Ok(None),
+        (Some(cert_path), Some(key_path)) => Ok(Some(ClientTlsIdentityConfig {
+            cert_path: PathBuf::from(cert_path),
+            key_path: PathBuf::from(key_path),
+        })),
+        _ => Err(ConfigError::MissingClientCertKeyPair {
+            cert_variable,
+            key_variable,
+        }),
     }
 }
 

@@ -80,7 +80,7 @@ docker compose up --build
 
 The image runs as a non-root `app` user. The compose service includes a `/healthz` healthcheck and maps `${MCP_PORT:-8000}` on the host to container port `8000`.
 
-Compose passes through `MCP_HTTP_PATH`, `TOOL_PROFILE`, `TOOLSETS`, `ENABLED_TOOLS`, `DISABLED_TOOLS`, `MCP_ALLOWED_URL_DOMAINS`, `MCP_TOOL_CALL_DEBUG`, and `RUST_LOG`. For example:
+Compose passes through runtime control variables plus Jira, Confluence, shared `ATLASSIAN_*`, and proxy variables. For example:
 
 ```bash
 MCP_TOOL_CALL_DEBUG=true docker compose up --build
@@ -90,11 +90,11 @@ MCP_TOOL_CALL_DEBUG=true docker compose up --build
 
 | Variable | Deployment use |
 | --- | --- |
-| `TOOL_PROFILE` | Set `basic`, `developer`, `manager`, `full`, or `custom`. Defaults to `basic`. |
-| `TOOLSETS` | Add comma-separated toolset names to the selected profile. `all` enables every toolset. |
+| `TOOL_PROFILE` | Set `basic`, `developer`, `manager`, `full`, or `custom`. Defaults to `basic`. Unknown values fail startup. |
+| `TOOLSETS` | Add comma-separated toolset names to the selected profile. `all` enables every toolset. Unknown names fail startup. |
 | `ENABLED_TOOLS` | Add comma-separated exact tool names. |
 | `DISABLED_TOOLS` | Remove comma-separated exact tool names. Takes precedence over profile/toolset inclusion. |
-| `MCP_HTTP_HOST` / `MCP_HTTP_PORT` / `MCP_HTTP_PATH` | Configure streamable HTTP when CLI flags are not used. |
+| `MCP_HTTP_HOST` / `MCP_HTTP_PORT` / `MCP_HTTP_PATH` | Configure streamable HTTP when CLI flags are not used. Ignored by stdio startup. |
 | `MCP_PORT` | Compose-only host port mapping. Does not configure the Rust process itself. |
 | `ENV_FILE` | Optional dotenv file loaded at startup. The `--env-file` CLI argument takes precedence. |
 | `IGNORE_HEADER_AUTH` | Set `true` to ignore request-scoped auth/service headers and use only global environment config. |
@@ -110,6 +110,7 @@ Supported global auth:
 - Jira Server/Data Center: `JIRA_URL`, `JIRA_PERSONAL_TOKEN`.
 - Confluence Cloud: `CONFLUENCE_URL`, `CONFLUENCE_USERNAME`, `CONFLUENCE_API_TOKEN`.
 - Confluence Server/Data Center: `CONFLUENCE_URL`, `CONFLUENCE_PERSONAL_TOKEN`.
+- Shared auth fallbacks: `ATLASSIAN_USERNAME`, `ATLASSIAN_API_TOKEN`, `ATLASSIAN_PERSONAL_TOKEN`.
 - BYOT access token: `ATLASSIAN_OAUTH_ACCESS_TOKEN`, or service-specific `JIRA_OAUTH_ACCESS_TOKEN` / `CONFLUENCE_OAUTH_ACCESS_TOKEN`.
 
 Cloud BYOT access-token auth requires `ATLASSIAN_OAUTH_CLOUD_ID`. Jira Cloud BYOT uses `https://api.atlassian.com/ex/jira/{cloud_id}`. Confluence Cloud BYOT uses `https://api.atlassian.com/ex/confluence/{cloud_id}/wiki`.
@@ -131,18 +132,22 @@ Supported outbound network controls:
 
 - Jira proxy: `JIRA_HTTP_PROXY`, `JIRA_HTTPS_PROXY`, `JIRA_NO_PROXY`.
 - Confluence proxy: `CONFLUENCE_HTTP_PROXY`, `CONFLUENCE_HTTPS_PROXY`, `CONFLUENCE_NO_PROXY`.
+- Shared Atlassian proxy fallback: `ATLASSIAN_HTTP_PROXY`, `ATLASSIAN_HTTPS_PROXY`, `ATLASSIAN_NO_PROXY`.
 - Global proxy fallback: `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`.
 - Jira custom outbound headers: `JIRA_CUSTOM_HEADERS`.
 - Confluence custom outbound headers: `CONFLUENCE_CUSTOM_HEADERS`.
+- Shared custom outbound headers fallback: `ATLASSIAN_CUSTOM_HEADERS`.
 - Jira mTLS: `JIRA_CLIENT_CERT`, `JIRA_CLIENT_KEY`.
 - Confluence mTLS: `CONFLUENCE_CLIENT_CERT`, `CONFLUENCE_CLIENT_KEY`.
-- TLS verification toggles: `JIRA_SSL_VERIFY`, `CONFLUENCE_SSL_VERIFY`.
+- Shared mTLS fallback: `ATLASSIAN_CLIENT_CERT`, `ATLASSIAN_CLIENT_KEY`.
+- TLS verification toggles: `JIRA_SSL_VERIFY`, `CONFLUENCE_SSL_VERIFY`, `ATLASSIAN_SSL_VERIFY`.
+- Timeout controls: `JIRA_TIMEOUT`, `CONFLUENCE_TIMEOUT`, `ATLASSIAN_TIMEOUT`.
 
 Reserved auth, cookie, host, content, proxy, connection, and request-scoped Atlassian headers are rejected in custom outbound headers.
 
 ## Security Behavior
 
-- Secret-looking values are redacted from logs, MCP debug output, compact acceptance errors, URL query values, and Atlassian error summaries.
+- Secret-looking values are redacted from logs, MCP debug output, development acceptance output, URL query values, and Atlassian error summaries.
 - MCP tool-call diagnostics include redacted JSON arguments. They can still include business data such as JQL, issue keys, page IDs, summaries, or descriptions, so enable them only while troubleshooting.
 - Header-provided service URLs are validated for scheme, hostname, blocked hostnames, IP ranges, DNS results, and optional allowed domains.
 - Outbound Atlassian redirects are same-origin only and limited to 3 hops.

@@ -6,6 +6,10 @@ rust-version = "1.94"
 license = "MIT"
 default-run = "mcp-atlassian-rs"
 
+[workspace]
+members = [".", "xtask"]
+resolver = "3"
+
 [[bin]]
 name = "mcp-atlassian-rs"
 path = "src/main.rs"

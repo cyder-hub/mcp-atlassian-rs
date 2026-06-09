@@ -6,10 +6,13 @@ use crate::{
     atlassian::{
         auth::AtlassianAuth,
         compat::{
-            ENV_ATLASSIAN_OAUTH_ACCESS_TOKEN, ENV_ATLASSIAN_OAUTH_CLOUD_ID,
             ENV_CONFLUENCE_CLIENT_CERT, ENV_CONFLUENCE_CLIENT_KEY, ENV_CONFLUENCE_CUSTOM_HEADERS,
             ENV_CONFLUENCE_HTTP_PROXY, ENV_CONFLUENCE_HTTPS_PROXY, ENV_CONFLUENCE_NO_PROXY,
             ENV_CONFLUENCE_OAUTH_ACCESS_TOKEN,
+        },
+        config::{
+            AtlassianServiceConfigSpec, ParsedAtlassianServiceConfig,
+            parse_atlassian_service_config,
         },
         custom_headers::CustomHeaders,
         mtls::ClientTlsIdentityConfig,
@@ -47,138 +50,15 @@ impl ConfluenceConfig {
     where
         F: FnMut(&str) -> Result<String, E>,
     {
-        let base_url = optional_var(get_var, ENV_CONFLUENCE_URL);
-        let username = optional_var(get_var, ENV_CONFLUENCE_USERNAME);
-        let api_token = optional_var(get_var, ENV_CONFLUENCE_API_TOKEN);
-        let personal_token = optional_var(get_var, ENV_CONFLUENCE_PERSONAL_TOKEN);
-        let service_oauth_access_token = optional_var(get_var, ENV_CONFLUENCE_OAUTH_ACCESS_TOKEN);
-        let shared_oauth_access_token = optional_var(get_var, ENV_ATLASSIAN_OAUTH_ACCESS_TOKEN);
-        let oauth_access_token = service_oauth_access_token
-            .clone()
-            .or_else(|| shared_oauth_access_token.clone());
-        let oauth_access_token_variables = present_variables([
-            (
-                ENV_CONFLUENCE_OAUTH_ACCESS_TOKEN,
-                service_oauth_access_token.as_ref(),
-            ),
-            (
-                ENV_ATLASSIAN_OAUTH_ACCESS_TOKEN,
-                shared_oauth_access_token.as_ref(),
-            ),
-        ]);
-        let oauth_cloud_id = optional_var(get_var, ENV_ATLASSIAN_OAUTH_CLOUD_ID);
-
-        let Some(base_url) = base_url else {
-            let credential_variables = present_variables([
-                (ENV_CONFLUENCE_USERNAME, username.as_ref()),
-                (ENV_CONFLUENCE_API_TOKEN, api_token.as_ref()),
-                (ENV_CONFLUENCE_PERSONAL_TOKEN, personal_token.as_ref()),
-                (
-                    ENV_CONFLUENCE_OAUTH_ACCESS_TOKEN,
-                    service_oauth_access_token.as_ref(),
-                ),
-                (
-                    ENV_ATLASSIAN_OAUTH_ACCESS_TOKEN,
-                    shared_oauth_access_token.as_ref(),
-                ),
-            ]);
-
-            if credential_variables.is_empty() {
-                return Ok(None);
-            }
-
-            return Err(ConfigError::MissingConfluenceUrl {
-                credential_variables,
-            });
+        let Some(parsed) = parse_atlassian_service_config(get_var, &confluence_config_spec())?
+        else {
+            return Ok(None);
         };
 
-        let parsed_url = parse_base_url(&base_url)?;
-        let deployment = ConfluenceDeployment::from_base_url(&parsed_url);
-        let (auth, oauth_cloud_id) = match deployment {
-            ConfluenceDeployment::Cloud => {
-                if let Some(access_token) = oauth_access_token {
-                    let Some(cloud_id) = oauth_cloud_id else {
-                        return Err(ConfigError::MissingConfluenceOAuthCloudId {
-                            access_token_variables: oauth_access_token_variables,
-                            cloud_id_variable: ENV_ATLASSIAN_OAUTH_CLOUD_ID,
-                        });
-                    };
-
-                    (
-                        AtlassianAuth::OAuthAccessToken { access_token },
-                        Some(cloud_id),
-                    )
-                } else {
-                    let missing_variables = missing_variables([
-                        (ENV_CONFLUENCE_USERNAME, username.as_ref()),
-                        (ENV_CONFLUENCE_API_TOKEN, api_token.as_ref()),
-                    ]);
-
-                    if !missing_variables.is_empty() {
-                        return Err(ConfigError::MissingConfluenceCloudCredentials {
-                            missing_variables,
-                        });
-                    }
-
-                    (
-                        AtlassianAuth::Basic {
-                            username: username.expect("missing variables were checked"),
-                            api_token: api_token.expect("missing variables were checked"),
-                        },
-                        None,
-                    )
-                }
-            }
-            ConfluenceDeployment::ServerDataCenter => {
-                if let Some(personal_token) = personal_token {
-                    (AtlassianAuth::Pat { personal_token }, None)
-                } else if let Some(access_token) = oauth_access_token {
-                    (AtlassianAuth::OAuthAccessToken { access_token }, None)
-                } else if let (Some(username), Some(api_token)) = (username, api_token) {
-                    (
-                        AtlassianAuth::Basic {
-                            username,
-                            api_token,
-                        },
-                        None,
-                    )
-                } else {
-                    return Err(ConfigError::MissingConfluencePersonalToken {
-                        variable: ENV_CONFLUENCE_PERSONAL_TOKEN,
-                    });
-                }
-            }
-        };
-
-        let base_url = normalize_effective_base_url(parsed_url, deployment, &auth, &oauth_cloud_id);
-        let proxy = ProxyConfig::from_var_provider(
-            get_var,
-            ENV_CONFLUENCE_HTTP_PROXY,
-            ENV_CONFLUENCE_HTTPS_PROXY,
-            ENV_CONFLUENCE_NO_PROXY,
-        )?;
-        let custom_headers =
-            CustomHeaders::from_var_provider(get_var, ENV_CONFLUENCE_CUSTOM_HEADERS)?;
-        let mtls = ClientTlsIdentityConfig::from_var_provider(
-            get_var,
-            ENV_CONFLUENCE_CLIENT_CERT,
-            ENV_CONFLUENCE_CLIENT_KEY,
-        )?;
-
-        Ok(Some(Self {
-            base_url,
-            deployment,
-            auth,
-            oauth_cloud_id,
-            ssl_verify: parse_ssl_verify(
-                optional_var(get_var, ENV_CONFLUENCE_SSL_VERIFY).as_deref(),
-            ),
-            proxy,
-            custom_headers,
-            mtls,
-            spaces_filter: parse_spaces_filter(optional_var(get_var, ENV_CONFLUENCE_SPACES_FILTER)),
-            timeout_seconds: parse_timeout_seconds(optional_var(get_var, ENV_CONFLUENCE_TIMEOUT))?,
-        }))
+        Ok(Some(Self::from_parsed(
+            parsed,
+            parse_spaces_filter(optional_var(get_var, ENV_CONFLUENCE_SPACES_FILTER)),
+        )))
     }
 
     pub fn is_auth_configured(&self) -> bool {
@@ -205,6 +85,24 @@ impl ConfluenceConfig {
         config.auth = auth;
         config.oauth_cloud_id = effective_cloud_id;
         config
+    }
+
+    fn from_parsed(
+        parsed: ParsedAtlassianServiceConfig<ConfluenceDeployment>,
+        spaces_filter: BTreeSet<String>,
+    ) -> Self {
+        Self {
+            base_url: parsed.base_url,
+            deployment: parsed.deployment,
+            auth: parsed.auth,
+            oauth_cloud_id: parsed.oauth_cloud_id,
+            ssl_verify: parsed.ssl_verify,
+            proxy: parsed.proxy,
+            custom_headers: parsed.custom_headers,
+            mtls: parsed.mtls,
+            spaces_filter,
+            timeout_seconds: parsed.timeout_seconds,
+        }
     }
 }
 
@@ -243,55 +141,12 @@ fn non_empty_trimmed(value: String) -> Option<String> {
     }
 }
 
-fn parse_base_url(value: &str) -> Result<Url, ConfigError> {
-    let url = Url::parse(value).map_err(|_| ConfigError::InvalidConfluenceUrl {
-        variable: ENV_CONFLUENCE_URL,
-    })?;
-
-    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
-        return Err(ConfigError::InvalidConfluenceUrl {
-            variable: ENV_CONFLUENCE_URL,
-        });
-    }
-
-    Ok(url)
-}
-
-fn normalize_base_url(mut url: Url) -> String {
-    url.set_query(None);
-    url.set_fragment(None);
-    url.to_string().trim_end_matches('/').to_string()
-}
-
-fn normalize_effective_base_url(
-    url: Url,
-    deployment: ConfluenceDeployment,
-    auth: &AtlassianAuth,
-    oauth_cloud_id: &Option<String>,
-) -> String {
-    if deployment == ConfluenceDeployment::Cloud
-        && matches!(auth, AtlassianAuth::OAuthAccessToken { .. })
-        && let Some(cloud_id) = oauth_cloud_id
-    {
-        return cloud_oauth_api_base_url(cloud_id);
-    }
-
-    normalize_base_url(url)
-}
-
 fn cloud_oauth_api_base_url(cloud_id: &str) -> String {
     let mut url = Url::parse("https://api.atlassian.com").expect("static URL is valid");
     url.path_segments_mut()
         .expect("static URL supports path segments")
         .extend(["ex", "confluence", cloud_id, "wiki"]);
     url.to_string().trim_end_matches('/').to_string()
-}
-
-fn parse_ssl_verify(value: Option<&str>) -> bool {
-    !matches!(
-        value.map(|value| value.trim().to_ascii_lowercase()),
-        Some(value) if matches!(value.as_str(), "false" | "0" | "no" | "off")
-    )
 }
 
 fn parse_spaces_filter(value: Option<String>) -> BTreeSet<String> {
@@ -304,51 +159,57 @@ fn parse_spaces_filter(value: Option<String>) -> BTreeSet<String> {
         .collect()
 }
 
-fn parse_timeout_seconds(value: Option<String>) -> Result<u64, ConfigError> {
-    let Some(value) = value else {
-        return Ok(DEFAULT_CONFLUENCE_TIMEOUT_SECONDS);
-    };
-
-    let seconds: u64 = value
-        .parse()
-        .map_err(|_| ConfigError::InvalidConfluenceTimeout {
-            variable: ENV_CONFLUENCE_TIMEOUT,
-            value: value.clone(),
-        })?;
-
-    if seconds == 0 {
-        return Err(ConfigError::InvalidConfluenceTimeout {
-            variable: ENV_CONFLUENCE_TIMEOUT,
+fn confluence_config_spec() -> AtlassianServiceConfigSpec<ConfluenceDeployment> {
+    AtlassianServiceConfigSpec {
+        url_variable: ENV_CONFLUENCE_URL,
+        username_variable: ENV_CONFLUENCE_USERNAME,
+        api_token_variable: ENV_CONFLUENCE_API_TOKEN,
+        personal_token_variable: ENV_CONFLUENCE_PERSONAL_TOKEN,
+        oauth_access_token_variable: ENV_CONFLUENCE_OAUTH_ACCESS_TOKEN,
+        ssl_verify_variable: ENV_CONFLUENCE_SSL_VERIFY,
+        timeout_variable: ENV_CONFLUENCE_TIMEOUT,
+        http_proxy_variable: ENV_CONFLUENCE_HTTP_PROXY,
+        https_proxy_variable: ENV_CONFLUENCE_HTTPS_PROXY,
+        no_proxy_variable: ENV_CONFLUENCE_NO_PROXY,
+        custom_headers_variable: ENV_CONFLUENCE_CUSTOM_HEADERS,
+        client_cert_variable: ENV_CONFLUENCE_CLIENT_CERT,
+        client_key_variable: ENV_CONFLUENCE_CLIENT_KEY,
+        default_timeout_seconds: DEFAULT_CONFLUENCE_TIMEOUT_SECONDS,
+        cloud_deployment: ConfluenceDeployment::Cloud,
+        deployment_from_url: ConfluenceDeployment::from_base_url,
+        cloud_oauth_api_base_url,
+        missing_url_error: |credential_variables| ConfigError::MissingConfluenceUrl {
+            credential_variables,
+        },
+        invalid_url_error: |variable| ConfigError::InvalidConfluenceUrl { variable },
+        missing_cloud_credentials_error: |missing_variables| {
+            ConfigError::MissingConfluenceCloudCredentials { missing_variables }
+        },
+        missing_personal_token_error: |variable| ConfigError::MissingConfluencePersonalToken {
+            variable,
+        },
+        missing_oauth_cloud_id_error: |access_token_variables, cloud_id_variable| {
+            ConfigError::MissingConfluenceOAuthCloudId {
+                access_token_variables,
+                cloud_id_variable,
+            }
+        },
+        invalid_timeout_error: |variable, value| ConfigError::InvalidConfluenceTimeout {
+            variable,
             value,
-        });
+        },
     }
-
-    Ok(seconds)
-}
-
-fn present_variables<const N: usize>(
-    variables: [(&'static str, Option<&String>); N],
-) -> Vec<&'static str> {
-    variables
-        .into_iter()
-        .filter_map(|(name, value)| value.map(|_| name))
-        .collect()
-}
-
-fn missing_variables<const N: usize>(
-    variables: [(&'static str, Option<&String>); N],
-) -> Vec<&'static str> {
-    variables
-        .into_iter()
-        .filter_map(|(name, value)| if value.is_none() { Some(name) } else { None })
-        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use crate::atlassian::compat::{ENV_HTTP_PROXY, ENV_HTTPS_PROXY, ENV_NO_PROXY};
+    use crate::atlassian::compat::{
+        ENV_ATLASSIAN_API_TOKEN, ENV_ATLASSIAN_OAUTH_ACCESS_TOKEN, ENV_ATLASSIAN_OAUTH_CLOUD_ID,
+        ENV_ATLASSIAN_PERSONAL_TOKEN, ENV_ATLASSIAN_USERNAME, ENV_HTTP_PROXY, ENV_HTTPS_PROXY,
+        ENV_NO_PROXY,
+    };
 
     use super::*;
 
@@ -462,6 +323,43 @@ mod tests {
         assert!(config.spaces_filter.is_empty());
         assert_eq!(config.timeout_seconds, DEFAULT_CONFLUENCE_TIMEOUT_SECONDS);
         assert!(config.is_auth_configured());
+    }
+
+    #[test]
+    fn atlassian_basic_fallbacks_build_confluence_config() {
+        let config = config_from_pairs(&[
+            (ENV_CONFLUENCE_URL, "https://example.atlassian.net/wiki"),
+            (ENV_ATLASSIAN_USERNAME, "user@example.com"),
+            (ENV_ATLASSIAN_API_TOKEN, "global-api-token"),
+        ])
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(
+            config.auth,
+            AtlassianAuth::Basic {
+                username: "user@example.com".to_string(),
+                api_token: "global-api-token".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn confluence_specific_pat_overrides_atlassian_fallback() {
+        let config = config_from_pairs(&[
+            (ENV_CONFLUENCE_URL, "https://confluence.example"),
+            (ENV_ATLASSIAN_PERSONAL_TOKEN, "global-pat-value"),
+            (ENV_CONFLUENCE_PERSONAL_TOKEN, "confluence-pat-value"),
+        ])
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(
+            config.auth,
+            AtlassianAuth::Pat {
+                personal_token: "confluence-pat-value".to_string(),
+            }
+        );
     }
 
     #[test]

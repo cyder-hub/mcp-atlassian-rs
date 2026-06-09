@@ -1,0 +1,110 @@
+# Development Tools
+
+This document covers development-only validation commands and variables for `mcp-atlassian-rs`. These commands are not production server commands and are intentionally exposed through `just` and `cargo xtask`, not through the `mcp-atlassian-rs` binary.
+
+Production runtime commands remain:
+
+```bash
+mcp-atlassian-rs stdio
+mcp-atlassian-rs streamhttp --host 127.0.0.1 --port 8000 --path /mcp
+```
+
+## Local Shortcuts
+
+`justfile` is the friendly local entry point. It delegates development validation to `cargo xtask`.
+
+```bash
+just smoke-stdio       # Jira stdio MCP smoke with a local mock Jira
+just smoke-http        # Jira streamable HTTP MCP smoke with a local mock Jira
+just smoke-jira        # Jira restricted-profile guard smoke
+just smoke-confluence  # Confluence stdio, HTTP, and restricted smoke with a local mock Confluence
+just smoke             # all local smoke checks
+```
+
+Real acceptance shortcuts build `target/debug/mcp-atlassian-rs`, run preflight, then run the selected acceptance suite against that binary:
+
+```bash
+just acceptance-jira
+just acceptance-confluence
+just acceptance-mcp
+```
+
+Real acceptance must use disposable test objects and development-only credentials. Do not store token values in committed files, logs, task records, or screenshots.
+
+## xtask CLI
+
+Run local mock smoke checks directly:
+
+```bash
+cargo xtask smoke
+cargo xtask smoke jira all
+cargo xtask smoke jira stdio
+cargo xtask smoke jira http
+cargo xtask smoke jira restricted
+cargo xtask smoke confluence all
+cargo xtask smoke confluence stdio
+cargo xtask smoke confluence http
+cargo xtask smoke confluence restricted
+```
+
+Smoke options:
+
+- `--port <port>`: streamable HTTP server port for HTTP smoke.
+- `--path <path>`: streamable HTTP MCP path for HTTP smoke. Defaults to `/mcp`.
+
+Run real acceptance preflight or full acceptance:
+
+```bash
+cargo xtask acceptance jira --preflight
+cargo xtask acceptance confluence --preflight
+cargo xtask acceptance mcp --preflight
+cargo xtask acceptance jira --run target/debug/mcp-atlassian-rs
+cargo xtask acceptance confluence --run target/debug/mcp-atlassian-rs
+cargo xtask acceptance mcp --run target/debug/mcp-atlassian-rs
+```
+
+Acceptance options:
+
+- `--env-file <path>`: load a dotenv file for this acceptance invocation.
+- `--run <binary>`: run the acceptance suite against the specified `mcp-atlassian-rs` binary.
+- `--preflight`: check required configuration without running the acceptance suite.
+
+## Acceptance Environment
+
+Acceptance reads environment values in this priority order:
+
+1. Process environment.
+2. `--env-file <path>` when provided.
+3. `ACCEPTANCE_ENV_FILE` when set.
+4. `.env.dev` in the current working directory.
+
+The common service configuration variables are the same as production development configuration:
+
+- Jira Cloud: `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN`.
+- Jira Server/Data Center: `JIRA_URL`, `JIRA_PERSONAL_TOKEN`.
+- Confluence Cloud: `CONFLUENCE_URL`, `CONFLUENCE_USERNAME`, `CONFLUENCE_API_TOKEN`.
+- Confluence Server/Data Center: `CONFLUENCE_URL`, `CONFLUENCE_PERSONAL_TOKEN`.
+
+Common Jira test-object variables:
+
+- `JIRA_READ_ISSUE`
+- `JIRA_PROJECT_KEY`
+- `JIRA_FIELD_ID`
+- `JIRA_FIELD_CONTEXT_ID`
+- `JIRA_SERVICE_DESK_ID`
+- `JIRA_QUEUE_ID`
+- `JIRA_FORM_ID`
+
+Common Confluence test-object variables:
+
+- `CONFLUENCE_SEARCH_QUERY`
+- `CONFLUENCE_PAGE_ID`
+- `CONFLUENCE_SPACE_KEY`
+- `CONFLUENCE_TEST_PAGE_PREFIX`
+- `CONFLUENCE_MUTATION_PAGE_ID`
+- `CONFLUENCE_COMMENT_ID`
+- `CONFLUENCE_ATTACHMENT_ID`
+- `CONFLUENCE_ATTACHMENT_FILE`
+- `CONFLUENCE_LABEL_NAME`
+
+Use only disposable pages, issues, attachments, labels, and comments. Real acceptance output redacts secret-looking values, but it can still include business object identifiers and test content.

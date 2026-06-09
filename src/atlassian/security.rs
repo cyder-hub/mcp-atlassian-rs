@@ -191,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn security_contract_exposes_stage_six_allowlist_and_redirect_defaults() {
+    fn security_contract_exposes_allowlist_and_redirect_defaults() {
         assert_eq!(ENV_ALLOWED_URL_DOMAINS, "MCP_ALLOWED_URL_DOMAINS");
         assert_eq!(MAX_SAME_ORIGIN_REDIRECTS, 3);
         assert!(BLOCKED_HOSTNAMES.contains(&"localhost"));
@@ -228,7 +228,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_stage_six_non_global_ip_ranges() {
+    fn rejects_non_global_ip_ranges() {
         for value in [
             "http://127.0.0.1",
             "http://10.0.0.1",

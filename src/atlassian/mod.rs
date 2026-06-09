@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod compat;
+pub mod config;
 pub mod custom_headers;
 pub mod error;
 pub mod http;

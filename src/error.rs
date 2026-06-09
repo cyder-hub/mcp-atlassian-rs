@@ -10,6 +10,14 @@ pub enum ConfigError {
         variable: &'static str,
         value: String,
     },
+    InvalidToolProfile {
+        variable: &'static str,
+        value: String,
+    },
+    InvalidToolset {
+        variable: &'static str,
+        value: String,
+    },
     InvalidProxyUrl {
         variable: &'static str,
     },
@@ -81,6 +89,12 @@ impl Display for ConfigError {
             }
             Self::InvalidAllowedUrlDomain { variable, value } => {
                 write!(formatter, "invalid {variable} domain `{value}`")
+            }
+            Self::InvalidToolProfile { variable, value } => {
+                write!(formatter, "invalid {variable} value `{value}`")
+            }
+            Self::InvalidToolset { variable, value } => {
+                write!(formatter, "invalid {variable} toolset `{value}`")
             }
             Self::InvalidProxyUrl { variable } => {
                 write!(

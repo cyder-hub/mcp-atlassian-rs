@@ -43,26 +43,30 @@ pub struct RuntimeConfig {
 
 impl RuntimeConfig {
     pub fn from_env() -> Result<Self, ConfigError> {
-        Self::from_var_provider(|key| std::env::var(key), HttpConfigOverrides::default())
+        Self::from_var_provider(|key| std::env::var(key), HttpConfigSource::Default)
     }
 
     pub fn from_env_with_http_overrides(
         http_overrides: HttpConfigOverrides,
     ) -> Result<Self, ConfigError> {
-        Self::from_var_provider(|key| std::env::var(key), http_overrides)
+        Self::from_var_provider(
+            |key| std::env::var(key),
+            HttpConfigSource::Env(http_overrides),
+        )
     }
 
     pub fn from_var_provider<F, E>(
         mut get_var: F,
-        http_overrides: HttpConfigOverrides,
+        http_source: HttpConfigSource,
     ) -> Result<Self, ConfigError>
     where
         F: FnMut(&str) -> Result<String, E>,
     {
-        let tool_profile = parse_tool_profile(get_var(ENV_TOOL_PROFILE).ok().as_deref());
+        let tool_profile = parse_tool_profile(get_var(ENV_TOOL_PROFILE).ok().as_deref())?;
         let enabled_tools = parse_enabled_tools(get_var(ENV_ENABLED_TOOLS).ok().as_deref());
         let disabled_tools = parse_csv_names(get_var(ENV_DISABLED_TOOLS).ok().as_deref());
-        let enabled_toolsets = parse_toolsets(&tool_profile, get_var(ENV_TOOLSETS).ok().as_deref());
+        let enabled_toolsets =
+            parse_toolsets(&tool_profile, get_var(ENV_TOOLSETS).ok().as_deref())?;
         let jira = JiraConfig::from_var_provider(&mut get_var)?;
         let confluence = ConfluenceConfig::from_var_provider(&mut get_var)?;
         let atlassian_oauth_cloud_id =
@@ -72,7 +76,12 @@ impl RuntimeConfig {
         let allowed_url_domains = parse_allowed_url_domains(get_var(ENV_ALLOWED_URL_DOMAINS).ok())?;
         let ignore_header_auth =
             parse_extended_truthy(get_var(ENV_IGNORE_HEADER_AUTH).ok().as_deref());
-        let http = HttpConfig::from_var_provider(&mut get_var, http_overrides)?;
+        let http = match http_source {
+            HttpConfigSource::Default => HttpConfig::default(),
+            HttpConfigSource::Env(overrides) => {
+                HttpConfig::from_var_provider(&mut get_var, overrides)?
+            }
+        };
 
         Ok(Self {
             enabled_tools,
@@ -87,6 +96,12 @@ impl RuntimeConfig {
             http,
         })
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HttpConfigSource {
+    Default,
+    Env(HttpConfigOverrides),
 }
 
 impl Default for RuntimeConfig {
@@ -171,8 +186,8 @@ fn parse_enabled_tools(value: Option<&str>) -> Option<BTreeSet<String>> {
     if tools.is_empty() { None } else { Some(tools) }
 }
 
-fn parse_tool_profile(value: Option<&str>) -> String {
-    value
+fn parse_tool_profile(value: Option<&str>) -> Result<String, ConfigError> {
+    let profile = value
         .and_then(|value| {
             let value = value.trim();
             if value.is_empty() {
@@ -181,31 +196,45 @@ fn parse_tool_profile(value: Option<&str>) -> String {
                 Some(value.to_ascii_lowercase())
             }
         })
-        .unwrap_or_else(|| DEFAULT_TOOL_PROFILE.to_string())
+        .unwrap_or_else(|| DEFAULT_TOOL_PROFILE.to_string());
+
+    if toolsets_for_profile(&profile).is_none() {
+        return Err(ConfigError::InvalidToolProfile {
+            variable: ENV_TOOL_PROFILE,
+            value: profile,
+        });
+    }
+
+    Ok(profile)
 }
 
-fn parse_toolsets(profile: &str, value: Option<&str>) -> BTreeSet<String> {
+fn parse_toolsets(profile: &str, value: Option<&str>) -> Result<BTreeSet<String>, ConfigError> {
     let mut result = profile_toolsets(profile);
     let tokens = parse_csv_tokens(value);
     let all = all_toolsets();
 
     for token in tokens {
-        let token = token.to_ascii_lowercase();
-        match token.as_str() {
-            "all" => return all,
-            _ if all.contains(&token) => {
-                result.insert(token);
+        let normalized_token = token.to_ascii_lowercase();
+        match normalized_token.as_str() {
+            "all" => return Ok(all),
+            _ if all.contains(&normalized_token) => {
+                result.insert(normalized_token);
             }
-            _ => {}
+            _ => {
+                return Err(ConfigError::InvalidToolset {
+                    variable: ENV_TOOLSETS,
+                    value: token,
+                });
+            }
         }
     }
 
-    result
+    Ok(result)
 }
 
 fn profile_toolsets(profile: &str) -> BTreeSet<String> {
     toolsets_for_profile(profile)
-        .unwrap_or_default()
+        .expect("tool profile was validated before resolving toolsets")
         .iter()
         .map(|toolset| (*toolset).to_string())
         .collect()
@@ -322,10 +351,15 @@ mod tests {
     use std::collections::BTreeMap;
 
     use crate::{
-        atlassian::auth::AtlassianAuth,
+        atlassian::{
+            auth::AtlassianAuth,
+            compat::{
+                ENV_ATLASSIAN_API_TOKEN, ENV_ATLASSIAN_PERSONAL_TOKEN, ENV_ATLASSIAN_USERNAME,
+            },
+        },
         confluence::config::{
             ConfluenceDeployment, ENV_CONFLUENCE_API_TOKEN, ENV_CONFLUENCE_PERSONAL_TOKEN,
-            ENV_CONFLUENCE_USERNAME,
+            ENV_CONFLUENCE_URL, ENV_CONFLUENCE_USERNAME,
         },
         jira::config::{ENV_JIRA_PERSONAL_TOKEN, ENV_JIRA_URL, JiraDeployment},
     };
@@ -340,12 +374,24 @@ mod tests {
 
         RuntimeConfig::from_var_provider(
             |key| vars.get(key).cloned().ok_or(()),
-            HttpConfigOverrides::default(),
+            HttpConfigSource::Default,
+        )
+    }
+
+    fn streamhttp_config_from_pairs(pairs: &[(&str, &str)]) -> Result<RuntimeConfig, ConfigError> {
+        let vars: BTreeMap<String, String> = pairs
+            .iter()
+            .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+            .collect();
+
+        RuntimeConfig::from_var_provider(
+            |key| vars.get(key).cloned().ok_or(()),
+            HttpConfigSource::Env(HttpConfigOverrides::default()),
         )
     }
 
     #[test]
-    fn runtime_config_defaults_to_stage_one_control_plane_values() {
+    fn runtime_config_defaults_to_control_plane_values() {
         let config = config_from_pairs(&[]).unwrap();
 
         assert_eq!(config.enabled_tools, None);
@@ -414,6 +460,19 @@ mod tests {
     }
 
     #[test]
+    fn unknown_tool_profile_is_rejected() {
+        let error = config_from_pairs(&[(ENV_TOOL_PROFILE, "admin")]).unwrap_err();
+
+        assert_eq!(
+            error,
+            ConfigError::InvalidToolProfile {
+                variable: ENV_TOOL_PROFILE,
+                value: "admin".to_string(),
+            }
+        );
+    }
+
+    #[test]
     fn toolsets_are_additive_to_profile_and_all_explicitly_enables_everything() {
         let config = config_from_pairs(&[(ENV_TOOLSETS, "jira_sprint_manage")]).unwrap();
         let mut expected = default_toolsets();
@@ -430,14 +489,20 @@ mod tests {
     }
 
     #[test]
-    fn custom_profile_starts_empty_and_unknown_toolsets_are_ignored() {
+    fn custom_profile_starts_empty_and_unknown_toolsets_are_rejected() {
         let config = config_from_pairs(&[(ENV_TOOL_PROFILE, "custom")]).unwrap();
         assert!(config.enabled_toolsets.is_empty());
 
-        let config =
-            config_from_pairs(&[(ENV_TOOL_PROFILE, "custom"), (ENV_TOOLSETS, "typo_name")])
-                .unwrap();
-        assert!(config.enabled_toolsets.is_empty());
+        let error = config_from_pairs(&[(ENV_TOOL_PROFILE, "custom"), (ENV_TOOLSETS, "typo_name")])
+            .unwrap_err();
+
+        assert_eq!(
+            error,
+            ConfigError::InvalidToolset {
+                variable: ENV_TOOLSETS,
+                value: "typo_name".to_string(),
+            }
+        );
     }
 
     #[test]
@@ -465,6 +530,44 @@ mod tests {
             Some("cloud-123")
         );
         assert!(!config.atlassian_oauth_enabled);
+    }
+
+    #[test]
+    fn shared_pat_configures_only_services_with_urls() {
+        let config = config_from_pairs(&[
+            (ENV_JIRA_URL, "https://jira.example"),
+            (ENV_ATLASSIAN_PERSONAL_TOKEN, "shared-pat-value"),
+        ])
+        .unwrap();
+        let jira = config.jira.unwrap();
+
+        assert_eq!(
+            jira.auth,
+            AtlassianAuth::Pat {
+                personal_token: "shared-pat-value".to_string(),
+            }
+        );
+        assert_eq!(config.confluence, None);
+    }
+
+    #[test]
+    fn shared_basic_auth_configures_only_services_with_urls() {
+        let config = config_from_pairs(&[
+            (ENV_CONFLUENCE_URL, "https://example.atlassian.net/wiki"),
+            (ENV_ATLASSIAN_USERNAME, "user@example.com"),
+            (ENV_ATLASSIAN_API_TOKEN, "shared-api-token"),
+        ])
+        .unwrap();
+        let confluence = config.confluence.unwrap();
+
+        assert_eq!(config.jira, None);
+        assert_eq!(
+            confluence.auth,
+            AtlassianAuth::Basic {
+                username: "user@example.com".to_string(),
+                api_token: "shared-api-token".to_string(),
+            }
+        );
     }
 
     #[test]
@@ -606,7 +709,7 @@ mod tests {
 
     #[test]
     fn http_config_reads_env_defaults_and_normalizes_path() {
-        let config = config_from_pairs(&[
+        let config = streamhttp_config_from_pairs(&[
             (ENV_HTTP_HOST, " 0.0.0.0 "),
             (ENV_HTTP_PORT, "9000"),
             (ENV_HTTP_PATH, "mcp-alt"),
@@ -625,7 +728,7 @@ mod tests {
 
     #[test]
     fn http_config_empty_values_fall_back_to_defaults() {
-        let config = config_from_pairs(&[
+        let config = streamhttp_config_from_pairs(&[
             (ENV_HTTP_HOST, " "),
             (ENV_HTTP_PORT, " "),
             (ENV_HTTP_PATH, " "),
@@ -637,7 +740,7 @@ mod tests {
 
     #[test]
     fn http_config_rejects_invalid_env_port() {
-        let error = config_from_pairs(&[(ENV_HTTP_PORT, "bad-port")]).unwrap_err();
+        let error = streamhttp_config_from_pairs(&[(ENV_HTTP_PORT, "bad-port")]).unwrap_err();
 
         assert_eq!(
             error,
@@ -649,6 +752,18 @@ mod tests {
     }
 
     #[test]
+    fn default_runtime_config_ignores_http_environment() {
+        let config = config_from_pairs(&[
+            (ENV_HTTP_HOST, "0.0.0.0"),
+            (ENV_HTTP_PORT, "bad-port"),
+            (ENV_HTTP_PATH, "env-mcp"),
+        ])
+        .unwrap();
+
+        assert_eq!(config.http, HttpConfig::default());
+    }
+
+    #[test]
     fn http_overrides_take_precedence_over_environment() {
         let vars = BTreeMap::from([
             (ENV_HTTP_HOST.to_string(), "0.0.0.0".to_string()),
@@ -657,11 +772,11 @@ mod tests {
         ]);
         let config = RuntimeConfig::from_var_provider(
             |key| vars.get(key).cloned().ok_or(()),
-            HttpConfigOverrides {
+            HttpConfigSource::Env(HttpConfigOverrides {
                 host: Some("127.0.0.2".to_string()),
                 port: Some(9001),
                 path: Some("cli-mcp".to_string()),
-            },
+            }),
         )
         .unwrap();
 

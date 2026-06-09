@@ -15,10 +15,7 @@ cargo fmt --check
 RUSTFLAGS="-Dwarnings" cargo check
 cargo test
 cargo build --release
-bash scripts/smoke-stdio.sh
-bash scripts/smoke-http.sh
-bash scripts/smoke-jira.sh
-bash scripts/smoke-confluence.sh
+just smoke
 docker compose -f docker-compose.yml config
 docker build -t mcp-atlassian-rs:ci -f Dockerfile .
 ```
@@ -31,7 +28,7 @@ The shorter project shortcut remains:
 just check
 ```
 
-`just check` covers Rust formatting, compilation checks, and tests. It does not replace the release, smoke, Docker, compose, or support-matrix checks required for broader changes.
+`just check` covers Rust formatting, compilation checks, and tests. It does not replace the release, `just smoke`, Docker, compose, or support-matrix checks required for broader changes.
 
 ## Pull Requests
 
@@ -58,10 +55,7 @@ cargo fmt --check
 RUSTFLAGS="-Dwarnings" cargo check
 cargo test
 cargo build --release
-bash scripts/smoke-stdio.sh
-bash scripts/smoke-http.sh
-bash scripts/smoke-jira.sh
-bash scripts/smoke-confluence.sh
+just smoke
 docker compose -f docker-compose.yml config
 docker build -t mcp-atlassian-rs:ci -f Dockerfile .
 ```

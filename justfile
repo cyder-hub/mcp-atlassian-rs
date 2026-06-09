@@ -18,34 +18,40 @@ dev-http-debug host="127.0.0.1" port="8000":
 
 # Run the stdio MCP smoke check.
 smoke-stdio:
-	cd '{{justfile_directory()}}' && bash scripts/smoke-stdio.sh
+	cd '{{justfile_directory()}}' && cargo xtask smoke jira stdio
 
 # Run the streamable HTTP MCP smoke check.
 smoke-http:
-	cd '{{justfile_directory()}}' && bash scripts/smoke-http.sh
+	cd '{{justfile_directory()}}' && cargo xtask smoke jira http
 
 # Run the Jira restricted MCP smoke check against a local mock Jira.
 smoke-jira:
-	cd '{{justfile_directory()}}' && bash scripts/smoke-jira.sh
+	cd '{{justfile_directory()}}' && cargo xtask smoke jira restricted
 
 # Run the Confluence MCP smoke check against a local mock Confluence.
 smoke-confluence:
-	cd '{{justfile_directory()}}' && bash scripts/smoke-confluence.sh
+	cd '{{justfile_directory()}}' && cargo xtask smoke confluence all
 
 # Run all local MCP smoke checks.
 smoke: smoke-stdio smoke-http smoke-jira smoke-confluence
 
 # Run real Jira acceptance checks.
 acceptance-jira:
-	cd '{{justfile_directory()}}' && bash scripts/acceptance-jira.sh
+	cd '{{justfile_directory()}}' && cargo build --quiet --bin mcp-atlassian-rs
+	cd '{{justfile_directory()}}' && cargo xtask acceptance jira --preflight
+	cd '{{justfile_directory()}}' && cargo xtask acceptance jira --run target/debug/mcp-atlassian-rs
 
 # Run real Confluence acceptance checks.
 acceptance-confluence:
-	cd '{{justfile_directory()}}' && bash scripts/acceptance-confluence.sh
+	cd '{{justfile_directory()}}' && cargo build --quiet --bin mcp-atlassian-rs
+	cd '{{justfile_directory()}}' && cargo xtask acceptance confluence --preflight
+	cd '{{justfile_directory()}}' && cargo xtask acceptance confluence --run target/debug/mcp-atlassian-rs
 
 # Run real dual-service MCP acceptance checks.
 acceptance-mcp:
-	cd '{{justfile_directory()}}' && bash scripts/acceptance-mcp.sh
+	cd '{{justfile_directory()}}' && cargo build --quiet --bin mcp-atlassian-rs
+	cd '{{justfile_directory()}}' && cargo xtask acceptance mcp --preflight
+	cd '{{justfile_directory()}}' && cargo xtask acceptance mcp --run target/debug/mcp-atlassian-rs
 
 # Build the release binary.
 build:

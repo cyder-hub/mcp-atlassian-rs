@@ -11,12 +11,13 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use clap::{ArgGroup, Args, ValueEnum};
 use reqwest::header::{ACCEPT, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde_json::{Value, json};
 
 use crate::{
-    AppResult,
-    atlassian::redaction::{env_secret_values_from_pairs, redact_text_with_secrets},
+    XtaskResult,
+    redaction::{env_secret_values_from_pairs, redact_text_with_secrets},
 };
 
 const BLOCKED: i32 = 2;
@@ -25,22 +26,53 @@ const ENV_FILE_VAR: &str = "ACCEPTANCE_ENV_FILE";
 const SECRET_KEYS: &[&str] = &[
     "JIRA_API_TOKEN",
     "JIRA_PERSONAL_TOKEN",
+    "JIRA_OAUTH_ACCESS_TOKEN",
     "CONFLUENCE_API_TOKEN",
     "CONFLUENCE_PERSONAL_TOKEN",
+    "CONFLUENCE_OAUTH_ACCESS_TOKEN",
+    "ATLASSIAN_API_TOKEN",
+    "ATLASSIAN_PERSONAL_TOKEN",
+    "ATLASSIAN_OAUTH_ACCESS_TOKEN",
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
 pub enum AcceptanceMode {
     Jira,
     Confluence,
     Mcp,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Args, PartialEq, Eq)]
+#[command(group(
+    ArgGroup::new("action")
+        .required(true)
+        .multiple(false)
+        .args(["preflight", "run"])
+))]
 pub struct AcceptanceCommand {
+    #[arg(value_enum)]
     pub mode: AcceptanceMode,
-    pub action: AcceptanceAction,
+    #[arg(long, group = "action")]
+    pub preflight: bool,
+    #[arg(long, value_name = "BINARY", group = "action")]
+    pub run: Option<PathBuf>,
+    #[arg(long, value_name = "PATH")]
     pub env_file: Option<PathBuf>,
+}
+
+impl AcceptanceCommand {
+    fn action(&self) -> AcceptanceAction {
+        if self.preflight {
+            AcceptanceAction::Preflight
+        } else {
+            AcceptanceAction::Run {
+                binary: self
+                    .run
+                    .clone()
+                    .expect("clap action group requires --run unless --preflight is set"),
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,67 +111,7 @@ enum McpTransport {
 
 type EnvMap = BTreeMap<String, String>;
 
-pub fn parse_acceptance_args(args: &[String]) -> Result<AcceptanceCommand, String> {
-    let Some(mode) = args.first() else {
-        return Err("acceptance requires a mode: jira, confluence, or mcp".to_string());
-    };
-    let mode = match mode.as_str() {
-        "jira" => AcceptanceMode::Jira,
-        "confluence" => AcceptanceMode::Confluence,
-        "mcp" => AcceptanceMode::Mcp,
-        other => return Err(format!("unknown acceptance mode `{other}`")),
-    };
-
-    let mut env_file = None;
-    let mut action = None;
-    let mut index = 1;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--preflight" => {
-                if action.replace(AcceptanceAction::Preflight).is_some() {
-                    return Err("acceptance accepts only one action".to_string());
-                }
-            }
-            "--run" => {
-                index += 1;
-                let binary = args
-                    .get(index)
-                    .ok_or_else(|| "--run requires a binary path".to_string())?;
-                if action
-                    .replace(AcceptanceAction::Run {
-                        binary: PathBuf::from(binary),
-                    })
-                    .is_some()
-                {
-                    return Err("acceptance accepts only one action".to_string());
-                }
-            }
-            "--env-file" => {
-                index += 1;
-                let path = args
-                    .get(index)
-                    .ok_or_else(|| "--env-file requires a path".to_string())?;
-                env_file = Some(PathBuf::from(path));
-            }
-            arg if arg.starts_with("--env-file=") => {
-                env_file = Some(PathBuf::from(
-                    arg.strip_prefix("--env-file=")
-                        .expect("prefix was just checked"),
-                ));
-            }
-            arg => return Err(format!("unexpected acceptance argument `{arg}`")),
-        }
-        index += 1;
-    }
-
-    Ok(AcceptanceCommand {
-        mode,
-        action: action.ok_or_else(|| "acceptance requires --preflight or --run".to_string())?,
-        env_file,
-    })
-}
-
-pub async fn run(command: AcceptanceCommand) -> AppResult<i32> {
+pub async fn run(command: AcceptanceCommand) -> XtaskResult<i32> {
     let env = match load_env(command.env_file.as_deref()) {
         Ok(env) => env,
         Err(error) => {
@@ -157,11 +129,12 @@ pub async fn run(command: AcceptanceCommand) -> AppResult<i32> {
     };
 
     let base_status = preflight(&command.mode, &env);
-    if matches!(command.action, AcceptanceAction::Preflight) || base_status != 0 {
+    let action = command.action();
+    if matches!(action, AcceptanceAction::Preflight) || base_status != 0 {
         return Ok(base_status);
     }
 
-    let AcceptanceAction::Run { binary } = command.action else {
+    let AcceptanceAction::Run { binary } = action else {
         unreachable!("preflight action returned above");
     };
 
@@ -224,7 +197,7 @@ fn load_env(env_file: Option<&Path>) -> Result<EnvMap, String> {
 fn default_env_file() -> PathBuf {
     env::current_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
-        .join(".env")
+        .join(".env.dev")
 }
 
 fn parse_env_line(
@@ -360,15 +333,37 @@ fn missing_base_env(mode: &AcceptanceMode, env: &EnvMap) -> Vec<&'static str> {
 }
 
 fn has_jira_auth(env: &EnvMap) -> bool {
-    !env_value(env, "JIRA_PERSONAL_TOKEN").is_empty()
-        || (!env_value(env, "JIRA_USERNAME").is_empty()
-            && !env_value(env, "JIRA_API_TOKEN").is_empty())
+    has_any_token(
+        env,
+        &[
+            "JIRA_PERSONAL_TOKEN",
+            "JIRA_OAUTH_ACCESS_TOKEN",
+            "ATLASSIAN_PERSONAL_TOKEN",
+            "ATLASSIAN_OAUTH_ACCESS_TOKEN",
+        ],
+    ) || has_basic_auth(env, "JIRA_USERNAME", "JIRA_API_TOKEN")
+        || has_basic_auth(env, "ATLASSIAN_USERNAME", "ATLASSIAN_API_TOKEN")
 }
 
 fn has_confluence_auth(env: &EnvMap) -> bool {
-    !env_value(env, "CONFLUENCE_PERSONAL_TOKEN").is_empty()
-        || (!env_value(env, "CONFLUENCE_USERNAME").is_empty()
-            && !env_value(env, "CONFLUENCE_API_TOKEN").is_empty())
+    has_any_token(
+        env,
+        &[
+            "CONFLUENCE_PERSONAL_TOKEN",
+            "CONFLUENCE_OAUTH_ACCESS_TOKEN",
+            "ATLASSIAN_PERSONAL_TOKEN",
+            "ATLASSIAN_OAUTH_ACCESS_TOKEN",
+        ],
+    ) || has_basic_auth(env, "CONFLUENCE_USERNAME", "CONFLUENCE_API_TOKEN")
+        || has_basic_auth(env, "ATLASSIAN_USERNAME", "ATLASSIAN_API_TOKEN")
+}
+
+fn has_any_token(env: &EnvMap, keys: &[&str]) -> bool {
+    keys.iter().any(|key| !env_value(env, key).is_empty())
+}
+
+fn has_basic_auth(env: &EnvMap, username_key: &str, api_token_key: &str) -> bool {
+    !env_value(env, username_key).is_empty() && !env_value(env, api_token_key).is_empty()
 }
 
 fn env_value<'a>(env: &'a EnvMap, key: &str) -> &'a str {

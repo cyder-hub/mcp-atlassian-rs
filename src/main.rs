@@ -1,4 +1,3 @@
-mod acceptance;
 mod atlassian;
 mod config;
 mod confluence;
@@ -8,7 +7,6 @@ mod jira;
 mod mcp;
 mod mcp_confluence_helpers;
 mod mcp_errors;
-mod smoke;
 mod tool_registry;
 
 use std::{net::SocketAddr, sync::Arc};
@@ -49,17 +47,13 @@ const USAGE: &str = "\
 Usage:
   mcp-atlassian-rs [stdio]
   mcp-atlassian-rs streamhttp [--host <host>] [--port <port>] [--path <path>] [--env-file <path>]
-  mcp-atlassian-rs acceptance <jira|confluence|mcp> (--preflight | --run <binary>) [--env-file <path>]
-  mcp-atlassian-rs smoke <jira|confluence> [all|stdio|http|restricted] [--port <port>] [--path <path>]
 
 Commands:
   stdio       Run the MCP server over standard input/output.
   streamhttp  Run the MCP server over streamable HTTP.
-  acceptance  Run real acceptance checks from the Rust binary.
-  smoke       Run local smoke checks against Rust mock Atlassian services.
 
 Options:
-  --env-file <path>  Load environment variables from the specified file (streamhttp and acceptance only).
+  --env-file <path>  Load environment variables from the specified file (streamhttp only).
                      Alternatively, set the ENV_FILE environment variable.
 
 Defaults:
@@ -72,8 +66,6 @@ Defaults:
 enum RunMode {
     Stdio,
     StreamHttp(HttpConfigOverrides, Option<String>),
-    Acceptance(acceptance::AcceptanceCommand),
-    Smoke(smoke::SmokeCommand),
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -104,22 +96,6 @@ async fn main() -> AppResult<()> {
         }
     };
 
-    if let RunMode::Acceptance(command) = mode {
-        let exit_code = acceptance::run(command).await?;
-        if exit_code != 0 {
-            std::process::exit(exit_code);
-        }
-        return Ok(());
-    }
-
-    if let RunMode::Smoke(command) = mode {
-        let exit_code = smoke::run(command).await?;
-        if exit_code != 0 {
-            std::process::exit(exit_code);
-        }
-        return Ok(());
-    }
-
     if let RunMode::StreamHttp(_, ref env_file_path) = mode {
         let env_path = env_file_path
             .clone()
@@ -147,8 +123,6 @@ async fn main() -> AppResult<()> {
     match mode {
         RunMode::Stdio => run_stdio(context).await?,
         RunMode::StreamHttp(_, _) => run_streamhttp(runtime_config.http, context).await?,
-        RunMode::Acceptance(_) => unreachable!("acceptance mode returns before runtime startup"),
-        RunMode::Smoke(_) => unreachable!("smoke mode returns before runtime startup"),
     }
 
     Ok(())
@@ -173,8 +147,6 @@ impl RunMode {
         match self {
             Self::Stdio => None,
             Self::StreamHttp(overrides, _) => Some(overrides.clone()),
-            Self::Acceptance(_) => None,
-            Self::Smoke(_) => None,
         }
     }
 }
@@ -320,10 +292,6 @@ where
             let (overrides, env_file) = parse_streamhttp_args(&args[1..])?;
             Ok(RunMode::StreamHttp(overrides, env_file))
         }
-        Some("acceptance") => {
-            acceptance::parse_acceptance_args(&args[1..]).map(RunMode::Acceptance)
-        }
-        Some("smoke") => smoke::parse_smoke_args(&args[1..]).map(RunMode::Smoke),
         Some(command) => Err(format!("unknown command `{command}`")),
     }
 }
@@ -478,8 +446,6 @@ mod tests {
             merge_http(match mode {
                 RunMode::StreamHttp(overrides, _) => overrides,
                 RunMode::Stdio => unreachable!("test parsed streamhttp"),
-                RunMode::Acceptance(_) => unreachable!("test parsed streamhttp"),
-                RunMode::Smoke(_) => unreachable!("test parsed streamhttp"),
             }),
             config::HttpConfig {
                 host: "0.0.0.0".to_string(),
@@ -498,6 +464,8 @@ mod tests {
     #[test]
     fn parse_args_rejects_unknown_command() {
         assert!(parse_args(["http"]).is_err());
+        assert!(parse_args(["acceptance", "jira", "--preflight"]).is_err());
+        assert!(parse_args(["smoke", "jira", "restricted"]).is_err());
     }
 
     #[test]
