@@ -4,18 +4,18 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-MODE="${1:-read-only}"
+MODE="${1:-restricted}"
 case "$MODE" in
-    all | stdio | http | read-only) ;;
+    all | stdio | http | restricted) ;;
     *)
-        echo "usage: $0 [all|stdio|http|read-only]" >&2
+        echo "usage: $0 [all|stdio|http|restricted]" >&2
         exit 2
         ;;
 esac
 
 cargo build --quiet --bin mcp-atlassian-rs
 
-args=(smoke jira "$MODE" --path "${MCP_SMOKE_PATH:-/stage2-mcp}")
+args=(smoke jira "$MODE" --path "${MCP_SMOKE_PATH:-/mcp}")
 if [[ -n "${MCP_SMOKE_PORT:-}" ]]; then
     args+=(--port "$MCP_SMOKE_PORT")
 fi

@@ -6,9 +6,9 @@ cd "$ROOT_DIR"
 
 MODE="${1:-all}"
 case "$MODE" in
-    all | stdio | http | read-only) ;;
+    all | stdio | http | restricted) ;;
     *)
-        echo "usage: $0 [all|stdio|http|read-only]" >&2
+        echo "usage: $0 [all|stdio|http|restricted]" >&2
         exit 2
         ;;
 esac

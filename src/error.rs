@@ -13,9 +13,6 @@ pub enum ConfigError {
     InvalidProxyUrl {
         variable: &'static str,
     },
-    UnsupportedSocksProxy {
-        variable: &'static str,
-    },
     InvalidCustomHeaderFormat {
         variable: &'static str,
     },
@@ -33,9 +30,6 @@ pub enum ConfigError {
     MissingClientCertKeyPair {
         cert_variable: &'static str,
         key_variable: &'static str,
-    },
-    UnsupportedClientKeyPassword {
-        variable: &'static str,
     },
     MissingJiraUrl {
         credential_variables: Vec<&'static str>,
@@ -94,9 +88,6 @@ impl Display for ConfigError {
                     "invalid {variable} proxy URL; expected http or https URL"
                 )
             }
-            Self::UnsupportedSocksProxy { variable } => {
-                write!(formatter, "SOCKS proxy is not supported via {variable}")
-            }
             Self::InvalidCustomHeaderFormat { variable } => {
                 write!(
                     formatter,
@@ -125,12 +116,6 @@ impl Display for ConfigError {
                 write!(
                     formatter,
                     "mTLS client certificate and key must be configured together: {cert_variable}, {key_variable}"
-                )
-            }
-            Self::UnsupportedClientKeyPassword { variable } => {
-                write!(
-                    formatter,
-                    "encrypted mTLS client keys are not supported via {variable}"
                 )
             }
             Self::MissingJiraUrl {

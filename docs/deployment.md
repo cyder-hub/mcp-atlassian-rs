@@ -6,8 +6,7 @@ This guide describes the supported runtime shapes for `mcp-atlassian-rs`.
 
 - Choose one supported transport: `stdio` for local MCP clients or streamable HTTP for server deployments.
 - Configure only the Jira and Confluence services you want exposed.
-- Set `READ_ONLY_MODE=true` for read-only deployments.
-- Restrict exposed tools with `TOOLSETS` or `ENABLED_TOOLS` when the client should not see every configured tool.
+- Restrict exposed tools with `TOOL_PROFILE`, `TOOLSETS`, `ENABLED_TOOLS`, or `DISABLED_TOOLS` when the client should not see every configured tool.
 - Set `MCP_ALLOWED_URL_DOMAINS` before accepting request-scoped Atlassian service URLs over streamable HTTP.
 - Keep Atlassian credentials in a secret manager, shell environment, or orchestrator secret. Do not commit dotenv files with real credentials.
 - Check `GET /healthz` for streamable HTTP deployments.
@@ -81,7 +80,7 @@ docker compose up --build
 
 The image runs as a non-root `app` user. The compose service includes a `/healthz` healthcheck and maps `${MCP_PORT:-8000}` on the host to container port `8000`.
 
-Compose passes through `MCP_TOOL_CALL_DEBUG` and `RUST_LOG`. For example:
+Compose passes through `MCP_HTTP_PATH`, `TOOL_PROFILE`, `TOOLSETS`, `ENABLED_TOOLS`, `DISABLED_TOOLS`, `MCP_ALLOWED_URL_DOMAINS`, `MCP_TOOL_CALL_DEBUG`, and `RUST_LOG`. For example:
 
 ```bash
 MCP_TOOL_CALL_DEBUG=true docker compose up --build
@@ -91,10 +90,13 @@ MCP_TOOL_CALL_DEBUG=true docker compose up --build
 
 | Variable | Deployment use |
 | --- | --- |
-| `READ_ONLY_MODE` | Set `true` to hide write tools from discovery and block direct write calls. |
-| `TOOLSETS` | Set `all`, `default`, or comma-separated toolset names. Unknown-only values fail closed. |
-| `ENABLED_TOOLS` | Set comma-separated tool names for exact tool allowlisting. |
+| `TOOL_PROFILE` | Set `basic`, `developer`, `manager`, `full`, or `custom`. Defaults to `basic`. |
+| `TOOLSETS` | Add comma-separated toolset names to the selected profile. `all` enables every toolset. |
+| `ENABLED_TOOLS` | Add comma-separated exact tool names. |
+| `DISABLED_TOOLS` | Remove comma-separated exact tool names. Takes precedence over profile/toolset inclusion. |
 | `MCP_HTTP_HOST` / `MCP_HTTP_PORT` / `MCP_HTTP_PATH` | Configure streamable HTTP when CLI flags are not used. |
+| `MCP_PORT` | Compose-only host port mapping. Does not configure the Rust process itself. |
+| `ENV_FILE` | Optional dotenv file loaded at startup. The `--env-file` CLI argument takes precedence. |
 | `IGNORE_HEADER_AUTH` | Set `true` to ignore request-scoped auth/service headers and use only global environment config. |
 | `MCP_ALLOWED_URL_DOMAINS` | Restrict header-provided Jira/Confluence service URLs to exact domains or subdomains. |
 | `MCP_TOOL_CALL_DEBUG` | Set `true` to enable MCP tool-call diagnostics when `RUST_LOG` is unset. Uses `mcp_atlassian_rs::mcp=debug,mcp_atlassian_rs=info,rmcp=info`. |
@@ -155,7 +157,5 @@ Reserved auth, cookie, host, content, proxy, connection, and request-scoped Atla
 - Data Center OAuth authorization-code/refresh.
 - SSE transport.
 - SOCKS proxy.
-- System truststore injection through `MCP_ATLASSIAN_USE_SYSTEM_TRUSTSTORE`.
-- Encrypted mTLS private key password envs.
 - Helm chart.
 - External registry publishing.

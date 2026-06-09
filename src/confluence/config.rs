@@ -7,10 +7,9 @@ use crate::{
         auth::AtlassianAuth,
         compat::{
             ENV_ATLASSIAN_OAUTH_ACCESS_TOKEN, ENV_ATLASSIAN_OAUTH_CLOUD_ID,
-            ENV_CONFLUENCE_CLIENT_CERT, ENV_CONFLUENCE_CLIENT_KEY,
-            ENV_CONFLUENCE_CLIENT_KEY_PASSWORD, ENV_CONFLUENCE_CUSTOM_HEADERS,
+            ENV_CONFLUENCE_CLIENT_CERT, ENV_CONFLUENCE_CLIENT_KEY, ENV_CONFLUENCE_CUSTOM_HEADERS,
             ENV_CONFLUENCE_HTTP_PROXY, ENV_CONFLUENCE_HTTPS_PROXY, ENV_CONFLUENCE_NO_PROXY,
-            ENV_CONFLUENCE_OAUTH_ACCESS_TOKEN, ENV_CONFLUENCE_SOCKS_PROXY,
+            ENV_CONFLUENCE_OAUTH_ACCESS_TOKEN,
         },
         custom_headers::CustomHeaders,
         mtls::ClientTlsIdentityConfig,
@@ -157,7 +156,6 @@ impl ConfluenceConfig {
             ENV_CONFLUENCE_HTTP_PROXY,
             ENV_CONFLUENCE_HTTPS_PROXY,
             ENV_CONFLUENCE_NO_PROXY,
-            ENV_CONFLUENCE_SOCKS_PROXY,
         )?;
         let custom_headers =
             CustomHeaders::from_var_provider(get_var, ENV_CONFLUENCE_CUSTOM_HEADERS)?;
@@ -165,7 +163,6 @@ impl ConfluenceConfig {
             get_var,
             ENV_CONFLUENCE_CLIENT_CERT,
             ENV_CONFLUENCE_CLIENT_KEY,
-            ENV_CONFLUENCE_CLIENT_KEY_PASSWORD,
         )?;
 
         Ok(Some(Self {
@@ -508,28 +505,6 @@ mod tests {
     }
 
     #[test]
-    fn socks_proxy_is_rejected_without_leaking_credentials() {
-        let error = config_from_pairs(&[
-            (ENV_CONFLUENCE_URL, "https://confluence.example"),
-            (ENV_CONFLUENCE_PERSONAL_TOKEN, "test-pat-value"),
-            (
-                ENV_CONFLUENCE_SOCKS_PROXY,
-                "socks5://user:secret@proxy.example",
-            ),
-        ])
-        .unwrap_err();
-
-        assert_eq!(
-            error,
-            ConfigError::UnsupportedSocksProxy {
-                variable: ENV_CONFLUENCE_SOCKS_PROXY,
-            }
-        );
-        assert!(!error.to_string().contains("secret"));
-        assert!(!error.to_string().contains("proxy.example"));
-    }
-
-    #[test]
     fn reserved_custom_headers_are_rejected_without_leaking_value() {
         let error = config_from_pairs(&[
             (ENV_CONFLUENCE_URL, "https://confluence.example"),
@@ -546,26 +521,6 @@ mod tests {
             }
         );
         assert!(!error.to_string().contains("session-secret"));
-    }
-
-    #[test]
-    fn mtls_key_password_is_rejected_without_leaking_value() {
-        let error = config_from_pairs(&[
-            (ENV_CONFLUENCE_URL, "https://confluence.example"),
-            (ENV_CONFLUENCE_PERSONAL_TOKEN, "test-pat-value"),
-            (ENV_CONFLUENCE_CLIENT_CERT, "/tmp/confluence-client.crt"),
-            (ENV_CONFLUENCE_CLIENT_KEY, "/tmp/confluence-client.key"),
-            (ENV_CONFLUENCE_CLIENT_KEY_PASSWORD, "secret-password"),
-        ])
-        .unwrap_err();
-
-        assert_eq!(
-            error,
-            ConfigError::UnsupportedClientKeyPassword {
-                variable: ENV_CONFLUENCE_CLIENT_KEY_PASSWORD,
-            }
-        );
-        assert!(!error.to_string().contains("secret-password"));
     }
 
     #[test]

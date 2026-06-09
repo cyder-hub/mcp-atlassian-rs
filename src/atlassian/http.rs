@@ -549,7 +549,7 @@ mod tests {
             75,
             true,
             ProxyConfig::default(),
-            custom_headers("X-Stage=seven,X-Trace=abc=def"),
+            custom_headers("X-Test=seven,X-Trace=abc=def"),
         )
         .unwrap();
         let request = client
@@ -561,7 +561,7 @@ mod tests {
         assert_eq!(
             request
                 .headers()
-                .get("x-stage")
+                .get("x-test")
                 .and_then(|value| value.to_str().ok()),
             Some("seven")
         );
@@ -591,7 +591,7 @@ mod tests {
             75,
             true,
             ProxyConfig::default(),
-            custom_headers("X-Stage=seven"),
+            custom_headers("X-Test=seven"),
         )
         .unwrap();
         let request = client
@@ -615,7 +615,7 @@ mod tests {
         assert_eq!(
             request
                 .headers()
-                .get("x-stage")
+                .get("x-test")
                 .and_then(|value| value.to_str().ok()),
             Some("seven")
         );

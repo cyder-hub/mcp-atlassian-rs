@@ -52,7 +52,7 @@ pub const CONFLUENCE_DELETE_ATTACHMENT_TOOL_NAME: &str = "confluence_delete_atta
 pub const CONFLUENCE_GET_PAGE_IMAGES_TOOL_NAME: &str = "confluence_get_page_images";
 
 #[cfg(test)]
-pub const STAGE4_CONFLUENCE_TOOL_NAMES: &[&str] = &[
+pub const CONFLUENCE_TOOL_NAMES: &[&str] = &[
     CONFLUENCE_SEARCH_TOOL_NAME,
     CONFLUENCE_GET_PAGE_TOOL_NAME,
     CONFLUENCE_GET_PAGE_CHILDREN_TOOL_NAME,
@@ -316,22 +316,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stage4_confluence_tool_names_match_python_baseline_count() {
-        assert_eq!(STAGE4_CONFLUENCE_TOOL_NAMES.len(), 24);
+    fn confluence_tool_names_match_python_baseline_count() {
+        assert_eq!(CONFLUENCE_TOOL_NAMES.len(), 24);
     }
 
     #[test]
-    fn stage4_confluence_tool_names_are_unique() {
-        let unique = STAGE4_CONFLUENCE_TOOL_NAMES
+    fn confluence_tool_names_are_unique() {
+        let unique = CONFLUENCE_TOOL_NAMES
             .iter()
             .copied()
             .collect::<BTreeSet<_>>();
 
-        assert_eq!(unique.len(), STAGE4_CONFLUENCE_TOOL_NAMES.len());
+        assert_eq!(unique.len(), CONFLUENCE_TOOL_NAMES.len());
     }
 
     #[test]
-    fn stage4_confluence_tool_names_include_canonical_python_names() {
+    fn confluence_tool_names_include_canonical_python_names() {
         let expected = [
             "confluence_search",
             "confluence_get_page",
@@ -359,7 +359,7 @@ mod tests {
             "confluence_get_page_images",
         ];
 
-        assert_eq!(STAGE4_CONFLUENCE_TOOL_NAMES, expected);
+        assert_eq!(CONFLUENCE_TOOL_NAMES, expected);
     }
 
     #[test]

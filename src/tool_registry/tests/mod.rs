@@ -17,37 +17,37 @@ use crate::{
 use super::*;
 
 const SYNTHETIC_JIRA_READ: ToolMetadata = ToolMetadata {
-    name: "stage1_synthetic_jira_read",
+    name: "synthetic_jira_read",
     service: ToolService::Jira,
     access: ToolAccess::Read,
-    toolset: Some("jira_issues"),
+    toolset: Some("jira_issue_read"),
     title: "Synthetic Jira read",
     description: "Test-only Jira read metadata.",
 };
 
 const SYNTHETIC_JIRA_WRITE: ToolMetadata = ToolMetadata {
-    name: "stage1_synthetic_jira_write",
+    name: "synthetic_jira_write",
     service: ToolService::Jira,
     access: ToolAccess::Write,
-    toolset: Some("jira_issues"),
+    toolset: Some("jira_issue_write"),
     title: "Synthetic Jira write",
     description: "Test-only Jira write metadata.",
 };
 
 const SYNTHETIC_CONFLUENCE_READ: ToolMetadata = ToolMetadata {
-    name: "stage1_synthetic_confluence_read",
+    name: "synthetic_confluence_read",
     service: ToolService::Confluence,
     access: ToolAccess::Read,
-    toolset: Some("confluence_pages"),
+    toolset: Some("confluence_content_read"),
     title: "Synthetic Confluence read",
     description: "Test-only Confluence read metadata.",
 };
 
 fn metadata_for_test_tool(name: &str) -> Option<ToolMetadata> {
     match name {
-        "stage1_synthetic_jira_read" => Some(SYNTHETIC_JIRA_READ),
-        "stage1_synthetic_jira_write" => Some(SYNTHETIC_JIRA_WRITE),
-        "stage1_synthetic_confluence_read" => Some(SYNTHETIC_CONFLUENCE_READ),
+        "synthetic_jira_read" => Some(SYNTHETIC_JIRA_READ),
+        "synthetic_jira_write" => Some(SYNTHETIC_JIRA_WRITE),
+        "synthetic_confluence_read" => Some(SYNTHETIC_CONFLUENCE_READ),
         _ => metadata_for(name),
     }
 }
@@ -108,53 +108,44 @@ fn names(tools: Vec<Tool>) -> Vec<String> {
         .collect()
 }
 
-fn stage_two_jira_tool_names() -> Vec<String> {
-    vec![
-        tools::JIRA_ADD_COMMENT_TOOL_NAME.to_string(),
-        tools::JIRA_EDIT_COMMENT_TOOL_NAME.to_string(),
-        tools::JIRA_GET_FIELD_OPTIONS_TOOL_NAME.to_string(),
-        tools::JIRA_GET_ISSUE_TOOL_NAME.to_string(),
-        tools::JIRA_GET_PROJECT_ISSUES_TOOL_NAME.to_string(),
-        tools::JIRA_GET_TRANSITIONS_TOOL_NAME.to_string(),
-        tools::JIRA_SEARCH_TOOL_NAME.to_string(),
-        tools::JIRA_SEARCH_FIELDS_TOOL_NAME.to_string(),
-        tools::JIRA_TRANSITION_ISSUE_TOOL_NAME.to_string(),
-    ]
-}
-
-fn stage_three_jira_tool_names() -> Vec<String> {
-    tools::STAGE3_JIRA_TOOL_NAMES
-        .iter()
-        .map(|name| (*name).to_string())
-        .collect()
-}
-
-fn stage4_confluence_tool_names() -> Vec<String> {
-    confluence_tools::STAGE4_CONFLUENCE_TOOL_NAMES
-        .iter()
-        .map(|name| (*name).to_string())
-        .collect()
-}
-
 #[test]
-fn baseline_toolsets_match_stage_one_reference() {
+fn toolsets_and_profiles_match_control_plane_contract() {
     let all = all_toolsets();
     let defaults = default_toolsets();
 
-    assert_eq!(all.len(), 21);
-    assert_eq!(defaults.len(), 6);
+    assert_eq!(all.len(), 37);
+    assert_eq!(defaults.len(), 10);
     assert!(defaults.is_subset(&all));
-    assert!(all.contains("jira_issues"));
-    assert!(all.contains("jira_development"));
-    assert!(all.contains("confluence_pages"));
-    assert!(all.contains("confluence_attachments"));
+    assert!(all.contains("jira_issue_read"));
+    assert!(all.contains("jira_issue_delete"));
+    assert!(all.contains("jira_sprint_manage"));
+    assert!(all.contains("jira_service_desk"));
+    assert!(all.contains("confluence_content_read"));
+    assert!(all.contains("confluence_content_delete"));
+    let basic_profile = toolsets_for_profile("basic")
+        .unwrap()
+        .iter()
+        .map(|toolset| (*toolset).to_string())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(basic_profile, defaults);
+    assert!(
+        toolsets_for_profile("developer")
+            .unwrap()
+            .contains(&"jira_sprint_planning")
+    );
+    assert!(
+        toolsets_for_profile("manager")
+            .unwrap()
+            .contains(&"jira_issue_delete")
+    );
+    assert_eq!(toolsets_for_profile("full").unwrap(), ALL_TOOLSETS);
+    assert!(toolsets_for_profile("custom").unwrap().is_empty());
+    assert!(toolsets_for_profile("unknown").is_none());
 }
 
 #[test]
-fn stage_two_jira_core_metadata_is_registered() {
-    let names = stage_two_jira_tool_names();
-
-    for name in &names {
+fn jira_metadata_uses_capability_toolsets() {
+    for name in tools::JIRA_EXTENSION_TOOL_NAMES {
         let metadata = metadata_for(name).unwrap_or_else(|| panic!("{name} missing metadata"));
         assert_eq!(metadata.service, ToolService::Jira);
         assert!(metadata.toolset.is_some());
@@ -165,70 +156,38 @@ fn stage_two_jira_core_metadata_is_registered() {
     assert_eq!(
         metadata_for(tools::JIRA_GET_ISSUE_TOOL_NAME)
             .unwrap()
-            .access,
-        ToolAccess::Read
+            .toolset,
+        Some("jira_issue_read")
     );
     assert_eq!(
-        metadata_for(tools::JIRA_ADD_COMMENT_TOOL_NAME)
-            .unwrap()
-            .access,
-        ToolAccess::Write
-    );
-}
-
-#[test]
-fn stage_three_jira_extension_metadata_is_registered() {
-    let names = stage_three_jira_tool_names();
-
-    assert_eq!(names.len(), 40);
-    for name in &names {
-        let metadata = metadata_for(name).unwrap_or_else(|| panic!("{name} missing metadata"));
-        assert_eq!(metadata.service, ToolService::Jira);
-        assert!(metadata.toolset.is_some());
-        assert!(!metadata.title.is_empty());
-        assert!(!metadata.description.is_empty());
-    }
-
-    for name in [
-        tools::JIRA_CREATE_ISSUE_TOOL_NAME,
-        tools::JIRA_BATCH_CREATE_ISSUES_TOOL_NAME,
-        tools::JIRA_UPDATE_ISSUE_TOOL_NAME,
-        tools::JIRA_DELETE_ISSUE_TOOL_NAME,
-        tools::JIRA_CREATE_VERSION_TOOL_NAME,
-        tools::JIRA_BATCH_CREATE_VERSIONS_TOOL_NAME,
-        tools::JIRA_ADD_WATCHER_TOOL_NAME,
-        tools::JIRA_REMOVE_WATCHER_TOOL_NAME,
-        tools::JIRA_ADD_WORKLOG_TOOL_NAME,
-        tools::JIRA_LINK_TO_EPIC_TOOL_NAME,
-        tools::JIRA_CREATE_ISSUE_LINK_TOOL_NAME,
-        tools::JIRA_CREATE_REMOTE_ISSUE_LINK_TOOL_NAME,
-        tools::JIRA_REMOVE_ISSUE_LINK_TOOL_NAME,
-        tools::JIRA_CREATE_SPRINT_TOOL_NAME,
-        tools::JIRA_UPDATE_SPRINT_TOOL_NAME,
-        tools::JIRA_ADD_ISSUES_TO_SPRINT_TOOL_NAME,
-        tools::JIRA_UPDATE_PROFORMA_FORM_ANSWERS_TOOL_NAME,
-    ] {
-        assert_eq!(
-            metadata_for(name).unwrap().access,
-            ToolAccess::Write,
-            "{name} should be registered as write"
-        );
-    }
-
-    assert_eq!(
-        metadata_for(tools::JIRA_GET_ISSUE_SLA_TOOL_NAME)
+        metadata_for(tools::JIRA_CREATE_ISSUE_TOOL_NAME)
             .unwrap()
             .toolset,
-        Some("jira_metrics")
+        Some("jira_issue_write")
+    );
+    assert_eq!(
+        metadata_for(tools::JIRA_DELETE_ISSUE_TOOL_NAME)
+            .unwrap()
+            .toolset,
+        Some("jira_issue_delete")
+    );
+    assert_eq!(
+        metadata_for(tools::JIRA_ADD_ISSUES_TO_SPRINT_TOOL_NAME)
+            .unwrap()
+            .toolset,
+        Some("jira_sprint_planning")
+    );
+    assert_eq!(
+        metadata_for(tools::JIRA_CREATE_SPRINT_TOOL_NAME)
+            .unwrap()
+            .toolset,
+        Some("jira_sprint_manage")
     );
 }
 
 #[test]
-fn stage_four_confluence_metadata_is_registered() {
-    let names = stage4_confluence_tool_names();
-
-    assert_eq!(names.len(), 24);
-    for name in &names {
+fn confluence_metadata_uses_risk_split_toolsets() {
+    for name in confluence_tools::CONFLUENCE_TOOL_NAMES {
         let metadata = metadata_for(name).unwrap_or_else(|| panic!("{name} missing metadata"));
         assert_eq!(metadata.service, ToolService::Confluence);
         assert!(metadata.toolset.is_some());
@@ -236,75 +195,87 @@ fn stage_four_confluence_metadata_is_registered() {
         assert!(!metadata.description.is_empty());
     }
 
-    for name in [
-        confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME,
-        confluence_tools::CONFLUENCE_UPDATE_PAGE_TOOL_NAME,
-        confluence_tools::CONFLUENCE_DELETE_PAGE_TOOL_NAME,
-        confluence_tools::CONFLUENCE_MOVE_PAGE_TOOL_NAME,
-        confluence_tools::CONFLUENCE_ADD_COMMENT_TOOL_NAME,
-        confluence_tools::CONFLUENCE_REPLY_TO_COMMENT_TOOL_NAME,
-        confluence_tools::CONFLUENCE_ADD_LABEL_TOOL_NAME,
-        confluence_tools::CONFLUENCE_UPLOAD_ATTACHMENT_TOOL_NAME,
-        confluence_tools::CONFLUENCE_UPLOAD_ATTACHMENTS_TOOL_NAME,
-        confluence_tools::CONFLUENCE_DELETE_ATTACHMENT_TOOL_NAME,
-    ] {
-        assert_eq!(
-            metadata_for(name).unwrap().access,
-            ToolAccess::Write,
-            "{name} should be registered as write"
-        );
-    }
-
     assert_eq!(
-        metadata_for(confluence_tools::CONFLUENCE_GET_SPACE_PAGE_TREE_TOOL_NAME)
+        metadata_for(confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME)
             .unwrap()
             .toolset,
-        Some("confluence_pages")
+        Some("confluence_content_read")
+    );
+    assert_eq!(
+        metadata_for(confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME)
+            .unwrap()
+            .toolset,
+        Some("confluence_content_write")
+    );
+    assert_eq!(
+        metadata_for(confluence_tools::CONFLUENCE_DELETE_PAGE_TOOL_NAME)
+            .unwrap()
+            .toolset,
+        Some("confluence_content_delete")
     );
 }
 
 #[test]
-fn toolsets_filter_registered_business_tools() {
-    let config = RuntimeConfig {
-        enabled_toolsets: BTreeSet::from(["jira_issues".to_string()]),
+fn default_profile_exposes_basic_tools_only() {
+    let context = context(RuntimeConfig {
         jira: Some(jira_config()),
+        confluence: Some(confluence_config()),
         ..runtime_config()
-    };
-    let context = context(config);
+    });
 
     let visible = visible_tools(
         [
             tool(tools::JIRA_GET_ISSUE_TOOL_NAME),
-            tool(tools::JIRA_SEARCH_FIELDS_TOOL_NAME),
+            tool(tools::JIRA_CREATE_ISSUE_TOOL_NAME),
+            tool(tools::JIRA_DELETE_ISSUE_TOOL_NAME),
+            tool(tools::JIRA_GET_AGILE_BOARDS_TOOL_NAME),
+            tool(confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME),
+            tool(confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME),
         ],
         &context,
     );
 
     assert_eq!(
         names(visible),
-        vec![tools::JIRA_GET_ISSUE_TOOL_NAME.to_string()]
+        vec![
+            confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME.to_string(),
+            tools::JIRA_CREATE_ISSUE_TOOL_NAME.to_string(),
+            tools::JIRA_GET_ISSUE_TOOL_NAME.to_string(),
+        ]
     );
 }
 
 #[test]
-fn enabled_tools_filter_by_exact_tool_name() {
-    let config = RuntimeConfig {
-        enabled_tools: Some(BTreeSet::from(["stage1_synthetic_jira_read".to_string()])),
+fn toolsets_are_additive_and_exact_tools_can_add_or_remove() {
+    let context = context(RuntimeConfig {
         jira: Some(jira_config()),
+        enabled_tools: Some(BTreeSet::from([
+            tools::JIRA_DELETE_ISSUE_TOOL_NAME.to_string()
+        ])),
+        disabled_tools: BTreeSet::from([tools::JIRA_CREATE_ISSUE_TOOL_NAME.to_string()]),
+        enabled_toolsets: BTreeSet::from(["jira_agile_read".to_string()]),
         ..runtime_config()
-    };
-    let context = context(config);
+    });
 
-    let tools = visible_tools_with_metadata(
+    let visible = visible_tools(
         [
-            tool("stage1_synthetic_jira_write"),
-            tool("stage1_synthetic_jira_read"),
+            tool(tools::JIRA_GET_ISSUE_TOOL_NAME),
+            tool(tools::JIRA_CREATE_ISSUE_TOOL_NAME),
+            tool(tools::JIRA_DELETE_ISSUE_TOOL_NAME),
+            tool(tools::JIRA_GET_AGILE_BOARDS_TOOL_NAME),
         ],
         &context,
-        metadata_for_test_tool,
     );
 
-    assert_eq!(names(tools), vec!["stage1_synthetic_jira_read"]);
+    assert_eq!(
+        names(visible),
+        vec![
+            tools::JIRA_DELETE_ISSUE_TOOL_NAME.to_string(),
+            tools::JIRA_GET_AGILE_BOARDS_TOOL_NAME.to_string(),
+        ]
+    );
+    assert!(guard_tool_call(tools::JIRA_DELETE_ISSUE_TOOL_NAME, &context).is_ok());
+    assert!(guard_tool_call(tools::JIRA_CREATE_ISSUE_TOOL_NAME, &context).is_err());
 }
 
 #[test]
@@ -319,8 +290,8 @@ fn service_availability_filters_jira_and_confluence_tools() {
     assert_eq!(
         names(visible_tools_with_metadata(
             [
-                tool("stage1_synthetic_jira_read"),
-                tool("stage1_synthetic_confluence_read"),
+                tool("synthetic_jira_read"),
+                tool("synthetic_confluence_read"),
             ],
             &unavailable,
             metadata_for_test_tool,
@@ -330,491 +301,33 @@ fn service_availability_filters_jira_and_confluence_tools() {
     assert_eq!(
         names(visible_tools_with_metadata(
             [
-                tool("stage1_synthetic_jira_read"),
-                tool("stage1_synthetic_confluence_read"),
+                tool("synthetic_jira_read"),
+                tool("synthetic_confluence_read"),
             ],
             &available,
             metadata_for_test_tool,
         )),
         vec![
-            "stage1_synthetic_confluence_read".to_string(),
-            "stage1_synthetic_jira_read".to_string(),
+            "synthetic_confluence_read".to_string(),
+            "synthetic_jira_read".to_string(),
         ]
     );
 }
 
 #[test]
-fn real_confluence_tools_require_service_availability_and_obey_read_only() {
-    let unavailable = AppContext::default();
-    let read_write = context(RuntimeConfig {
-        confluence: Some(confluence_config()),
-        ..runtime_config()
-    });
-    let read_only = context(RuntimeConfig {
-        read_only: true,
-        confluence: Some(confluence_config()),
-        ..runtime_config()
-    });
-
-    assert!(guard_tool_call(confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME, &unavailable).is_err());
-    assert!(guard_tool_call(confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME, &read_write).is_ok());
-    assert!(
-        guard_tool_call(
-            confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME,
-            &read_write
-        )
-        .is_ok()
-    );
-    assert!(guard_tool_call(confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME, &read_only).is_ok());
-    assert!(
-        guard_tool_call(
-            confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME,
-            &read_only
-        )
-        .unwrap_err()
-        .message
-        .contains(READ_ONLY_BLOCK_MESSAGE)
-    );
-}
-
-#[test]
-fn default_confluence_toolsets_show_reads_and_hide_writes_in_read_only() {
-    let read_write = context(RuntimeConfig {
-        confluence: Some(confluence_config()),
-        enabled_toolsets: default_toolsets(),
-        ..runtime_config()
-    });
-    let read_only = context(RuntimeConfig {
-        read_only: true,
-        confluence: Some(confluence_config()),
-        enabled_toolsets: default_toolsets(),
-        ..runtime_config()
-    });
-    let candidate_tools = [
-        tool(confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_GET_COMMENTS_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_ADD_COMMENT_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_GET_LABELS_TOOL_NAME),
-    ];
-
-    assert_eq!(
-        names(visible_tools(candidate_tools.clone(), &read_write)),
-        vec![
-            confluence_tools::CONFLUENCE_ADD_COMMENT_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_GET_COMMENTS_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME.to_string(),
-        ]
-    );
-    assert_eq!(
-        names(visible_tools(candidate_tools, &read_only)),
-        vec![
-            confluence_tools::CONFLUENCE_GET_COMMENTS_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME.to_string(),
-        ]
-    );
-}
-
-#[test]
-fn c2_confluence_default_toolset_filter_covers_all_specific_and_unknown_cases() {
-    let all_default = context(RuntimeConfig {
-        confluence: Some(confluence_config()),
-        enabled_toolsets: default_toolsets(),
-        ..runtime_config()
-    });
-    let pages_only = context(RuntimeConfig {
-        confluence: Some(confluence_config()),
-        enabled_toolsets: BTreeSet::from(["confluence_pages".to_string()]),
-        ..runtime_config()
-    });
-    let comments_only = context(RuntimeConfig {
-        confluence: Some(confluence_config()),
-        enabled_toolsets: BTreeSet::from(["confluence_comments".to_string()]),
-        ..runtime_config()
-    });
-    let unknown_only = context(RuntimeConfig {
-        confluence: Some(confluence_config()),
-        enabled_toolsets: BTreeSet::from(["confluence_unknown".to_string()]),
-        ..runtime_config()
-    });
-    let candidate_tools = [
-        tool(confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_GET_PAGE_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_GET_PAGE_CHILDREN_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_GET_SPACE_PAGE_TREE_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_UPDATE_PAGE_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_DELETE_PAGE_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_MOVE_PAGE_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_GET_COMMENTS_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_ADD_COMMENT_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_REPLY_TO_COMMENT_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_GET_LABELS_TOOL_NAME),
-    ];
-
-    assert_eq!(
-        names(visible_tools(candidate_tools.clone(), &all_default)),
-        vec![
-            confluence_tools::CONFLUENCE_ADD_COMMENT_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_DELETE_PAGE_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_GET_COMMENTS_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_GET_PAGE_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_GET_PAGE_CHILDREN_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_GET_SPACE_PAGE_TREE_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_MOVE_PAGE_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_REPLY_TO_COMMENT_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_UPDATE_PAGE_TOOL_NAME.to_string(),
-        ]
-    );
-    assert_eq!(
-        names(visible_tools(candidate_tools.clone(), &pages_only)),
-        vec![
-            confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_DELETE_PAGE_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_GET_PAGE_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_GET_PAGE_CHILDREN_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_GET_SPACE_PAGE_TREE_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_MOVE_PAGE_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_UPDATE_PAGE_TOOL_NAME.to_string(),
-        ]
-    );
-    assert_eq!(
-        names(visible_tools(candidate_tools.clone(), &comments_only)),
-        vec![
-            confluence_tools::CONFLUENCE_ADD_COMMENT_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_GET_COMMENTS_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_REPLY_TO_COMMENT_TOOL_NAME.to_string(),
-        ]
-    );
-    assert_eq!(
-        names(visible_tools(candidate_tools, &unknown_only)),
-        Vec::<String>::new()
-    );
-}
-
-#[test]
-fn c2_confluence_write_tools_are_direct_call_blocked_in_read_only() {
-    let read_only = context(RuntimeConfig {
-        read_only: true,
-        confluence: Some(confluence_config()),
-        enabled_toolsets: default_toolsets(),
-        ..runtime_config()
-    });
-
-    assert!(guard_tool_call(confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME, &read_only).is_ok());
-    for name in [
-        confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME,
-        confluence_tools::CONFLUENCE_UPDATE_PAGE_TOOL_NAME,
-        confluence_tools::CONFLUENCE_DELETE_PAGE_TOOL_NAME,
-        confluence_tools::CONFLUENCE_MOVE_PAGE_TOOL_NAME,
-        confluence_tools::CONFLUENCE_ADD_COMMENT_TOOL_NAME,
-        confluence_tools::CONFLUENCE_REPLY_TO_COMMENT_TOOL_NAME,
-    ] {
-        let error = guard_tool_call(name, &read_only).unwrap_err();
-        assert!(error.message.contains(READ_ONLY_BLOCK_MESSAGE), "{name}");
-    }
-}
-
-#[test]
-fn confluence_labels_toolset_filters_and_blocks_writes_in_read_only() {
-    let read_write = context(RuntimeConfig {
-        confluence: Some(confluence_config()),
-        enabled_toolsets: BTreeSet::from(["confluence_labels".to_string()]),
-        ..runtime_config()
-    });
-    let read_only = context(RuntimeConfig {
-        read_only: true,
-        confluence: Some(confluence_config()),
-        enabled_toolsets: BTreeSet::from(["confluence_labels".to_string()]),
-        ..runtime_config()
-    });
-    let candidate_tools = [
-        tool(confluence_tools::CONFLUENCE_GET_LABELS_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_ADD_LABEL_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME),
-    ];
-
-    assert_eq!(
-        names(visible_tools(candidate_tools.clone(), &read_write)),
-        vec![
-            confluence_tools::CONFLUENCE_ADD_LABEL_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_GET_LABELS_TOOL_NAME.to_string(),
-        ]
-    );
-    assert_eq!(
-        names(visible_tools(candidate_tools, &read_only)),
-        vec![confluence_tools::CONFLUENCE_GET_LABELS_TOOL_NAME.to_string()]
-    );
-    assert!(
-        guard_tool_call(
-            confluence_tools::CONFLUENCE_GET_LABELS_TOOL_NAME,
-            &read_only
-        )
-        .is_ok()
-    );
-    assert!(
-        guard_tool_call(
-            confluence_tools::CONFLUENCE_ADD_LABEL_TOOL_NAME,
-            &read_write
-        )
-        .is_ok()
-    );
-    assert_eq!(
-        guard_tool_call(confluence_tools::CONFLUENCE_ADD_LABEL_TOOL_NAME, &read_only)
-            .unwrap_err()
-            .message,
-        READ_ONLY_BLOCK_MESSAGE
-    );
-}
-
-#[test]
-fn confluence_attachments_toolset_filters_and_blocks_writes_in_read_only() {
-    let read_write = context(RuntimeConfig {
-        confluence: Some(confluence_config()),
-        enabled_toolsets: BTreeSet::from(["confluence_attachments".to_string()]),
-        ..runtime_config()
-    });
-    let read_only = context(RuntimeConfig {
-        read_only: true,
-        confluence: Some(confluence_config()),
-        enabled_toolsets: BTreeSet::from(["confluence_attachments".to_string()]),
-        ..runtime_config()
-    });
-    let candidate_tools = [
-        tool(confluence_tools::CONFLUENCE_UPLOAD_ATTACHMENT_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_UPLOAD_ATTACHMENTS_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_GET_ATTACHMENTS_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_DOWNLOAD_ATTACHMENT_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_DELETE_ATTACHMENT_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_GET_PAGE_IMAGES_TOOL_NAME),
-        tool(confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME),
-    ];
-
-    assert_eq!(
-        names(visible_tools(candidate_tools.clone(), &read_write)),
-        vec![
-            confluence_tools::CONFLUENCE_DELETE_ATTACHMENT_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_DOWNLOAD_ATTACHMENT_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_GET_ATTACHMENTS_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_GET_PAGE_IMAGES_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_UPLOAD_ATTACHMENT_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_UPLOAD_ATTACHMENTS_TOOL_NAME.to_string(),
-        ]
-    );
-    assert_eq!(
-        names(visible_tools(candidate_tools, &read_only)),
-        vec![
-            confluence_tools::CONFLUENCE_DOWNLOAD_ATTACHMENT_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_GET_ATTACHMENTS_TOOL_NAME.to_string(),
-            confluence_tools::CONFLUENCE_GET_PAGE_IMAGES_TOOL_NAME.to_string(),
-        ]
-    );
-
-    for read_tool in [
-        confluence_tools::CONFLUENCE_GET_ATTACHMENTS_TOOL_NAME,
-        confluence_tools::CONFLUENCE_DOWNLOAD_ATTACHMENT_TOOL_NAME,
-        confluence_tools::CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
-        confluence_tools::CONFLUENCE_GET_PAGE_IMAGES_TOOL_NAME,
-    ] {
-        assert!(
-            guard_tool_call(read_tool, &read_only).is_ok(),
-            "{read_tool}"
-        );
-    }
-    for write_tool in [
-        confluence_tools::CONFLUENCE_UPLOAD_ATTACHMENT_TOOL_NAME,
-        confluence_tools::CONFLUENCE_UPLOAD_ATTACHMENTS_TOOL_NAME,
-        confluence_tools::CONFLUENCE_DELETE_ATTACHMENT_TOOL_NAME,
-    ] {
-        assert!(
-            guard_tool_call(write_tool, &read_write).is_ok(),
-            "{write_tool}"
-        );
-        assert_eq!(
-            guard_tool_call(write_tool, &read_only).unwrap_err().message,
-            READ_ONLY_BLOCK_MESSAGE,
-            "{write_tool}"
-        );
-    }
-}
-
-#[test]
-fn enabled_tools_filter_can_select_single_confluence_tool() {
-    let context = context(RuntimeConfig {
-        confluence: Some(confluence_config()),
-        enabled_tools: Some(BTreeSet::from([
-            confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME.to_string(),
-        ])),
-        ..runtime_config()
-    });
-
-    assert_eq!(
-        names(visible_tools(
-            [
-                tool(confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME),
-                tool(confluence_tools::CONFLUENCE_GET_PAGE_TOOL_NAME),
-            ],
-            &context,
-        )),
-        vec![confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME.to_string()]
-    );
-}
-
-#[test]
-fn toolset_filter_hides_synthetic_tools_outside_enabled_toolsets() {
+fn guard_fails_closed_for_unknown_or_disabled_tools() {
     let context = context(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_toolsets: BTreeSet::from(["jira_fields".to_string()]),
+        disabled_tools: BTreeSet::from(["synthetic_jira_write".to_string()]),
         ..runtime_config()
     });
 
-    let tools = visible_tools_with_metadata(
-        [tool("stage1_synthetic_jira_read")],
-        &context,
-        metadata_for_test_tool,
-    );
+    let unknown = guard_tool_call_with_metadata("unknown_tool", &context, metadata_for_test_tool)
+        .unwrap_err();
+    let disabled =
+        guard_tool_call_with_metadata("synthetic_jira_write", &context, metadata_for_test_tool)
+            .unwrap_err();
 
-    assert!(tools.is_empty());
-}
-
-#[test]
-fn read_only_hides_write_tools_and_direct_call_guard_rejects_them() {
-    let context = context(RuntimeConfig {
-        read_only: true,
-        jira: Some(jira_config()),
-        ..runtime_config()
-    });
-
-    let tools = visible_tools_with_metadata(
-        [
-            tool("stage1_synthetic_jira_read"),
-            tool("stage1_synthetic_jira_write"),
-        ],
-        &context,
-        metadata_for_test_tool,
-    );
-    let error = guard_tool_call_with_metadata(
-        "stage1_synthetic_jira_write",
-        &context,
-        metadata_for_test_tool,
-    )
-    .unwrap_err();
-
-    assert_eq!(names(tools), vec!["stage1_synthetic_jira_read"]);
-    assert_eq!(error.message, READ_ONLY_BLOCK_MESSAGE);
-    assert_eq!(error.data, None);
-}
-
-#[test]
-fn direct_call_guard_allows_write_tools_when_read_only_is_disabled() {
-    let context = context(RuntimeConfig {
-        jira: Some(jira_config()),
-        ..runtime_config()
-    });
-
-    assert!(
-        guard_tool_call_with_metadata(
-            "stage1_synthetic_jira_write",
-            &context,
-            metadata_for_test_tool,
-        )
-        .is_ok()
-    );
-}
-
-#[test]
-fn real_jira_tools_require_service_availability_and_obey_read_only() {
-    let unavailable = AppContext::default();
-    let read_write = context(RuntimeConfig {
-        jira: Some(jira_config()),
-        ..runtime_config()
-    });
-    let read_only = context(RuntimeConfig {
-        read_only: true,
-        jira: Some(jira_config()),
-        ..runtime_config()
-    });
-
-    assert!(
-        guard_tool_call(tools::JIRA_GET_ISSUE_TOOL_NAME, &unavailable).is_err(),
-        "Jira read tools must not be callable without complete Jira config"
-    );
-    assert!(guard_tool_call(tools::JIRA_ADD_COMMENT_TOOL_NAME, &read_write).is_ok());
-    assert_eq!(
-        guard_tool_call(tools::JIRA_ADD_COMMENT_TOOL_NAME, &read_only)
-            .unwrap_err()
-            .message,
-        READ_ONLY_BLOCK_MESSAGE
-    );
-}
-
-#[test]
-fn stage_three_toolset_filter_uses_registered_metadata() {
-    let context = context(RuntimeConfig {
-        jira: Some(jira_config()),
-        enabled_toolsets: BTreeSet::from(["jira_agile".to_string()]),
-        ..runtime_config()
-    });
-
-    let tools = visible_tools(
-        [
-            tool(tools::JIRA_GET_AGILE_BOARDS_TOOL_NAME),
-            tool(tools::JIRA_GET_ALL_PROJECTS_TOOL_NAME),
-            tool(tools::JIRA_CREATE_SPRINT_TOOL_NAME),
-        ],
-        &context,
-    );
-
-    assert_eq!(
-        names(tools),
-        vec![
-            tools::JIRA_CREATE_SPRINT_TOOL_NAME.to_string(),
-            tools::JIRA_GET_AGILE_BOARDS_TOOL_NAME.to_string(),
-        ]
-    );
-}
-
-#[test]
-fn stage_three_read_only_hides_and_blocks_write_tools() {
-    let read_only = context(RuntimeConfig {
-        read_only: true,
-        jira: Some(jira_config()),
-        ..runtime_config()
-    });
-
-    let visible = visible_tools(
-        [
-            tool(tools::JIRA_BATCH_GET_CHANGELOGS_TOOL_NAME),
-            tool(tools::JIRA_CREATE_ISSUE_TOOL_NAME),
-            tool(tools::JIRA_UPDATE_PROFORMA_FORM_ANSWERS_TOOL_NAME),
-        ],
-        &read_only,
-    );
-    let error = guard_tool_call(tools::JIRA_CREATE_ISSUE_TOOL_NAME, &read_only).unwrap_err();
-
-    assert_eq!(
-        names(visible),
-        vec![tools::JIRA_BATCH_GET_CHANGELOGS_TOOL_NAME.to_string()]
-    );
-    assert_eq!(error.message, READ_ONLY_BLOCK_MESSAGE);
-}
-
-#[test]
-fn direct_call_guard_fails_closed_for_unknown_tools() {
-    let error = guard_tool_call_with_metadata(
-        "unknown_tool",
-        &AppContext::default(),
-        metadata_for_test_tool,
-    )
-    .unwrap_err();
-
-    assert_eq!(error.message, TOOL_UNAVAILABLE_MESSAGE);
-    assert_eq!(error.data, None);
+    assert_eq!(unknown.message, TOOL_UNAVAILABLE_MESSAGE);
+    assert_eq!(disabled.message, TOOL_UNAVAILABLE_MESSAGE);
 }

@@ -3,7 +3,7 @@ use std::fmt::{Debug, Formatter};
 use reqwest::Url;
 
 use crate::{
-    atlassian::compat::{ENV_HTTP_PROXY, ENV_HTTPS_PROXY, ENV_NO_PROXY, ENV_SOCKS_PROXY},
+    atlassian::compat::{ENV_HTTP_PROXY, ENV_HTTPS_PROXY, ENV_NO_PROXY},
     error::ConfigError,
 };
 
@@ -20,12 +20,10 @@ impl ProxyConfig {
         service_http_proxy: &'static str,
         service_https_proxy: &'static str,
         service_no_proxy: &'static str,
-        service_socks_proxy: &'static str,
     ) -> Result<Self, ConfigError>
     where
         F: FnMut(&str) -> Result<String, E>,
     {
-        reject_unsupported_socks_proxy(get_var, service_socks_proxy)?;
         let http_proxy = first_proxy_var(get_var, service_http_proxy, ENV_HTTP_PROXY)
             .map(|(variable, value)| validate_proxy_url(variable, value))
             .transpose()?;
@@ -66,26 +64,6 @@ impl Debug for ProxyConfig {
             .field("no_proxy", &self.no_proxy)
             .finish()
     }
-}
-
-fn reject_unsupported_socks_proxy<F, E>(
-    get_var: &mut F,
-    service_variable: &'static str,
-) -> Result<(), ConfigError>
-where
-    F: FnMut(&str) -> Result<String, E>,
-{
-    if optional_var(get_var, service_variable).is_some() {
-        return Err(ConfigError::UnsupportedSocksProxy {
-            variable: service_variable,
-        });
-    }
-    if optional_var(get_var, ENV_SOCKS_PROXY).is_some() {
-        return Err(ConfigError::UnsupportedSocksProxy {
-            variable: ENV_SOCKS_PROXY,
-        });
-    }
-    Ok(())
 }
 
 fn first_proxy_var<F, E>(
@@ -164,9 +142,7 @@ fn redact_proxy_url(value: &str) -> String {
 mod tests {
     use std::collections::BTreeMap;
 
-    use crate::atlassian::compat::{
-        ENV_JIRA_HTTP_PROXY, ENV_JIRA_HTTPS_PROXY, ENV_JIRA_NO_PROXY, ENV_JIRA_SOCKS_PROXY,
-    };
+    use crate::atlassian::compat::{ENV_JIRA_HTTP_PROXY, ENV_JIRA_HTTPS_PROXY, ENV_JIRA_NO_PROXY};
 
     use super::*;
 
@@ -181,7 +157,6 @@ mod tests {
             ENV_JIRA_HTTP_PROXY,
             ENV_JIRA_HTTPS_PROXY,
             ENV_JIRA_NO_PROXY,
-            ENV_JIRA_SOCKS_PROXY,
         )
     }
 
@@ -243,37 +218,6 @@ mod tests {
             error,
             ConfigError::InvalidProxyUrl {
                 variable: ENV_JIRA_HTTP_PROXY,
-            }
-        );
-        assert!(!error.to_string().contains("secret"));
-        assert!(!error.to_string().contains("proxy.example"));
-    }
-
-    #[test]
-    fn service_socks_proxy_is_rejected_without_leaking_credentials() {
-        let error =
-            proxy_from_pairs(&[(ENV_JIRA_SOCKS_PROXY, "socks5://user:secret@proxy.example")])
-                .unwrap_err();
-
-        assert_eq!(
-            error,
-            ConfigError::UnsupportedSocksProxy {
-                variable: ENV_JIRA_SOCKS_PROXY,
-            }
-        );
-        assert!(!error.to_string().contains("secret"));
-        assert!(!error.to_string().contains("proxy.example"));
-    }
-
-    #[test]
-    fn global_socks_proxy_is_rejected_without_leaking_credentials() {
-        let error = proxy_from_pairs(&[(ENV_SOCKS_PROXY, "socks5://user:secret@proxy.example")])
-            .unwrap_err();
-
-        assert_eq!(
-            error,
-            ConfigError::UnsupportedSocksProxy {
-                variable: ENV_SOCKS_PROXY,
             }
         );
         assert!(!error.to_string().contains("secret"));

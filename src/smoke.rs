@@ -52,7 +52,7 @@ enum SmokeMode {
     All,
     Stdio,
     Http,
-    ReadOnly,
+    Restricted,
 }
 
 #[derive(Debug, Clone)]
@@ -94,7 +94,7 @@ pub fn parse_smoke_args(args: &[String]) -> Result<SmokeCommand, String> {
             "all" => SmokeMode::All,
             "stdio" => SmokeMode::Stdio,
             "http" => SmokeMode::Http,
-            "read-only" => SmokeMode::ReadOnly,
+            "restricted" => SmokeMode::Restricted,
             other => return Err(format!("unknown smoke mode `{other}`")),
         };
         index += 1;
@@ -168,7 +168,7 @@ async fn run_inner(command: SmokeCommand) -> Result<(), String> {
                     command.path.as_deref(),
                 )
                 .await?;
-                run_read_only(command.service, &binary, &url, &server).await
+                run_restricted(command.service, &binary, &url, &server).await
             }
             SmokeMode::Stdio => run_stdio(command.service, &binary, &url).await,
             SmokeMode::Http => {
@@ -181,7 +181,7 @@ async fn run_inner(command: SmokeCommand) -> Result<(), String> {
                 )
                 .await
             }
-            SmokeMode::ReadOnly => run_read_only(command.service, &binary, &url, &server).await,
+            SmokeMode::Restricted => run_restricted(command.service, &binary, &url, &server).await,
         }
     }
     .await;
@@ -716,16 +716,16 @@ async fn run_http_inner(service: SmokeService, port: u16, path: &str) -> Result<
     Ok(())
 }
 
-async fn run_read_only(
+async fn run_restricted(
     service: SmokeService,
     binary: &PathBuf,
     url: &str,
     server: &MockServer,
 ) -> Result<(), String> {
     let mut session = StdioSession::start(binary, smoke_env(service, url, true))?;
-    session.initialize(service.read_only_client_name())?;
+    session.initialize(service.restricted_client_name())?;
     let names = session.list_tools()?;
-    assert_required_tools(service, &names, true, "read-only")?;
+    assert_required_tools(service, &names, true, "restricted")?;
 
     match service {
         SmokeService::Jira => {
@@ -734,14 +734,14 @@ async fn run_read_only(
                 "jira_create_issue",
                 json!({
                     "project_key": "ABC",
-                    "summary": "blocked by read-only smoke",
+                    "summary": "blocked by restricted smoke",
                     "issue_type": "Task"
                 }),
             )?;
-            assert_read_only_error(&response, "jira_create_issue")?;
+            assert_restricted_error(&response, "jira_create_issue")?;
             assert_no_request(server, Method::POST, "/rest/api/2/issue").await?;
             println!(
-                "Jira read-only smoke passed: Stage 3 reads stay visible and jira_create_issue is blocked before HTTP"
+                "Jira restricted smoke passed: selected reads stay visible and jira_create_issue is blocked before HTTP"
             );
         }
         SmokeService::Confluence => {
@@ -751,14 +751,14 @@ async fn run_read_only(
                 json!({
                     "space_key": "ENG",
                     "title": "Blocked smoke page",
-                    "content": "blocked by read-only smoke",
+                    "content": "blocked by restricted smoke",
                     "content_format": "markdown"
                 }),
             )?;
-            assert_read_only_error(&response, "confluence_create_page")?;
+            assert_restricted_error(&response, "confluence_create_page")?;
             assert_no_request(server, Method::POST, "/rest/api/content").await?;
             println!(
-                "Confluence read-only smoke passed: reads stay visible and confluence_create_page is blocked before HTTP"
+                "Confluence restricted smoke passed: reads stay visible and confluence_create_page is blocked before HTTP"
             );
         }
     }
@@ -766,12 +766,8 @@ async fn run_read_only(
     Ok(())
 }
 
-fn smoke_env(service: SmokeService, url: &str, read_only: bool) -> EnvMap {
+fn smoke_env(service: SmokeService, url: &str, restricted: bool) -> EnvMap {
     let mut env = EnvMap::new();
-    env.insert(
-        "READ_ONLY_MODE".to_string(),
-        if read_only { "true" } else { "false" }.to_string(),
-    );
     match service {
         SmokeService::Jira => {
             env.insert("JIRA_URL".to_string(), url.to_string());
@@ -779,8 +775,14 @@ fn smoke_env(service: SmokeService, url: &str, read_only: bool) -> EnvMap {
             env.insert("JIRA_SSL_VERIFY".to_string(), "false".to_string());
             env.insert(
                 "TOOLSETS".to_string(),
-                "default,jira_worklog,jira_agile,jira_metrics".to_string(),
+                "jira_worklog,jira_agile_read,jira_metrics_read".to_string(),
             );
+            if restricted {
+                env.insert(
+                    "DISABLED_TOOLS".to_string(),
+                    "jira_create_issue".to_string(),
+                );
+            }
             env.insert(
                 "ATLASSIAN_OAUTH_CLOUD_ID".to_string(),
                 "cloud-smoke".to_string(),
@@ -793,7 +795,16 @@ fn smoke_env(service: SmokeService, url: &str, read_only: bool) -> EnvMap {
                 CONFLUENCE_TOKEN.to_string(),
             );
             env.insert("CONFLUENCE_SSL_VERIFY".to_string(), "false".to_string());
-            env.insert("TOOLSETS".to_string(), "default".to_string());
+            env.insert(
+                "TOOLSETS".to_string(),
+                "confluence_content_write".to_string(),
+            );
+            if restricted {
+                env.insert(
+                    "DISABLED_TOOLS".to_string(),
+                    "confluence_create_page".to_string(),
+                );
+            }
         }
     }
     env
@@ -802,7 +813,7 @@ fn smoke_env(service: SmokeService, url: &str, read_only: bool) -> EnvMap {
 fn assert_required_tools(
     service: SmokeService,
     names: &[String],
-    read_only: bool,
+    restricted: bool,
     transport: &str,
 ) -> Result<(), String> {
     let required = match service {
@@ -830,12 +841,12 @@ fn assert_required_tools(
         SmokeService::Confluence => "confluence_create_page",
     };
     let has_write_tool = names.iter().any(|name| name == write_tool);
-    if read_only && has_write_tool {
+    if restricted && has_write_tool {
         return Err(format!(
-            "{write_tool} should be hidden in read-only mode: {names:?}"
+            "{write_tool} should be hidden in restricted smoke mode: {names:?}"
         ));
     }
-    if !read_only && !has_write_tool {
+    if !restricted && !has_write_tool {
         return Err(format!(
             "{transport} tools/list missing write sentinel {write_tool}: {names:?}"
         ));
@@ -860,7 +871,7 @@ async fn assert_no_request(
         Ok(())
     } else {
         Err(format!(
-            "read-only write tool reached mock service: {blocked:?}"
+            "restricted write tool reached mock service: {blocked:?}"
         ))
     }
 }
@@ -981,13 +992,13 @@ fn assert_page_result(response: &Value) -> Result<(), String> {
     }
 }
 
-fn assert_read_only_error(response: &Value, tool: &str) -> Result<(), String> {
+fn assert_restricted_error(response: &Value, tool: &str) -> Result<(), String> {
     let text = serde_json::to_string(response).unwrap_or_default();
-    if text.contains("read-only") {
+    if text.contains("tool not available") {
         Ok(())
     } else {
         Err(format!(
-            "{tool} was not blocked by read-only guard: {response}"
+            "{tool} was not blocked by restricted tool config: {response}"
         ))
     }
 }
@@ -1299,30 +1310,27 @@ fn parse_port(value: &str) -> Result<u16, String> {
 
 impl SmokeService {
     fn default_path(self) -> &'static str {
-        match self {
-            Self::Jira => "/stage2-mcp",
-            Self::Confluence => "/mcp",
-        }
+        "/mcp"
     }
 
     fn stdio_client_name(self) -> &'static str {
         match self {
-            Self::Jira => "stage3-stdio-smoke",
-            Self::Confluence => "stage4-confluence-stdio-smoke",
+            Self::Jira => "jira-stdio-smoke",
+            Self::Confluence => "confluence-stdio-smoke",
         }
     }
 
     fn http_client_name(self) -> &'static str {
         match self {
-            Self::Jira => "stage3-http-smoke",
-            Self::Confluence => "stage4-confluence-http-smoke",
+            Self::Jira => "jira-http-smoke",
+            Self::Confluence => "confluence-http-smoke",
         }
     }
 
-    fn read_only_client_name(self) -> &'static str {
+    fn restricted_client_name(self) -> &'static str {
         match self {
-            Self::Jira => "stage3-read-only-smoke",
-            Self::Confluence => "stage4-confluence-read-only-smoke",
+            Self::Jira => "jira-restricted-smoke",
+            Self::Confluence => "confluence-restricted-smoke",
         }
     }
 }
@@ -1354,7 +1362,7 @@ mod tests {
     #[test]
     fn normalizes_paths() {
         assert_eq!(normalize_path("mcp"), "/mcp");
-        assert_eq!(normalize_path("/stage2-mcp"), "/stage2-mcp");
+        assert_eq!(normalize_path("/custom-mcp"), "/custom-mcp");
         assert_eq!(normalize_path(""), "/mcp");
     }
 }

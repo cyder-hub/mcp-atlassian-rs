@@ -13,8 +13,8 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppContext {
-    read_only: bool,
     enabled_tools: Option<BTreeSet<String>>,
+    disabled_tools: BTreeSet<String>,
     enabled_toolsets: BTreeSet<String>,
     jira: Option<JiraConfig>,
     confluence: Option<ConfluenceConfig>,
@@ -28,8 +28,8 @@ pub struct AppContext {
 impl AppContext {
     pub fn from_config(config: &RuntimeConfig) -> Self {
         Self {
-            read_only: config.read_only,
             enabled_tools: config.enabled_tools.clone(),
+            disabled_tools: config.disabled_tools.clone(),
             enabled_toolsets: config.enabled_toolsets.clone(),
             jira: config.jira.clone(),
             confluence: config.confluence.clone(),
@@ -75,12 +75,12 @@ impl AppContext {
         context
     }
 
-    pub fn read_only(&self) -> bool {
-        self.read_only
-    }
-
     pub fn enabled_tools(&self) -> Option<&BTreeSet<String>> {
         self.enabled_tools.as_ref()
+    }
+
+    pub fn disabled_tools(&self) -> &BTreeSet<String> {
+        &self.disabled_tools
     }
 
     pub fn enabled_toolsets(&self) -> &BTreeSet<String> {
@@ -247,8 +247,8 @@ mod tests {
     fn default_context_has_no_service_availability() {
         let context = AppContext::default();
 
-        assert!(!context.read_only());
         assert_eq!(context.enabled_tools(), None);
+        assert!(context.disabled_tools().is_empty());
         assert_eq!(context.jira_config(), None);
         assert_eq!(context.confluence_config(), None);
         assert_eq!(
@@ -263,12 +263,13 @@ mod tests {
     #[test]
     fn context_preserves_control_plane_config() {
         let enabled_tools = BTreeSet::from([tools::JIRA_GET_ISSUE_TOOL_NAME.to_string()]);
+        let disabled_tools = BTreeSet::from([tools::JIRA_DELETE_ISSUE_TOOL_NAME.to_string()]);
         let enabled_toolsets = default_toolsets();
         let jira = jira_config();
         let confluence = confluence_config();
         let config = RuntimeConfig {
-            read_only: true,
             enabled_tools: Some(enabled_tools.clone()),
+            disabled_tools: disabled_tools.clone(),
             enabled_toolsets: enabled_toolsets.clone(),
             jira: Some(jira.clone()),
             confluence: Some(confluence.clone()),
@@ -281,8 +282,8 @@ mod tests {
 
         let context = AppContext::from_config(&config);
 
-        assert!(context.read_only());
         assert_eq!(context.enabled_tools(), Some(&enabled_tools));
+        assert_eq!(context.disabled_tools(), &disabled_tools);
         assert_eq!(context.enabled_toolsets(), &enabled_toolsets);
         assert_eq!(context.jira_config(), Some(&jira));
         assert_eq!(context.confluence_config(), Some(&confluence));

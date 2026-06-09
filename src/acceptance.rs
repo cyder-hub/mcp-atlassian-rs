@@ -22,7 +22,6 @@ use crate::{
 const BLOCKED: i32 = 2;
 const FAILED: i32 = 1;
 const ENV_FILE_VAR: &str = "ACCEPTANCE_ENV_FILE";
-const LEGACY_ENV_FILE_VAR: &str = "STAGE5_ENV_FILE";
 const SECRET_KEYS: &[&str] = &[
     "JIRA_API_TOKEN",
     "JIRA_PERSONAL_TOKEN",
@@ -57,7 +56,7 @@ struct Row {
     path: &'static str,
     required_env: &'static [&'static str],
     arguments: Value,
-    read_only: bool,
+    restricted: bool,
     expect_blocked: bool,
 }
 
@@ -198,11 +197,8 @@ fn load_env(env_file: Option<&Path>) -> Result<EnvMap, String> {
     let path = env_file
         .map(Path::to_path_buf)
         .or_else(|| loaded.get(ENV_FILE_VAR).map(PathBuf::from))
-        .or_else(|| loaded.get(LEGACY_ENV_FILE_VAR).map(PathBuf::from))
         .unwrap_or_else(default_env_file);
-    let explicit = env_file.is_some()
-        || loaded.contains_key(ENV_FILE_VAR)
-        || loaded.contains_key(LEGACY_ENV_FILE_VAR);
+    let explicit = env_file.is_some() || loaded.contains_key(ENV_FILE_VAR);
 
     if !path.exists() {
         if explicit {
@@ -376,39 +372,7 @@ fn has_confluence_auth(env: &EnvMap) -> bool {
 }
 
 fn env_value<'a>(env: &'a EnvMap, key: &str) -> &'a str {
-    let value = env.get(key).map(String::as_str).unwrap_or_default().trim();
-    if !value.is_empty() {
-        return value;
-    }
-
-    legacy_env_key(key)
-        .and_then(|legacy| env.get(legacy))
-        .map(String::as_str)
-        .unwrap_or_default()
-        .trim()
-}
-
-fn legacy_env_key(key: &str) -> Option<&'static str> {
-    match key {
-        "JIRA_READ_ISSUE" => Some("STAGE5_JIRA_READ_ISSUE"),
-        "JIRA_PROJECT_KEY" => Some("STAGE5_JIRA_PROJECT_KEY"),
-        "JIRA_FIELD_ID" => Some("STAGE5_JIRA_FIELD_ID"),
-        "JIRA_FIELD_CONTEXT_ID" => Some("STAGE5_JIRA_FIELD_CONTEXT_ID"),
-        "JIRA_WATCHER_USER" => Some("STAGE5_JIRA_WATCHER_USER"),
-        "JIRA_SERVICE_DESK_ID" => Some("STAGE5_JIRA_SERVICE_DESK_ID"),
-        "JIRA_QUEUE_ID" => Some("STAGE5_JIRA_QUEUE_ID"),
-        "JIRA_FORM_ID" => Some("STAGE5_JIRA_FORM_ID"),
-        "CONFLUENCE_SEARCH_QUERY" => Some("STAGE5_CONFLUENCE_SEARCH_QUERY"),
-        "CONFLUENCE_PAGE_ID" => Some("STAGE5_CONFLUENCE_PAGE_ID"),
-        "CONFLUENCE_SPACE_KEY" => Some("STAGE5_CONFLUENCE_SPACE_KEY"),
-        "CONFLUENCE_TEST_PAGE_PREFIX" => Some("STAGE5_CONFLUENCE_TEST_PAGE_PREFIX"),
-        "CONFLUENCE_MUTATION_PAGE_ID" => Some("STAGE5_CONFLUENCE_MUTATION_PAGE_ID"),
-        "CONFLUENCE_ATTACHMENT_ID" => Some("STAGE5_CONFLUENCE_ATTACHMENT_ID"),
-        "CONFLUENCE_ATTACHMENT_FILE" => Some("STAGE5_CONFLUENCE_ATTACHMENT_FILE"),
-        "CONFLUENCE_COMMENT_ID" => Some("STAGE5_CONFLUENCE_COMMENT_ID"),
-        "CONFLUENCE_LABEL_NAME" => Some("STAGE5_CONFLUENCE_LABEL_NAME"),
-        _ => None,
-    }
+    env.get(key).map(String::as_str).unwrap_or_default().trim()
 }
 
 fn print_header() {
@@ -443,7 +407,7 @@ fn run_rows(binary: &Path, rows: &[Row], env: &EnvMap) -> i32 {
         }
 
         let (status, blocker, evidence) =
-            match call_stdio_tool(binary, env, row.tool, &row.arguments, row.read_only) {
+            match call_stdio_tool(binary, env, row.tool, &row.arguments, row.restricted) {
                 Ok(response) => classify_response(&response, row.expect_blocked, env),
                 Err(error) => (
                     "failed".to_string(),
@@ -546,7 +510,7 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
         row(
             "jira_watchers",
             "jira_remove_watcher",
-            "jira/core/read_only_watcher_remove",
+            "jira/core/restricted_watcher_remove",
             &["JIRA_READ_ISSUE", "JIRA_WATCHER_USER"],
             json!({"issue_key": issue, "user_identifier": watcher}),
             true,
@@ -555,9 +519,9 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
         row(
             "jira_issues",
             "jira_create_issue",
-            "jira/core/read_only_create_issue",
+            "jira/core/restricted_create_issue",
             &["JIRA_PROJECT_KEY"],
-            json!({"project_key": project, "summary": "Acceptance read-only guard probe", "issue_type": "Task"}),
+            json!({"project_key": project, "summary": "Acceptance disabled-tool guard probe", "issue_type": "Task"}),
             true,
             true,
         ),
@@ -711,9 +675,9 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
         row(
             "confluence_pages",
             "confluence_create_page",
-            "confluence/core/read_only_create_page",
+            "confluence/core/restricted_create_page",
             &["CONFLUENCE_SPACE_KEY", "CONFLUENCE_TEST_PAGE_PREFIX"],
-            json!({"space_key": space, "title": format!("{prefix} read-only probe"), "content": "Acceptance read-only guard probe", "content_format": "markdown"}),
+            json!({"space_key": space, "title": format!("{prefix} restricted probe"), "content": "Acceptance disabled-tool guard probe", "content_format": "markdown"}),
             true,
             true,
         ),
@@ -738,7 +702,7 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
         row(
             "confluence_pages",
             "confluence_delete_page",
-            "confluence/write/read_only_delete_page",
+            "confluence/write/restricted_delete_page",
             &["CONFLUENCE_MUTATION_PAGE_ID"],
             json!({"page_id": mutation_page}),
             true,
@@ -747,7 +711,7 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
         row(
             "confluence_pages",
             "confluence_move_page",
-            "confluence/write/read_only_move_page",
+            "confluence/write/restricted_move_page",
             &["CONFLUENCE_MUTATION_PAGE_ID", "CONFLUENCE_PAGE_ID"],
             json!({"page_id": mutation_page, "target_parent_id": page, "position": "append"}),
             true,
@@ -855,7 +819,7 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
         row(
             "confluence_attachments",
             "confluence_delete_attachment",
-            "confluence/attachments/read_only_delete",
+            "confluence/attachments/restricted_delete",
             &["CONFLUENCE_ATTACHMENT_ID"],
             json!({"attachment_id": attachment}),
             true,
@@ -878,7 +842,7 @@ fn row(
     path: &'static str,
     required_env: &'static [&'static str],
     arguments: Value,
-    read_only: bool,
+    restricted: bool,
     expect_blocked: bool,
 ) -> Row {
     Row {
@@ -887,7 +851,7 @@ fn row(
         path,
         required_env,
         arguments,
-        read_only,
+        restricted,
         expect_blocked,
     }
 }
@@ -1042,14 +1006,14 @@ fn mcp_row(
     }
 }
 
-fn clean_env(env: &EnvMap, read_only: bool) -> EnvMap {
+fn clean_env(env: &EnvMap, disabled_tool: Option<&str>) -> EnvMap {
     let mut clean = env.clone();
     clean.remove("ENABLED_TOOLS");
+    clean.remove("DISABLED_TOOLS");
     clean.insert("TOOLSETS".to_string(), "all".to_string());
-    clean.insert(
-        "READ_ONLY_MODE".to_string(),
-        if read_only { "true" } else { "false" }.to_string(),
-    );
+    if let Some(tool) = disabled_tool {
+        clean.insert("DISABLED_TOOLS".to_string(), tool.to_string());
+    }
     clean
 }
 
@@ -1058,9 +1022,9 @@ fn call_stdio_tool(
     env: &EnvMap,
     tool: &str,
     arguments: &Value,
-    read_only: bool,
+    restricted: bool,
 ) -> Result<Value, String> {
-    let mut session = StdioSession::start(binary, clean_env(env, read_only))?;
+    let mut session = StdioSession::start(binary, clean_env(env, restricted.then_some(tool)))?;
     session.initialize("acceptance")?;
     session.send(json!({
         "jsonrpc": "2.0",
@@ -1075,7 +1039,7 @@ fn call_stdio_tool(
 }
 
 fn list_stdio_tools(binary: &Path, env: &EnvMap) -> Result<Vec<String>, String> {
-    let mut session = StdioSession::start(binary, clean_env(env, false))?;
+    let mut session = StdioSession::start(binary, clean_env(env, None))?;
     session.initialize("acceptance-list")?;
     session.send(json!({
         "jsonrpc": "2.0",
@@ -1204,7 +1168,7 @@ async fn run_http_call(
 ) -> Result<Value, String> {
     let port = free_port()?;
     let path = "/mcp";
-    let env = clean_env(env, false);
+    let env = clean_env(env, None);
     let mut child = Command::new(binary)
         .arg("streamhttp")
         .arg("--host")
@@ -1389,18 +1353,16 @@ fn classify_response(
 ) -> (String, String, String) {
     let response_text = serde_json::to_string(response).unwrap_or_default();
     if expect_blocked {
-        if response_text.contains("read-only mode")
-            || response_text.contains("disabled in read-only")
-        {
+        if response_text.contains("tool not available") {
             return (
                 "ok".to_string(),
                 "none".to_string(),
-                "read_only_blocked_before_http".to_string(),
+                "disabled_tool_blocked_before_http".to_string(),
             );
         }
         return (
             "failed".to_string(),
-            "read_only_not_blocked".to_string(),
+            "disabled_tool_not_blocked".to_string(),
             compact_error(response, env),
         );
     }

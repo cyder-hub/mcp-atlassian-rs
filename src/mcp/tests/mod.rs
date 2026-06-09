@@ -34,7 +34,6 @@ use super::*;
 mod confluence_handlers;
 mod discovery;
 mod jira_handlers;
-mod read_only;
 mod request_auth;
 mod schema_logging;
 mod support;

@@ -308,16 +308,10 @@ impl ServerHandler for AtlassianMcpServer {
     }
 
     fn get_info(&self) -> ServerInfo {
-        let access_mode = if self.context.read_only() {
-            "read-only"
-        } else {
-            "read/write"
-        };
-
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new(SERVER_NAME, env!("CARGO_PKG_VERSION")))
             .with_instructions(format!(
-                "Rust MCP Atlassian exposes 73 Jira and Confluence business tools. The MCP control plane is initialized in {access_mode} mode. Jira and Confluence tools are available when their service configuration and authentication are complete. See docs/support-matrix.md for per-tool and runtime support status."
+                "Rust MCP Atlassian exposes 73 Jira and Confluence business tools. Tool visibility is controlled by TOOL_PROFILE, TOOLSETS, ENABLED_TOOLS, and DISABLED_TOOLS. Jira and Confluence tools are available when their service configuration and authentication are complete. See docs/support-matrix.md for per-tool and runtime support status."
             ))
     }
 }

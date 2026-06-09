@@ -225,25 +225,21 @@ fn request_auth_matrix_respects_ignore_header_auth_and_control_plane() {
         .unwrap();
     assert!(current_tool_names(&ignored).is_empty());
 
-    let read_only = server_with_config(RuntimeConfig {
-        read_only: true,
-        ..runtime_config()
-    });
-    let read_only = read_only
+    let basic = server_with_config(RuntimeConfig { ..runtime_config() });
+    let basic = basic
         .scoped_for_request_headers(&request_service_headers())
         .unwrap();
-    let read_only_names = current_tool_names(&read_only);
-    assert!(read_only_names.contains(&tools::JIRA_GET_ISSUE_TOOL_NAME.to_string()));
-    assert!(!read_only_names.contains(&tools::JIRA_CREATE_ISSUE_TOOL_NAME.to_string()));
-    assert!(read_only_names.contains(&confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME.to_string()));
-    assert!(
-        !read_only_names.contains(&confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME.to_string())
-    );
+    let basic_names = current_tool_names(&basic);
+    assert!(basic_names.contains(&tools::JIRA_GET_ISSUE_TOOL_NAME.to_string()));
+    assert!(basic_names.contains(&tools::JIRA_CREATE_ISSUE_TOOL_NAME.to_string()));
+    assert!(basic_names.contains(&confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME.to_string()));
+    assert!(!basic_names.contains(&confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME.to_string()));
 
     let filtered = server_with_config(RuntimeConfig {
         enabled_tools: Some(BTreeSet::from(
             [tools::JIRA_GET_ISSUE_TOOL_NAME.to_string()],
         )),
+        enabled_toolsets: BTreeSet::new(),
         ..runtime_config()
     });
     let filtered = filtered
@@ -256,44 +252,41 @@ fn request_auth_matrix_respects_ignore_header_auth_and_control_plane() {
 }
 
 #[test]
-fn request_auth_byot_matrix_preserves_read_only_filters_and_service_availability() {
+fn request_auth_byot_matrix_preserves_profile_filters_and_service_availability() {
     let byot_headers = header_map(&[
         ("Authorization", "Bearer request-access-token"),
         ("X-Atlassian-Cloud-Id", "cloud-123"),
     ]);
-    let read_only = server_with_config(RuntimeConfig {
+    let basic = server_with_config(RuntimeConfig {
         jira: Some(jira_cloud_config_with_base_url(
             "https://example.atlassian.net".to_string(),
         )),
         confluence: Some(confluence_cloud_config_with_base_url(
             "https://example.atlassian.net/wiki".to_string(),
         )),
-        read_only: true,
         ..runtime_config()
     });
-    let read_only = read_only.scoped_for_request_headers(&byot_headers).unwrap();
-    let read_only_names = current_tool_names(&read_only);
+    let basic = basic.scoped_for_request_headers(&byot_headers).unwrap();
+    let basic_names = current_tool_names(&basic);
 
     assert_eq!(
-        read_only.context.jira_config().unwrap().auth,
+        basic.context.jira_config().unwrap().auth,
         AtlassianAuth::OAuthAccessToken {
             access_token: "request-access-token".to_string(),
         }
     );
     assert_eq!(
-        read_only.context.jira_config().unwrap().base_url,
+        basic.context.jira_config().unwrap().base_url,
         "https://api.atlassian.com/ex/jira/cloud-123"
     );
     assert_eq!(
-        read_only.context.confluence_config().unwrap().base_url,
+        basic.context.confluence_config().unwrap().base_url,
         "https://api.atlassian.com/ex/confluence/cloud-123/wiki"
     );
-    assert!(read_only_names.contains(&tools::JIRA_GET_ISSUE_TOOL_NAME.to_string()));
-    assert!(!read_only_names.contains(&tools::JIRA_CREATE_ISSUE_TOOL_NAME.to_string()));
-    assert!(read_only_names.contains(&confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME.to_string()));
-    assert!(
-        !read_only_names.contains(&confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME.to_string())
-    );
+    assert!(basic_names.contains(&tools::JIRA_GET_ISSUE_TOOL_NAME.to_string()));
+    assert!(basic_names.contains(&tools::JIRA_CREATE_ISSUE_TOOL_NAME.to_string()));
+    assert!(basic_names.contains(&confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME.to_string()));
+    assert!(!basic_names.contains(&confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME.to_string()));
 
     let filtered = server_with_config(RuntimeConfig {
         jira: Some(jira_cloud_config_with_base_url(
@@ -305,6 +298,7 @@ fn request_auth_byot_matrix_preserves_read_only_filters_and_service_availability
         enabled_tools: Some(BTreeSet::from(
             [tools::JIRA_GET_ISSUE_TOOL_NAME.to_string()],
         )),
+        enabled_toolsets: BTreeSet::new(),
         ..runtime_config()
     });
     let filtered = filtered.scoped_for_request_headers(&byot_headers).unwrap();

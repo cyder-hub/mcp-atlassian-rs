@@ -5,40 +5,117 @@ use rmcp::{ErrorData, model::Tool};
 use crate::context::AppContext;
 
 const TOOL_UNAVAILABLE_MESSAGE: &str = "tool not available";
-const READ_ONLY_BLOCK_MESSAGE: &str = "tool is disabled in read-only mode";
+pub const DEFAULT_TOOL_PROFILE: &str = "basic";
 
 const ALL_TOOLSETS: &[&str] = &[
-    "jira_issues",
-    "jira_fields",
-    "jira_comments",
-    "jira_transitions",
-    "jira_projects",
-    "jira_agile",
-    "jira_links",
+    "jira_issue_read",
+    "jira_issue_write",
+    "jira_issue_delete",
+    "jira_issue_bulk_write",
+    "jira_issue_history_read",
+    "jira_fields_read",
+    "jira_comments_write",
+    "jira_workflow_read",
+    "jira_workflow_write",
+    "jira_project_read",
+    "jira_project_metadata_read",
+    "jira_project_write",
+    "jira_agile_read",
+    "jira_sprint_planning",
+    "jira_sprint_manage",
+    "jira_development_read",
+    "jira_attachments_read",
     "jira_worklog",
-    "jira_attachments",
+    "jira_links",
     "jira_users",
     "jira_watchers",
     "jira_service_desk",
     "jira_forms",
-    "jira_metrics",
-    "jira_development",
-    "confluence_pages",
-    "confluence_comments",
-    "confluence_labels",
-    "confluence_users",
-    "confluence_analytics",
-    "confluence_attachments",
+    "jira_metrics_read",
+    "confluence_content_read",
+    "confluence_content_write",
+    "confluence_content_delete",
+    "confluence_versions_read",
+    "confluence_comments_read",
+    "confluence_comments_write",
+    "confluence_labels_read",
+    "confluence_labels_write",
+    "confluence_users_read",
+    "confluence_analytics_read",
+    "confluence_attachments_read",
+    "confluence_attachments_write",
+    "confluence_attachments_delete",
 ];
 
 const DEFAULT_TOOLSETS: &[&str] = &[
-    "jira_issues",
-    "jira_fields",
-    "jira_comments",
-    "jira_transitions",
-    "confluence_pages",
-    "confluence_comments",
+    "jira_issue_read",
+    "jira_issue_write",
+    "jira_fields_read",
+    "jira_comments_write",
+    "jira_workflow_read",
+    "jira_workflow_write",
+    "jira_project_read",
+    "confluence_content_read",
+    "confluence_comments_read",
+    "confluence_labels_read",
 ];
+
+const BASIC_PROFILE_TOOLSETS: &[&str] = DEFAULT_TOOLSETS;
+const DEVELOPER_PROFILE_TOOLSETS: &[&str] = &[
+    "jira_issue_read",
+    "jira_issue_write",
+    "jira_fields_read",
+    "jira_comments_write",
+    "jira_workflow_read",
+    "jira_workflow_write",
+    "jira_project_read",
+    "confluence_content_read",
+    "confluence_comments_read",
+    "confluence_labels_read",
+    "jira_agile_read",
+    "jira_sprint_planning",
+    "jira_development_read",
+    "jira_attachments_read",
+    "jira_worklog",
+    "jira_metrics_read",
+    "confluence_versions_read",
+    "confluence_attachments_read",
+];
+const MANAGER_PROFILE_TOOLSETS: &[&str] = &[
+    "jira_issue_read",
+    "jira_issue_write",
+    "jira_fields_read",
+    "jira_comments_write",
+    "jira_workflow_read",
+    "jira_workflow_write",
+    "jira_project_read",
+    "confluence_content_read",
+    "confluence_comments_read",
+    "confluence_labels_read",
+    "jira_agile_read",
+    "jira_sprint_planning",
+    "jira_development_read",
+    "jira_attachments_read",
+    "jira_worklog",
+    "jira_metrics_read",
+    "confluence_versions_read",
+    "confluence_attachments_read",
+    "jira_sprint_manage",
+    "jira_issue_delete",
+    "jira_issue_bulk_write",
+    "jira_issue_history_read",
+    "jira_project_metadata_read",
+    "jira_project_write",
+    "jira_links",
+    "jira_users",
+    "jira_watchers",
+    "confluence_content_write",
+    "confluence_comments_write",
+    "confluence_labels_write",
+    "confluence_attachments_write",
+];
+const FULL_PROFILE_TOOLSETS: &[&str] = ALL_TOOLSETS;
+const CUSTOM_PROFILE_TOOLSETS: &[&str] = &[];
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,6 +192,17 @@ pub fn default_toolsets() -> BTreeSet<String> {
         .collect()
 }
 
+pub fn toolsets_for_profile(profile: &str) -> Option<&'static [&'static str]> {
+    match profile.trim().to_ascii_lowercase().as_str() {
+        "basic" => Some(BASIC_PROFILE_TOOLSETS),
+        "developer" => Some(DEVELOPER_PROFILE_TOOLSETS),
+        "manager" => Some(MANAGER_PROFILE_TOOLSETS),
+        "full" => Some(FULL_PROFILE_TOOLSETS),
+        "custom" => Some(CUSTOM_PROFILE_TOOLSETS),
+        _ => None,
+    }
+}
+
 pub fn metadata_for(name: &str) -> Option<ToolMetadata> {
     registered_tools().find(|metadata| metadata.name == name)
 }
@@ -162,32 +250,26 @@ where
         return Err(tool_unavailable_error());
     };
 
-    if !is_name_enabled(metadata, context)
-        || !is_service_available(metadata, context)
-        || !is_toolset_enabled(metadata, context)
-    {
+    if !is_tool_enabled(metadata, context) || !is_service_available(metadata, context) {
         return Err(tool_unavailable_error());
-    }
-
-    if context.read_only() && metadata.access == ToolAccess::Write {
-        return Err(ErrorData::invalid_params(READ_ONLY_BLOCK_MESSAGE, None));
     }
 
     Ok(())
 }
 
 fn is_discoverable(metadata: ToolMetadata, context: &AppContext) -> bool {
-    is_name_enabled(metadata, context)
-        && is_service_available(metadata, context)
-        && is_toolset_enabled(metadata, context)
-        && !(context.read_only() && metadata.access == ToolAccess::Write)
+    is_tool_enabled(metadata, context) && is_service_available(metadata, context)
 }
 
-fn is_name_enabled(metadata: ToolMetadata, context: &AppContext) -> bool {
-    match context.enabled_tools() {
-        Some(enabled_tools) => enabled_tools.contains(metadata.name),
-        None => true,
+fn is_tool_enabled(metadata: ToolMetadata, context: &AppContext) -> bool {
+    if context.disabled_tools().contains(metadata.name) {
+        return false;
     }
+
+    context
+        .enabled_tools()
+        .is_some_and(|enabled_tools| enabled_tools.contains(metadata.name))
+        || is_toolset_enabled(metadata, context)
 }
 
 fn is_service_available(metadata: ToolMetadata, context: &AppContext) -> bool {
