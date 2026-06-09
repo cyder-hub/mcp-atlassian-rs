@@ -234,15 +234,15 @@ async fn forms_helpers_use_cloud_id_paths_and_config_auth_without_override() {
     let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
 
     let forms = client
-        .get_issue_proforma_forms("ABC-1".to_string(), Some("cloud-123"))
+        .get_issue_forms("ABC-1".to_string(), Some("cloud-123"))
         .await
         .unwrap();
     let details = client
-        .get_proforma_form_details("ABC-1".to_string(), "form-1".to_string(), Some("cloud-123"))
+        .get_issue_form("ABC-1".to_string(), "form-1".to_string(), Some("cloud-123"))
         .await
         .unwrap();
     let updated = client
-        .update_proforma_form_answers(
+        .update_issue_form_answers(
             "ABC-1".to_string(),
             "form-1".to_string(),
             vec![
@@ -293,11 +293,11 @@ async fn forms_helpers_return_product_unavailable_when_cloud_id_missing_without_
     let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
 
     let missing = client
-        .get_issue_proforma_forms("ABC-1".to_string(), None)
+        .get_issue_forms("ABC-1".to_string(), None)
         .await
         .unwrap();
     let blank = client
-        .get_proforma_form_details("ABC-1".to_string(), "form-1".to_string(), Some(" "))
+        .get_issue_form("ABC-1".to_string(), "form-1".to_string(), Some(" "))
         .await
         .unwrap();
     let requests = requests.lock().await;
@@ -318,7 +318,7 @@ async fn forms_helpers_return_product_unavailable_when_forms_api_is_missing() {
     let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
 
     let value = client
-        .get_issue_proforma_forms("ABC-1".to_string(), Some("forms-down"))
+        .get_issue_forms("ABC-1".to_string(), Some("forms-down"))
         .await
         .unwrap();
     let requests = requests.lock().await;

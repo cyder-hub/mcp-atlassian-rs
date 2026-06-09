@@ -449,7 +449,7 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
 
     vec![
         row(
-            "jira_issues",
+            "jira_issues_read",
             "jira_get_issue",
             "jira/core/read_issue",
             &["JIRA_READ_ISSUE"],
@@ -458,8 +458,8 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "jira_issues",
-            "jira_search",
+            "jira_issues_read",
+            "jira_search_issues",
             "jira/core/search",
             &["JIRA_PROJECT_KEY"],
             json!({"jql": format!("project = {project}"), "limit": 1}),
@@ -467,8 +467,8 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "jira_issues",
-            "jira_get_project_issues",
+            "jira_issues_read",
+            "jira_list_project_issues",
             "jira/core/project_issues",
             &["JIRA_PROJECT_KEY"],
             json!({"project_key": project, "limit": 1}),
@@ -476,7 +476,7 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "jira_fields",
+            "jira_fields_read",
             "jira_search_fields",
             "jira/core/search_fields",
             &[],
@@ -485,8 +485,8 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "jira_fields",
-            "jira_get_field_options",
+            "jira_fields_read",
+            "jira_list_field_options",
             "jira/core/field_options",
             &["JIRA_FIELD_ID", "JIRA_FIELD_CONTEXT_ID"],
             json!({"field_id": field, "context_id": field_context, "return_limit": 10}),
@@ -494,8 +494,8 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "jira_watchers",
-            "jira_get_issue_watchers",
+            "jira_issue_watchers_read",
+            "jira_list_issue_watchers",
             "jira/core/watchers",
             &["JIRA_READ_ISSUE"],
             json!({"issue_key": issue}),
@@ -503,8 +503,8 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "jira_watchers",
-            "jira_remove_watcher",
+            "jira_issue_watchers_delete",
+            "jira_remove_issue_watcher",
             "jira/core/restricted_watcher_remove",
             &["JIRA_READ_ISSUE", "JIRA_WATCHER_USER"],
             json!({"issue_key": issue, "user_identifier": watcher}),
@@ -512,7 +512,7 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             true,
         ),
         row(
-            "jira_issues",
+            "jira_issues_write",
             "jira_create_issue",
             "jira/core/restricted_create_issue",
             &["JIRA_PROJECT_KEY"],
@@ -521,8 +521,8 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             true,
         ),
         row(
-            "jira_agile",
-            "jira_get_agile_boards",
+            "jira_agile_boards_read",
+            "jira_list_agile_boards",
             "jira/product/agile_boards",
             &["JIRA_PROJECT_KEY"],
             json!({"project_key": project, "limit": 5}),
@@ -530,8 +530,8 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "jira_service_desk",
-            "jira_get_service_desk_for_project",
+            "jira_service_desks_read",
+            "jira_get_project_service_desk",
             "jira/product/jsm_service_desk",
             &["JIRA_PROJECT_KEY"],
             json!({"project_key": project}),
@@ -539,8 +539,8 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "jira_service_desk",
-            "jira_get_service_desk_queues",
+            "jira_service_desks_read",
+            "jira_list_service_desk_queues",
             "jira/product/jsm_queues",
             &["JIRA_SERVICE_DESK_ID"],
             json!({"service_desk_id": service_desk, "limit": 5}),
@@ -548,8 +548,8 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "jira_service_desk",
-            "jira_get_queue_issues",
+            "jira_service_desks_read",
+            "jira_list_service_desk_queue_issues",
             "jira/product/jsm_queue_issues",
             &["JIRA_SERVICE_DESK_ID", "JIRA_QUEUE_ID"],
             json!({"service_desk_id": service_desk, "queue_id": queue, "limit": 5}),
@@ -557,8 +557,8 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "jira_forms",
-            "jira_get_issue_proforma_forms",
+            "jira_issue_forms_read",
+            "jira_list_issue_forms",
             "jira/product/forms",
             &["JIRA_READ_ISSUE"],
             json!({"issue_key": issue}),
@@ -566,8 +566,8 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "jira_forms",
-            "jira_get_proforma_form_details",
+            "jira_issue_forms_read",
+            "jira_get_issue_form",
             "jira/product/form_details",
             &["JIRA_READ_ISSUE", "JIRA_FORM_ID"],
             json!({"issue_key": issue, "form_id": form}),
@@ -575,8 +575,8 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "jira_metrics",
-            "jira_get_issue_sla",
+            "jira_issue_metrics_read",
+            "jira_get_issue_sla_metrics",
             "jira/product/sla",
             &["JIRA_READ_ISSUE"],
             json!({"issue_key": issue, "include_raw_dates": false}),
@@ -584,8 +584,8 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "jira_development",
-            "jira_get_issue_development_info",
+            "jira_issue_development_read",
+            "jira_get_issue_development",
             "jira/product/dev_status_single",
             &["JIRA_READ_ISSUE"],
             json!({"issue_key": issue, "application_type": "bitbucket", "data_type": "repository"}),
@@ -593,8 +593,8 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "jira_development",
-            "jira_get_issues_development_info",
+            "jira_issue_development_read",
+            "jira_get_issues_development",
             "jira/product/dev_status_batch",
             &["JIRA_READ_ISSUE"],
             json!({"issue_keys": [issue], "application_type": "bitbucket", "data_type": "repository"}),
@@ -623,8 +623,8 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
 
     vec![
         row(
-            "confluence_pages",
-            "confluence_search",
+            "confluence_content_read",
+            "confluence_search_content",
             "confluence/core/search",
             &["CONFLUENCE_SEARCH_QUERY"],
             json!({"query": query, "limit": 5}),
@@ -632,7 +632,7 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_pages",
+            "confluence_content_read",
             "confluence_get_page",
             "confluence/core/get_page",
             &["CONFLUENCE_PAGE_ID"],
@@ -641,8 +641,8 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_pages",
-            "confluence_get_page_children",
+            "confluence_content_read",
+            "confluence_list_page_children",
             "confluence/core/page_children",
             &["CONFLUENCE_PAGE_ID"],
             json!({"parent_id": page, "limit": 10, "convert_to_markdown": false}),
@@ -650,7 +650,7 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_pages",
+            "confluence_content_read",
             "confluence_get_space_page_tree",
             "confluence/core/page_tree",
             &["CONFLUENCE_SPACE_KEY"],
@@ -659,8 +659,8 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_comments",
-            "confluence_get_comments",
+            "confluence_page_comments_read",
+            "confluence_list_page_comments",
             "confluence/core/comments",
             &["CONFLUENCE_PAGE_ID"],
             json!({"page_id": page}),
@@ -668,7 +668,7 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_pages",
+            "confluence_content_write",
             "confluence_create_page",
             "confluence/core/restricted_create_page",
             &["CONFLUENCE_SPACE_KEY", "CONFLUENCE_TEST_PAGE_PREFIX"],
@@ -677,7 +677,7 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             true,
         ),
         row(
-            "confluence_pages",
+            "confluence_content_write",
             "confluence_create_page",
             "confluence/write/create_page",
             &["CONFLUENCE_SPACE_KEY", "CONFLUENCE_TEST_PAGE_PREFIX"],
@@ -686,7 +686,7 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_pages",
+            "confluence_content_update",
             "confluence_update_page",
             "confluence/write/update_page",
             &["CONFLUENCE_MUTATION_PAGE_ID", "CONFLUENCE_TEST_PAGE_PREFIX"],
@@ -695,7 +695,7 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_pages",
+            "confluence_content_delete",
             "confluence_delete_page",
             "confluence/write/restricted_delete_page",
             &["CONFLUENCE_MUTATION_PAGE_ID"],
@@ -704,7 +704,7 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             true,
         ),
         row(
-            "confluence_pages",
+            "confluence_content_update",
             "confluence_move_page",
             "confluence/write/restricted_move_page",
             &["CONFLUENCE_MUTATION_PAGE_ID", "CONFLUENCE_PAGE_ID"],
@@ -713,8 +713,8 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             true,
         ),
         row(
-            "confluence_comments",
-            "confluence_add_comment",
+            "confluence_page_comments_write",
+            "confluence_add_page_comment",
             "confluence/write/add_comment",
             &["CONFLUENCE_PAGE_ID"],
             json!({"page_id": page, "body": "Acceptance comment probe"}),
@@ -722,7 +722,7 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_comments",
+            "confluence_page_comments_write",
             "confluence_reply_to_comment",
             "confluence/write/reply_to_comment",
             &["CONFLUENCE_COMMENT_ID"],
@@ -731,8 +731,8 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_labels",
-            "confluence_get_labels",
+            "confluence_content_labels_read",
+            "confluence_list_content_labels",
             "confluence/write/get_labels",
             &["CONFLUENCE_PAGE_ID"],
             json!({"page_id": page}),
@@ -740,8 +740,8 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_labels",
-            "confluence_add_label",
+            "confluence_content_labels_write",
+            "confluence_add_content_label",
             "confluence/write/add_label",
             &["CONFLUENCE_PAGE_ID"],
             json!({"page_id": page, "name": label}),
@@ -749,8 +749,8 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_analytics",
-            "confluence_get_page_views",
+            "confluence_page_analytics_read",
+            "confluence_get_page_view_analytics",
             "confluence/product/cloud_page_views",
             &["CONFLUENCE_PAGE_ID"],
             json!({"page_id": page, "include_title": true}),
@@ -758,8 +758,8 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_attachments",
-            "confluence_get_attachments",
+            "confluence_attachments_read",
+            "confluence_list_content_attachments",
             "confluence/attachments/list",
             &["CONFLUENCE_PAGE_ID"],
             json!({"content_id": page, "limit": 25}),
@@ -767,7 +767,7 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_attachments",
+            "confluence_attachments_read",
             "confluence_download_attachment",
             "confluence/attachments/download_one",
             &["CONFLUENCE_ATTACHMENT_ID"],
@@ -776,7 +776,7 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_attachments",
+            "confluence_attachments_read",
             "confluence_download_content_attachments",
             "confluence/attachments/download_content",
             &["CONFLUENCE_PAGE_ID"],
@@ -785,8 +785,8 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_attachments",
-            "confluence_get_page_images",
+            "confluence_attachments_read",
+            "confluence_get_content_image_attachments",
             "confluence/attachments/page_images",
             &["CONFLUENCE_PAGE_ID"],
             json!({"content_id": page}),
@@ -794,8 +794,8 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_attachments",
-            "confluence_upload_attachment",
+            "confluence_attachments_write",
+            "confluence_upload_content_attachment",
             "confluence/attachments/upload",
             &["CONFLUENCE_PAGE_ID", "CONFLUENCE_ATTACHMENT_FILE"],
             json!({"content_id": page, "file_path": file_path, "comment": "Acceptance upload probe"}),
@@ -803,8 +803,8 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_attachments",
-            "confluence_upload_attachments",
+            "confluence_attachments_write",
+            "confluence_upload_content_attachments",
             "confluence/attachments/upload_batch",
             &["CONFLUENCE_PAGE_ID", "CONFLUENCE_ATTACHMENT_FILE"],
             json!({"content_id": page, "file_paths": file_path, "comment": "Acceptance batch upload probe"}),
@@ -812,7 +812,7 @@ fn confluence_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "confluence_attachments",
+            "confluence_attachments_delete",
             "confluence_delete_attachment",
             "confluence/attachments/restricted_delete",
             &["CONFLUENCE_ATTACHMENT_ID"],
@@ -864,7 +864,7 @@ async fn run_mcp(binary: &Path, env: &EnvMap) -> i32 {
             transport: McpTransport::StdioList,
         },
         mcp_row(
-            "jira_issues",
+            "jira_issues_read",
             "jira_get_issue",
             "mcp/stdio/jira_get_issue",
             &["JIRA_READ_ISSUE"],
@@ -872,7 +872,7 @@ async fn run_mcp(binary: &Path, env: &EnvMap) -> i32 {
             McpTransport::Stdio,
         ),
         mcp_row(
-            "confluence_pages",
+            "confluence_content_read",
             "confluence_get_page",
             "mcp/stdio/confluence_get_page",
             &["CONFLUENCE_PAGE_ID"],
@@ -880,7 +880,7 @@ async fn run_mcp(binary: &Path, env: &EnvMap) -> i32 {
             McpTransport::Stdio,
         ),
         mcp_row(
-            "jira_issues",
+            "jira_issues_read",
             "jira_get_issue",
             "mcp/http/jira_get_issue",
             &["JIRA_READ_ISSUE"],
@@ -888,7 +888,7 @@ async fn run_mcp(binary: &Path, env: &EnvMap) -> i32 {
             McpTransport::Http,
         ),
         mcp_row(
-            "confluence_pages",
+            "confluence_content_read",
             "confluence_get_page",
             "mcp/http/confluence_get_page",
             &["CONFLUENCE_PAGE_ID"],

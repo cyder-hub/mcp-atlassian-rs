@@ -196,7 +196,7 @@ async fn jira_extension_changelog_and_product_dependency_helpers_are_safe() {
         .await
         .unwrap();
     let forms = server
-        .get_issue_proforma_forms("ABC-1".to_string(), None)
+        .get_issue_forms("ABC-1".to_string(), None)
         .await
         .unwrap();
     let sla = server

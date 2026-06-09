@@ -8,7 +8,9 @@ pub(super) const SYNTHETIC_JIRA_READ: ToolMetadata = ToolMetadata {
     name: "synthetic_jira_read",
     service: ToolService::Jira,
     access: ToolAccess::Read,
-    toolset: Some("jira_issue_read"),
+    toolset: Some("jira_issues_read"),
+    annotations: ToolAnnotationMetadata::read_only(),
+    output_schema: None,
     title: "Synthetic Jira read",
     description: "Test-only Jira read metadata.",
 };
@@ -17,7 +19,9 @@ pub(super) const SYNTHETIC_JIRA_WRITE: ToolMetadata = ToolMetadata {
     name: "synthetic_jira_write",
     service: ToolService::Jira,
     access: ToolAccess::Write,
-    toolset: Some("jira_issue_write"),
+    toolset: Some("jira_issues_write"),
+    annotations: ToolAnnotationMetadata::additive_write(),
+    output_schema: None,
     title: "Synthetic Jira write",
     description: "Test-only Jira write metadata.",
 };
@@ -27,6 +31,8 @@ pub(super) const SYNTHETIC_CONFLUENCE_READ: ToolMetadata = ToolMetadata {
     service: ToolService::Confluence,
     access: ToolAccess::Read,
     toolset: Some("confluence_content_read"),
+    annotations: ToolAnnotationMetadata::read_only(),
+    output_schema: None,
     title: "Synthetic Confluence read",
     description: "Test-only Confluence read metadata.",
 };
@@ -172,6 +178,44 @@ pub(super) fn assert_client_compatible_tool_schemas(tools: &[Tool]) {
         let schema = Value::Object(tool.input_schema.as_ref().clone());
         assert_client_compatible_schema_value(&schema, &tool.name);
         assert_explicit_property_schemas(&schema, &tool.name);
+        if let Some(output_schema) = tool.output_schema.as_ref() {
+            let schema = Value::Object(output_schema.as_ref().clone());
+            assert_client_compatible_schema_value(&schema, &format!("{}.output", tool.name));
+            assert_explicit_property_schemas(&schema, &format!("{}.output", tool.name));
+        }
+    }
+}
+
+pub(super) fn assert_registered_output_schema_declares_properties(
+    tool_name: &str,
+    expected_properties: &[&str],
+) {
+    let server = server_with_config(RuntimeConfig {
+        jira: Some(jira_config()),
+        confluence: Some(confluence_config()),
+        enabled_toolsets: tool_registry::all_toolsets(),
+        atlassian_oauth_cloud_id: Some("cloud-123".to_string()),
+        ..runtime_config()
+    });
+    let tools = server.current_tools_result().tools;
+    let tool = tools
+        .iter()
+        .find(|tool| tool.name == tool_name)
+        .unwrap_or_else(|| panic!("{tool_name} should be discoverable"));
+    let output_schema = tool
+        .output_schema
+        .as_ref()
+        .unwrap_or_else(|| panic!("{tool_name} should expose output schema"));
+    let properties = output_schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .unwrap_or_else(|| panic!("{tool_name} output schema should have properties"));
+
+    for property in expected_properties {
+        assert!(
+            properties.contains_key(*property),
+            "{tool_name} output schema should declare {property}"
+        );
     }
 }
 
@@ -213,7 +257,10 @@ pub(super) fn assert_client_compatible_schema_value(value: &Value, path: &str) {
             }
 
             for (key, value) in object {
-                if key == "additionalProperties" {
+                if matches!(
+                    key.as_str(),
+                    "additionalProperties" | "const" | "enum" | "default" | "examples"
+                ) {
                     continue;
                 }
                 assert_client_compatible_schema_value(value, &format!("{path}.{key}"));
@@ -271,23 +318,23 @@ pub(super) fn jira_extension_write_tool_names() -> Vec<&'static str> {
 
 pub(super) fn jira_general_extension_tool_names() -> Vec<&'static str> {
     vec![
-        tools::JIRA_GET_ALL_PROJECTS_TOOL_NAME,
-        tools::JIRA_GET_PROJECT_VERSIONS_TOOL_NAME,
-        tools::JIRA_GET_PROJECT_COMPONENTS_TOOL_NAME,
-        tools::JIRA_CREATE_VERSION_TOOL_NAME,
-        tools::JIRA_BATCH_CREATE_VERSIONS_TOOL_NAME,
-        tools::JIRA_GET_USER_PROFILE_TOOL_NAME,
-        tools::JIRA_GET_ISSUE_WATCHERS_TOOL_NAME,
+        tools::JIRA_LIST_PROJECTS_TOOL_NAME,
+        tools::JIRA_LIST_PROJECT_VERSIONS_TOOL_NAME,
+        tools::JIRA_LIST_PROJECT_COMPONENTS_TOOL_NAME,
+        tools::JIRA_CREATE_PROJECT_VERSION_TOOL_NAME,
+        tools::JIRA_CREATE_PROJECT_VERSIONS_TOOL_NAME,
+        tools::JIRA_GET_USER_TOOL_NAME,
+        tools::JIRA_LIST_ISSUE_WATCHERS_TOOL_NAME,
         tools::JIRA_ADD_WATCHER_TOOL_NAME,
         tools::JIRA_REMOVE_WATCHER_TOOL_NAME,
-        tools::JIRA_GET_WORKLOG_TOOL_NAME,
+        tools::JIRA_LIST_ISSUE_WORKLOGS_TOOL_NAME,
         tools::JIRA_ADD_WORKLOG_TOOL_NAME,
-        tools::JIRA_GET_LINK_TYPES_TOOL_NAME,
-        tools::JIRA_LINK_TO_EPIC_TOOL_NAME,
+        tools::JIRA_LIST_ISSUE_LINK_TYPES_TOOL_NAME,
+        tools::JIRA_SET_ISSUE_PARENT_TOOL_NAME,
         tools::JIRA_CREATE_ISSUE_LINK_TOOL_NAME,
         tools::JIRA_CREATE_REMOTE_ISSUE_LINK_TOOL_NAME,
-        tools::JIRA_REMOVE_ISSUE_LINK_TOOL_NAME,
-        tools::JIRA_DOWNLOAD_ATTACHMENTS_TOOL_NAME,
+        tools::JIRA_DELETE_ISSUE_LINK_TOOL_NAME,
+        tools::JIRA_GET_ISSUE_ATTACHMENTS_TOOL_NAME,
         tools::JIRA_GET_ISSUE_IMAGES_TOOL_NAME,
     ]
 }
@@ -304,23 +351,23 @@ pub(super) fn jira_general_extension_write_tool_names() -> Vec<&'static str> {
 
 pub(super) fn jira_product_extension_tool_names() -> Vec<&'static str> {
     vec![
-        tools::JIRA_GET_AGILE_BOARDS_TOOL_NAME,
-        tools::JIRA_GET_BOARD_ISSUES_TOOL_NAME,
-        tools::JIRA_GET_SPRINTS_FROM_BOARD_TOOL_NAME,
-        tools::JIRA_GET_SPRINT_ISSUES_TOOL_NAME,
+        tools::JIRA_LIST_AGILE_BOARDS_TOOL_NAME,
+        tools::JIRA_LIST_BOARD_ISSUES_TOOL_NAME,
+        tools::JIRA_LIST_BOARD_SPRINTS_TOOL_NAME,
+        tools::JIRA_LIST_SPRINT_ISSUES_TOOL_NAME,
         tools::JIRA_CREATE_SPRINT_TOOL_NAME,
         tools::JIRA_UPDATE_SPRINT_TOOL_NAME,
         tools::JIRA_ADD_ISSUES_TO_SPRINT_TOOL_NAME,
         tools::JIRA_GET_SERVICE_DESK_FOR_PROJECT_TOOL_NAME,
-        tools::JIRA_GET_SERVICE_DESK_QUEUES_TOOL_NAME,
-        tools::JIRA_GET_QUEUE_ISSUES_TOOL_NAME,
-        tools::JIRA_GET_ISSUE_PROFORMA_FORMS_TOOL_NAME,
-        tools::JIRA_GET_PROFORMA_FORM_DETAILS_TOOL_NAME,
-        tools::JIRA_UPDATE_PROFORMA_FORM_ANSWERS_TOOL_NAME,
-        tools::JIRA_GET_ISSUE_DATES_TOOL_NAME,
-        tools::JIRA_GET_ISSUE_SLA_TOOL_NAME,
-        tools::JIRA_GET_ISSUE_DEVELOPMENT_INFO_TOOL_NAME,
-        tools::JIRA_GET_ISSUES_DEVELOPMENT_INFO_TOOL_NAME,
+        tools::JIRA_LIST_SERVICE_DESK_QUEUES_TOOL_NAME,
+        tools::JIRA_LIST_SERVICE_DESK_QUEUE_ISSUES_TOOL_NAME,
+        tools::JIRA_LIST_ISSUE_FORMS_TOOL_NAME,
+        tools::JIRA_GET_ISSUE_FORM_TOOL_NAME,
+        tools::JIRA_UPDATE_ISSUE_FORM_ANSWERS_TOOL_NAME,
+        tools::JIRA_GET_ISSUE_TIMELINE_TOOL_NAME,
+        tools::JIRA_GET_ISSUE_SLA_METRICS_TOOL_NAME,
+        tools::JIRA_GET_ISSUE_DEVELOPMENT_TOOL_NAME,
+        tools::JIRA_GET_ISSUES_DEVELOPMENT_TOOL_NAME,
     ]
 }
 
@@ -334,22 +381,698 @@ pub(super) fn jira_product_extension_write_tool_names() -> Vec<&'static str> {
         .collect()
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct HighRiskInputField {
+    pub(super) tool_name: &'static str,
+    pub(super) field_name: &'static str,
+    pub(super) reason: &'static str,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct HighRiskOutputTool {
+    pub(super) tool_name: &'static str,
+    pub(super) reason: &'static str,
+}
+
+pub(super) fn high_risk_schema_tool_names() -> Vec<&'static str> {
+    let mut names = vec![
+        tools::JIRA_CREATE_ISSUE_TOOL_NAME,
+        tools::JIRA_CREATE_ISSUES_TOOL_NAME,
+        tools::JIRA_UPDATE_ISSUE_TOOL_NAME,
+        tools::JIRA_DELETE_ISSUE_TOOL_NAME,
+        tools::JIRA_TRANSITION_ISSUE_TOOL_NAME,
+        tools::JIRA_SEARCH_TOOL_NAME,
+        tools::JIRA_GET_FIELD_OPTIONS_TOOL_NAME,
+        tools::JIRA_GET_ISSUE_CHANGELOGS_TOOL_NAME,
+        tools::JIRA_GET_ISSUE_ATTACHMENTS_TOOL_NAME,
+        tools::JIRA_GET_ISSUE_IMAGES_TOOL_NAME,
+        tools::JIRA_GET_ISSUE_SLA_METRICS_TOOL_NAME,
+        tools::JIRA_GET_ISSUE_DEVELOPMENT_TOOL_NAME,
+        tools::JIRA_GET_ISSUES_DEVELOPMENT_TOOL_NAME,
+        confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME,
+        confluence_tools::CONFLUENCE_UPDATE_PAGE_TOOL_NAME,
+        confluence_tools::CONFLUENCE_DELETE_PAGE_TOOL_NAME,
+        confluence_tools::CONFLUENCE_MOVE_PAGE_TOOL_NAME,
+        confluence_tools::CONFLUENCE_ADD_COMMENT_TOOL_NAME,
+        confluence_tools::CONFLUENCE_REPLY_TO_COMMENT_TOOL_NAME,
+        confluence_tools::CONFLUENCE_ADD_LABEL_TOOL_NAME,
+        confluence_tools::CONFLUENCE_LIST_PAGE_CHILDREN_TOOL_NAME,
+        confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME,
+        confluence_tools::CONFLUENCE_GET_PAGE_VIEW_ANALYTICS_TOOL_NAME,
+        confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENT_TOOL_NAME,
+        confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
+        confluence_tools::CONFLUENCE_LIST_CONTENT_ATTACHMENTS_TOOL_NAME,
+        confluence_tools::CONFLUENCE_DOWNLOAD_ATTACHMENT_TOOL_NAME,
+        confluence_tools::CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
+        confluence_tools::CONFLUENCE_DELETE_ATTACHMENT_TOOL_NAME,
+        confluence_tools::CONFLUENCE_GET_CONTENT_IMAGE_ATTACHMENTS_TOOL_NAME,
+    ];
+    names.extend(jira_general_extension_write_tool_names());
+    names.extend(jira_product_extension_write_tool_names());
+    names.extend(
+        high_risk_input_fields()
+            .into_iter()
+            .map(|field| field.tool_name),
+    );
+    names.sort_unstable();
+    names.dedup();
+    names
+}
+
+pub(super) fn high_risk_input_fields() -> Vec<HighRiskInputField> {
+    vec![
+        HighRiskInputField {
+            tool_name: tools::JIRA_CREATE_ISSUE_TOOL_NAME,
+            field_name: "components",
+            reason: "string-or-array component selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_CREATE_ISSUE_TOOL_NAME,
+            field_name: "additional_fields",
+            reason: "free-form Jira field object",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_CREATE_ISSUES_TOOL_NAME,
+            field_name: "issues",
+            reason: "bulk object list with partial failure semantics",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_CREATE_ISSUES_TOOL_NAME,
+            field_name: "validate_only",
+            reason: "bulk dry-run behavior switch",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_UPDATE_ISSUE_TOOL_NAME,
+            field_name: "fields",
+            reason: "destructive field update object",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_UPDATE_ISSUE_TOOL_NAME,
+            field_name: "additional_fields",
+            reason: "additional destructive update payload",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_UPDATE_ISSUE_TOOL_NAME,
+            field_name: "components",
+            reason: "string-or-array replacement component selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_UPDATE_ISSUE_TOOL_NAME,
+            field_name: "notify_users",
+            reason: "notification side-effect control",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_DELETE_ISSUE_TOOL_NAME,
+            field_name: "delete_subtasks",
+            reason: "destructive delete scope control",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_TRANSITION_ISSUE_TOOL_NAME,
+            field_name: "transition_id",
+            reason: "workflow transition selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_TRANSITION_ISSUE_TOOL_NAME,
+            field_name: "fields",
+            reason: "workflow transition payload object",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_TRANSITION_ISSUE_TOOL_NAME,
+            field_name: "comment",
+            reason: "transition side-effect comment",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_SEARCH_TOOL_NAME,
+            field_name: "fields",
+            reason: "string-or-array search field selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_SEARCH_TOOL_NAME,
+            field_name: "limit",
+            reason: "search page size",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_SEARCH_TOOL_NAME,
+            field_name: "start_at",
+            reason: "offset pagination",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_SEARCH_TOOL_NAME,
+            field_name: "projects_filter",
+            reason: "string-or-array project scoping",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_SEARCH_TOOL_NAME,
+            field_name: "page_token",
+            reason: "Cloud cursor pagination",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_FIELD_OPTIONS_TOOL_NAME,
+            field_name: "context_id",
+            reason: "Cloud field-context selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_FIELD_OPTIONS_TOOL_NAME,
+            field_name: "project_key",
+            reason: "field context fallback selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_FIELD_OPTIONS_TOOL_NAME,
+            field_name: "issue_type",
+            reason: "Server/Data Center field-option selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_FIELD_OPTIONS_TOOL_NAME,
+            field_name: "return_limit",
+            reason: "field option page size",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_ISSUE_CHANGELOGS_TOOL_NAME,
+            field_name: "issue_ids_or_keys",
+            reason: "string-or-array changelog issue selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_ISSUE_CHANGELOGS_TOOL_NAME,
+            field_name: "limit",
+            reason: "bulk changelog page size",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_CREATE_PROJECT_VERSIONS_TOOL_NAME,
+            field_name: "versions",
+            reason: "bulk project-version object list",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_USER_TOOL_NAME,
+            field_name: "user_identifier",
+            reason: "Cloud accountId versus Server username",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_ADD_WATCHER_TOOL_NAME,
+            field_name: "user_identifier",
+            reason: "Cloud accountId versus Server username",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_REMOVE_WATCHER_TOOL_NAME,
+            field_name: "user_identifier",
+            reason: "Cloud accountId versus Server username",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_LIST_ISSUE_WORKLOGS_TOOL_NAME,
+            field_name: "start_at",
+            reason: "worklog offset pagination",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_LIST_ISSUE_WORKLOGS_TOOL_NAME,
+            field_name: "limit",
+            reason: "worklog page size",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_ADD_WORKLOG_TOOL_NAME,
+            field_name: "visibility",
+            reason: "nested worklog visibility object",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_ADD_WORKLOG_TOOL_NAME,
+            field_name: "adjust_estimate",
+            reason: "remaining-estimate side effect",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_CREATE_REMOTE_ISSUE_LINK_TOOL_NAME,
+            field_name: "url",
+            reason: "external remote-link target URL",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_CREATE_REMOTE_ISSUE_LINK_TOOL_NAME,
+            field_name: "global_id",
+            reason: "remote-link replacement identity",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_CREATE_REMOTE_ISSUE_LINK_TOOL_NAME,
+            field_name: "status",
+            reason: "nested remote-link status object",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_ISSUE_ATTACHMENTS_TOOL_NAME,
+            field_name: "attachment_ids",
+            reason: "string-or-array attachment selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_ISSUE_ATTACHMENTS_TOOL_NAME,
+            field_name: "include_content",
+            reason: "inline attachment content switch",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_ISSUE_IMAGES_TOOL_NAME,
+            field_name: "include_content",
+            reason: "inline image content switch",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_LIST_AGILE_BOARDS_TOOL_NAME,
+            field_name: "board_type",
+            reason: "Jira Software board type filter",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_LIST_AGILE_BOARDS_TOOL_NAME,
+            field_name: "limit",
+            reason: "Jira Software board page size",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_LIST_BOARD_ISSUES_TOOL_NAME,
+            field_name: "fields",
+            reason: "string-or-array board issue field selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_LIST_BOARD_ISSUES_TOOL_NAME,
+            field_name: "limit",
+            reason: "board issue page size",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_LIST_BOARD_SPRINTS_TOOL_NAME,
+            field_name: "state",
+            reason: "string-or-array sprint state selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_LIST_SPRINT_ISSUES_TOOL_NAME,
+            field_name: "fields",
+            reason: "string-or-array sprint issue field selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_CREATE_SPRINT_TOOL_NAME,
+            field_name: "origin_board_id",
+            reason: "Jira Software sprint owner board id",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_CREATE_SPRINT_TOOL_NAME,
+            field_name: "start_date",
+            reason: "Jira Software sprint timestamp",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_UPDATE_SPRINT_TOOL_NAME,
+            field_name: "state",
+            reason: "Jira Software sprint state mutation",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_UPDATE_SPRINT_TOOL_NAME,
+            field_name: "start_date",
+            reason: "Jira Software sprint timestamp mutation",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_ADD_ISSUES_TO_SPRINT_TOOL_NAME,
+            field_name: "issue_keys",
+            reason: "string-or-array sprint membership mutation",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_LIST_SERVICE_DESK_QUEUES_TOOL_NAME,
+            field_name: "service_desk_id",
+            reason: "Jira Service Management product id",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_LIST_SERVICE_DESK_QUEUES_TOOL_NAME,
+            field_name: "limit",
+            reason: "service desk queue page size",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_LIST_SERVICE_DESK_QUEUE_ISSUES_TOOL_NAME,
+            field_name: "queue_id",
+            reason: "Jira Service Management queue selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_LIST_SERVICE_DESK_QUEUE_ISSUES_TOOL_NAME,
+            field_name: "limit",
+            reason: "service desk queue issue page size",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_ISSUE_FORM_TOOL_NAME,
+            field_name: "form_id",
+            reason: "Jira Forms product form selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_UPDATE_ISSUE_FORM_ANSWERS_TOOL_NAME,
+            field_name: "form_id",
+            reason: "Jira Forms product form selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_ISSUE_SLA_METRICS_TOOL_NAME,
+            field_name: "metrics",
+            reason: "string-or-array SLA metric selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_ISSUE_SLA_METRICS_TOOL_NAME,
+            field_name: "include_raw_dates",
+            reason: "raw SLA date payload switch",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_ISSUES_DEVELOPMENT_TOOL_NAME,
+            field_name: "issue_keys",
+            reason: "string-or-array development issue selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_ISSUES_DEVELOPMENT_TOOL_NAME,
+            field_name: "data_type",
+            reason: "Jira development product dependency selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_ISSUE_DEVELOPMENT_TOOL_NAME,
+            field_name: "application_type",
+            reason: "Jira development product dependency selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_ISSUE_DEVELOPMENT_TOOL_NAME,
+            field_name: "data_type",
+            reason: "Jira development product dependency selector",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_ADD_WORKLOG_TOOL_NAME,
+            field_name: "started",
+            reason: "Jira timestamp format",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_CREATE_ISSUE_LINK_TOOL_NAME,
+            field_name: "comment",
+            reason: "optional nested link comment object",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_ISSUE_ATTACHMENTS_TOOL_NAME,
+            field_name: "max_bytes",
+            reason: "bounded inline attachment content",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_GET_ISSUE_IMAGES_TOOL_NAME,
+            field_name: "max_bytes",
+            reason: "bounded inline image attachment content",
+        },
+        HighRiskInputField {
+            tool_name: tools::JIRA_UPDATE_ISSUE_FORM_ANSWERS_TOOL_NAME,
+            field_name: "answers",
+            reason: "forms answer object list",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME,
+            field_name: "limit",
+            reason: "Confluence search page size",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME,
+            field_name: "spaces_filter",
+            reason: "space scoping filter",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_GET_PAGE_TOOL_NAME,
+            field_name: "page_id",
+            reason: "string-or-number page identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_LIST_PAGE_CHILDREN_TOOL_NAME,
+            field_name: "parent_id",
+            reason: "string-or-number parent page identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_LIST_PAGE_CHILDREN_TOOL_NAME,
+            field_name: "limit",
+            reason: "page children page size",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_LIST_PAGE_CHILDREN_TOOL_NAME,
+            field_name: "include_content",
+            reason: "bounded content expansion",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_LIST_PAGE_CHILDREN_TOOL_NAME,
+            field_name: "start",
+            reason: "page children offset pagination",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME,
+            field_name: "parent_id",
+            reason: "string-or-number parent page identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME,
+            field_name: "content_format",
+            reason: "Markdown versus storage-format content",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME,
+            field_name: "include_content",
+            reason: "created page content expansion",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_UPDATE_PAGE_TOOL_NAME,
+            field_name: "page_id",
+            reason: "string-or-number page identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_UPDATE_PAGE_TOOL_NAME,
+            field_name: "is_minor_edit",
+            reason: "versioning side-effect control",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_UPDATE_PAGE_TOOL_NAME,
+            field_name: "version_comment",
+            reason: "page version history comment",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_UPDATE_PAGE_TOOL_NAME,
+            field_name: "parent_id",
+            reason: "string-or-number parent page identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_UPDATE_PAGE_TOOL_NAME,
+            field_name: "content_format",
+            reason: "Markdown versus storage-format content",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_UPDATE_PAGE_TOOL_NAME,
+            field_name: "include_content",
+            reason: "updated page content expansion",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_DELETE_PAGE_TOOL_NAME,
+            field_name: "page_id",
+            reason: "string-or-number page identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_MOVE_PAGE_TOOL_NAME,
+            field_name: "page_id",
+            reason: "string-or-number page identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_MOVE_PAGE_TOOL_NAME,
+            field_name: "target_parent_id",
+            reason: "string-or-number target parent identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_MOVE_PAGE_TOOL_NAME,
+            field_name: "target_space_key",
+            reason: "target space selector",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_MOVE_PAGE_TOOL_NAME,
+            field_name: "position",
+            reason: "page move placement semantics",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_ADD_COMMENT_TOOL_NAME,
+            field_name: "page_id",
+            reason: "string-or-number page identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_ADD_COMMENT_TOOL_NAME,
+            field_name: "body",
+            reason: "Markdown comment body",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_REPLY_TO_COMMENT_TOOL_NAME,
+            field_name: "comment_id",
+            reason: "string-or-number comment identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_REPLY_TO_COMMENT_TOOL_NAME,
+            field_name: "body",
+            reason: "Markdown reply body",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_ADD_LABEL_TOOL_NAME,
+            field_name: "page_id",
+            reason: "string-or-number content identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_ADD_LABEL_TOOL_NAME,
+            field_name: "name",
+            reason: "label mutation value",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_GET_PAGE_VERSION_TOOL_NAME,
+            field_name: "page_id",
+            reason: "string-or-number page identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_GET_PAGE_DIFF_TOOL_NAME,
+            field_name: "page_id",
+            reason: "string-or-number page identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_GET_PAGE_VIEW_ANALYTICS_TOOL_NAME,
+            field_name: "page_id",
+            reason: "string-or-number page identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_GET_PAGE_VIEW_ANALYTICS_TOOL_NAME,
+            field_name: "include_title",
+            reason: "Cloud-only analytics response shape control",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENT_TOOL_NAME,
+            field_name: "content_id",
+            reason: "string-or-number content identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENT_TOOL_NAME,
+            field_name: "file_path",
+            reason: "server-local file path",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENT_TOOL_NAME,
+            field_name: "minor_edit",
+            reason: "attachment versioning side-effect control",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
+            field_name: "content_id",
+            reason: "string-or-number content identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
+            field_name: "file_paths",
+            reason: "server-local file path list",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
+            field_name: "minor_edit",
+            reason: "attachment versioning side-effect control",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_LIST_CONTENT_ATTACHMENTS_TOOL_NAME,
+            field_name: "content_id",
+            reason: "string-or-number content identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_LIST_CONTENT_ATTACHMENTS_TOOL_NAME,
+            field_name: "start",
+            reason: "attachment listing offset pagination",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_LIST_CONTENT_ATTACHMENTS_TOOL_NAME,
+            field_name: "limit",
+            reason: "attachment listing page size",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_DOWNLOAD_ATTACHMENT_TOOL_NAME,
+            field_name: "attachment_id",
+            reason: "string-or-number attachment identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
+            field_name: "content_id",
+            reason: "string-or-number content identifier for protected attachment listing",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_DELETE_ATTACHMENT_TOOL_NAME,
+            field_name: "attachment_id",
+            reason: "string-or-number attachment identifier",
+        },
+        HighRiskInputField {
+            tool_name: confluence_tools::CONFLUENCE_GET_CONTENT_IMAGE_ATTACHMENTS_TOOL_NAME,
+            field_name: "content_id",
+            reason: "string-or-number content identifier",
+        },
+    ]
+}
+
+pub(super) fn high_risk_output_tools() -> Vec<HighRiskOutputTool> {
+    vec![
+        HighRiskOutputTool {
+            tool_name: tools::JIRA_CREATE_ISSUES_TOOL_NAME,
+            reason: "bulk issue creation result",
+        },
+        HighRiskOutputTool {
+            tool_name: tools::JIRA_CREATE_PROJECT_VERSIONS_TOOL_NAME,
+            reason: "partial success result partitions",
+        },
+        HighRiskOutputTool {
+            tool_name: tools::JIRA_UPDATE_ISSUE_TOOL_NAME,
+            reason: "destructive update success result",
+        },
+        HighRiskOutputTool {
+            tool_name: tools::JIRA_DELETE_ISSUE_TOOL_NAME,
+            reason: "destructive write success result",
+        },
+        HighRiskOutputTool {
+            tool_name: tools::JIRA_GET_ISSUE_ATTACHMENTS_TOOL_NAME,
+            reason: "bounded inline attachment payload",
+        },
+        HighRiskOutputTool {
+            tool_name: tools::JIRA_GET_ISSUE_IMAGES_TOOL_NAME,
+            reason: "image attachment payload",
+        },
+        HighRiskOutputTool {
+            tool_name: tools::JIRA_LIST_AGILE_BOARDS_TOOL_NAME,
+            reason: "product dependency unavailable payload",
+        },
+        HighRiskOutputTool {
+            tool_name: tools::JIRA_GET_SERVICE_DESK_FOR_PROJECT_TOOL_NAME,
+            reason: "product dependency unavailable payload",
+        },
+        HighRiskOutputTool {
+            tool_name: tools::JIRA_LIST_ISSUE_FORMS_TOOL_NAME,
+            reason: "product dependency unavailable payload",
+        },
+        HighRiskOutputTool {
+            tool_name: tools::JIRA_GET_ISSUE_DEVELOPMENT_TOOL_NAME,
+            reason: "product dependency unavailable payload",
+        },
+        HighRiskOutputTool {
+            tool_name: confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
+            reason: "partial failure attachment upload payload",
+        },
+        HighRiskOutputTool {
+            tool_name: confluence_tools::CONFLUENCE_DOWNLOAD_ATTACHMENT_TOOL_NAME,
+            reason: "bounded inline attachment payload",
+        },
+        HighRiskOutputTool {
+            tool_name: confluence_tools::CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
+            reason: "bounded paginated attachment payload",
+        },
+        HighRiskOutputTool {
+            tool_name: confluence_tools::CONFLUENCE_GET_PAGE_VIEW_ANALYTICS_TOOL_NAME,
+            reason: "Cloud-only analytics unavailable payload",
+        },
+    ]
+}
+
 pub(super) fn expected_jira_core_default_tools() -> Vec<String> {
     vec![
         tools::JIRA_ADD_COMMENT_TOOL_NAME.to_string(),
-        tools::JIRA_EDIT_COMMENT_TOOL_NAME.to_string(),
         tools::JIRA_GET_FIELD_OPTIONS_TOOL_NAME.to_string(),
         tools::JIRA_GET_ISSUE_TOOL_NAME.to_string(),
         tools::JIRA_GET_PROJECT_ISSUES_TOOL_NAME.to_string(),
         tools::JIRA_GET_TRANSITIONS_TOOL_NAME.to_string(),
         tools::JIRA_SEARCH_TOOL_NAME.to_string(),
         tools::JIRA_SEARCH_FIELDS_TOOL_NAME.to_string(),
-        tools::JIRA_TRANSITION_ISSUE_TOOL_NAME.to_string(),
     ]
 }
 
-pub(super) fn all_jira_tool_names() -> Vec<String> {
+fn jira_core_tool_names() -> Vec<String> {
     let mut names = expected_jira_core_default_tools();
+    names.extend([
+        tools::JIRA_EDIT_COMMENT_TOOL_NAME.to_string(),
+        tools::JIRA_TRANSITION_ISSUE_TOOL_NAME.to_string(),
+    ]);
+    names
+}
+
+pub(super) fn all_jira_tool_names() -> Vec<String> {
+    let mut names = jira_core_tool_names();
     names.extend(
         tools::JIRA_EXTENSION_TOOL_NAMES
             .iter()
@@ -365,12 +1088,43 @@ pub(super) fn all_confluence_tool_names() -> Vec<String> {
         .collect()
 }
 
-pub(super) fn support_matrix_tool_names() -> BTreeSet<String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct SupportMatrixToolRow {
+    pub(super) name: String,
+    pub(super) access: String,
+    pub(super) toolset: String,
+}
+
+pub(super) fn support_matrix_tool_rows() -> Vec<SupportMatrixToolRow> {
     include_str!("../../../docs/support-matrix.md")
         .lines()
-        .filter_map(|line| line.strip_prefix("| `"))
-        .filter_map(|line| line.split_once('`').map(|(name, _)| name.to_string()))
-        .filter(|name| name.starts_with("jira_") || name.starts_with("confluence_"))
+        .filter_map(|line| {
+            let columns = line.split('|').map(str::trim).collect::<Vec<_>>();
+            let [_, name, access, toolset, ..] = columns.as_slice() else {
+                return None;
+            };
+            let name = name.strip_prefix('`')?.strip_suffix('`')?;
+            if !(name.starts_with("jira_") || name.starts_with("confluence_")) {
+                return None;
+            }
+
+            Some(SupportMatrixToolRow {
+                name: name.to_string(),
+                access: (*access).to_string(),
+                toolset: toolset
+                    .strip_prefix('`')
+                    .and_then(|value| value.strip_suffix('`'))
+                    .unwrap_or(toolset)
+                    .to_string(),
+            })
+        })
+        .collect()
+}
+
+pub(super) fn support_matrix_tool_names() -> BTreeSet<String> {
+    support_matrix_tool_rows()
+        .into_iter()
+        .map(|row| row.name)
         .collect()
 }
 

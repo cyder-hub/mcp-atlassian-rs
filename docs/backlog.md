@@ -75,7 +75,7 @@ This backlog records fixed future work that is outside the current Rust release.
 ### Helm Chart
 
 - Status: backlog.
-- Reason: the Python reference chart is tied to Python server assumptions and cannot be copied as a Rust release artifact.
+- Reason: Helm packaging needs a Rust-specific chart contract and cannot be copied from an unrelated deployment model.
 - Current Rust release behavior: no Helm chart is published or generated.
 - Unblock condition: create a dedicated Helm execution document that defines the Rust image registry target, Kubernetes deployment contract, env and secret mapping, probes, ingress, HPA, RBAC, chart values, and validation commands.
 - Required validation after implementation: render the chart, run chart lint, deploy to a test Kubernetes environment, confirm `/healthz`, confirm MCP streamable HTTP startup, and verify secret values do not appear in rendered public manifests.
@@ -101,8 +101,8 @@ This backlog records fixed future work that is outside the current Rust release.
 ### Jira Service Management Real Acceptance
 
 - Status: backlog.
-- Reason: Service desk lookup returned 403 in the test tenant, so the implemented `jira_service_desk` toolset is local/product-dependency validated but not real-accepted.
-- Current Rust release behavior: `jira_get_service_desk_for_project`, `jira_get_service_desk_queues`, and `jira_get_queue_issues` are implemented with local mock coverage and documented as product/permission blocked for real acceptance.
+- Reason: Service desk lookup returned 403 in the test tenant, so the implemented `jira_service_desks_read` toolset is local/product-dependency validated but not real-accepted.
+- Current Rust release behavior: `jira_get_project_service_desk`, `jira_list_service_desk_queues`, and `jira_list_service_desk_queue_issues` are implemented with local mock coverage and documented as product/permission blocked for real acceptance.
 - Unblock condition: provide a tenant, project, service desk, queue, and test identity with permission to read them.
 - Required validation after implementation: run real acceptance for service desk lookup, queue listing, and queue issue listing without recording customer data or secrets.
 
@@ -110,15 +110,15 @@ This backlog records fixed future work that is outside the current Rust release.
 
 - Status: backlog.
 - Reason: Real acceptance did not receive an effective Forms API response and did not have a valid real form ID for details/update.
-- Current Rust release behavior: `jira_get_issue_proforma_forms`, `jira_get_proforma_form_details`, and `jira_update_proforma_form_answers` are implemented with local mock coverage and documented as product/interface blocked for real acceptance.
+- Current Rust release behavior: `jira_list_issue_forms`, `jira_get_issue_form`, and `jira_update_issue_form_answers` are implemented with local mock coverage and documented as product/interface blocked for real acceptance.
 - Unblock condition: provide a tenant with Jira Forms/ProForma enabled, a disposable test issue with a form, and a safe test answer update target.
 - Required validation after implementation: run real form listing, form details, and safe answer update acceptance with cleanup and redacted compact errors.
 
 ### Confluence User Search Real Acceptance
 
 - Status: backlog.
-- Reason: Real acceptance did not execute a dedicated row for `confluence_search_user`.
-- Current Rust release behavior: `confluence_search_user` is implemented with local mock coverage and documented as local-only.
+- Reason: Real acceptance did not execute a dedicated row for `confluence_search_users`.
+- Current Rust release behavior: `confluence_search_users` is implemented with local mock coverage and documented as local-only.
 - Unblock condition: add a dedicated real Confluence user-search acceptance row with a non-sensitive test query and stable expected result shape.
 - Required validation after implementation: run the real user-search row and record only non-sensitive account/result metadata.
 
@@ -135,10 +135,10 @@ This backlog records fixed future work that is outside the current Rust release.
 ### Full md2conf Parity
 
 - Status: backlog.
-- Reason: The current release implements a deterministic minimal Markdown to Confluence storage conversion, not full Python `md2conf` parity.
+- Reason: The current release implements a deterministic minimal Markdown to Confluence storage conversion, not full `md2conf` feature parity.
 - Current Rust release behavior: supported conversion covers headings, paragraphs, unordered lists, simple links, fenced code blocks, line breaks, and HTML escaping.
-- Unblock condition: define the exact Python `md2conf` feature set to match, add fixtures for each supported construct, and decide whether a parser dependency is required.
-- Required validation after implementation: run snapshot tests for all conversion fixtures, compare representative output against Python reference behavior, and verify no unsafe HTML is emitted.
+- Unblock condition: define the exact `md2conf` feature set to support, add fixtures for each supported construct, and decide whether a parser dependency is required.
+- Required validation after implementation: run snapshot tests for all conversion fixtures, compare representative output against the defined feature contract, and verify no unsafe HTML is emitted.
 
 ### Mermaid And Macro Rendering
 

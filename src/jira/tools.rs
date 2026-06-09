@@ -4,6 +4,7 @@ use serde_json::Value;
 
 fn string_list_or_string_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
     schemars::json_schema!({
+        "description": "Accepts either a comma-separated string or an array of strings.",
         "oneOf": [
             {
                 "type": "string",
@@ -20,6 +21,7 @@ fn string_list_or_string_schema(_: &mut schemars::SchemaGenerator) -> schemars::
 fn object_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
     schemars::json_schema!({
         "type": "object",
+        "description": "Free-form JSON object passed through to Jira; allowed keys and value shapes depend on the target Jira API.",
         "additionalProperties": true
     })
 }
@@ -27,6 +29,7 @@ fn object_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
 fn object_list_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
     schemars::json_schema!({
         "type": "array",
+        "description": "Array of free-form JSON objects passed through to Jira.",
         "items": {
             "type": "object",
             "additionalProperties": true
@@ -35,97 +38,98 @@ fn object_list_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
 }
 
 pub const JIRA_GET_ISSUE_TOOL_NAME: &str = "jira_get_issue";
-pub const JIRA_SEARCH_TOOL_NAME: &str = "jira_search";
-pub const JIRA_GET_PROJECT_ISSUES_TOOL_NAME: &str = "jira_get_project_issues";
+pub const JIRA_SEARCH_TOOL_NAME: &str = "jira_search_issues";
+pub const JIRA_GET_PROJECT_ISSUES_TOOL_NAME: &str = "jira_list_project_issues";
 pub const JIRA_SEARCH_FIELDS_TOOL_NAME: &str = "jira_search_fields";
-pub const JIRA_GET_FIELD_OPTIONS_TOOL_NAME: &str = "jira_get_field_options";
-pub const JIRA_ADD_COMMENT_TOOL_NAME: &str = "jira_add_comment";
-pub const JIRA_EDIT_COMMENT_TOOL_NAME: &str = "jira_edit_comment";
-pub const JIRA_GET_TRANSITIONS_TOOL_NAME: &str = "jira_get_transitions";
+pub const JIRA_GET_FIELD_OPTIONS_TOOL_NAME: &str = "jira_list_field_options";
+pub const JIRA_ADD_COMMENT_TOOL_NAME: &str = "jira_add_issue_comment";
+pub const JIRA_EDIT_COMMENT_TOOL_NAME: &str = "jira_update_issue_comment";
+pub const JIRA_GET_TRANSITIONS_TOOL_NAME: &str = "jira_list_issue_transitions";
 pub const JIRA_TRANSITION_ISSUE_TOOL_NAME: &str = "jira_transition_issue";
 pub const JIRA_CREATE_ISSUE_TOOL_NAME: &str = "jira_create_issue";
-pub const JIRA_BATCH_CREATE_ISSUES_TOOL_NAME: &str = "jira_batch_create_issues";
-pub const JIRA_BATCH_GET_CHANGELOGS_TOOL_NAME: &str = "jira_batch_get_changelogs";
+pub const JIRA_CREATE_ISSUES_TOOL_NAME: &str = "jira_create_issues";
+pub const JIRA_GET_ISSUE_CHANGELOGS_TOOL_NAME: &str = "jira_get_issue_changelogs";
 pub const JIRA_UPDATE_ISSUE_TOOL_NAME: &str = "jira_update_issue";
 pub const JIRA_DELETE_ISSUE_TOOL_NAME: &str = "jira_delete_issue";
-pub const JIRA_GET_ALL_PROJECTS_TOOL_NAME: &str = "jira_get_all_projects";
-pub const JIRA_GET_PROJECT_VERSIONS_TOOL_NAME: &str = "jira_get_project_versions";
-pub const JIRA_GET_PROJECT_COMPONENTS_TOOL_NAME: &str = "jira_get_project_components";
-pub const JIRA_CREATE_VERSION_TOOL_NAME: &str = "jira_create_version";
-pub const JIRA_BATCH_CREATE_VERSIONS_TOOL_NAME: &str = "jira_batch_create_versions";
-pub const JIRA_GET_USER_PROFILE_TOOL_NAME: &str = "jira_get_user_profile";
-pub const JIRA_GET_ISSUE_WATCHERS_TOOL_NAME: &str = "jira_get_issue_watchers";
-pub const JIRA_ADD_WATCHER_TOOL_NAME: &str = "jira_add_watcher";
-pub const JIRA_REMOVE_WATCHER_TOOL_NAME: &str = "jira_remove_watcher";
-pub const JIRA_GET_WORKLOG_TOOL_NAME: &str = "jira_get_worklog";
-pub const JIRA_ADD_WORKLOG_TOOL_NAME: &str = "jira_add_worklog";
-pub const JIRA_GET_LINK_TYPES_TOOL_NAME: &str = "jira_get_link_types";
-pub const JIRA_LINK_TO_EPIC_TOOL_NAME: &str = "jira_link_to_epic";
+pub const JIRA_LIST_PROJECTS_TOOL_NAME: &str = "jira_list_projects";
+pub const JIRA_LIST_PROJECT_VERSIONS_TOOL_NAME: &str = "jira_list_project_versions";
+pub const JIRA_LIST_PROJECT_COMPONENTS_TOOL_NAME: &str = "jira_list_project_components";
+pub const JIRA_CREATE_PROJECT_VERSION_TOOL_NAME: &str = "jira_create_project_version";
+pub const JIRA_CREATE_PROJECT_VERSIONS_TOOL_NAME: &str = "jira_create_project_versions";
+pub const JIRA_GET_USER_TOOL_NAME: &str = "jira_get_user";
+pub const JIRA_LIST_ISSUE_WATCHERS_TOOL_NAME: &str = "jira_list_issue_watchers";
+pub const JIRA_ADD_WATCHER_TOOL_NAME: &str = "jira_add_issue_watcher";
+pub const JIRA_REMOVE_WATCHER_TOOL_NAME: &str = "jira_remove_issue_watcher";
+pub const JIRA_LIST_ISSUE_WORKLOGS_TOOL_NAME: &str = "jira_list_issue_worklogs";
+pub const JIRA_ADD_WORKLOG_TOOL_NAME: &str = "jira_add_issue_worklog";
+pub const JIRA_LIST_ISSUE_LINK_TYPES_TOOL_NAME: &str = "jira_list_issue_link_types";
+pub const JIRA_SET_ISSUE_PARENT_TOOL_NAME: &str = "jira_set_issue_parent";
 pub const JIRA_CREATE_ISSUE_LINK_TOOL_NAME: &str = "jira_create_issue_link";
 pub const JIRA_CREATE_REMOTE_ISSUE_LINK_TOOL_NAME: &str = "jira_create_remote_issue_link";
-pub const JIRA_REMOVE_ISSUE_LINK_TOOL_NAME: &str = "jira_remove_issue_link";
-pub const JIRA_DOWNLOAD_ATTACHMENTS_TOOL_NAME: &str = "jira_download_attachments";
-pub const JIRA_GET_ISSUE_IMAGES_TOOL_NAME: &str = "jira_get_issue_images";
-pub const JIRA_GET_AGILE_BOARDS_TOOL_NAME: &str = "jira_get_agile_boards";
-pub const JIRA_GET_BOARD_ISSUES_TOOL_NAME: &str = "jira_get_board_issues";
-pub const JIRA_GET_SPRINTS_FROM_BOARD_TOOL_NAME: &str = "jira_get_sprints_from_board";
-pub const JIRA_GET_SPRINT_ISSUES_TOOL_NAME: &str = "jira_get_sprint_issues";
+pub const JIRA_DELETE_ISSUE_LINK_TOOL_NAME: &str = "jira_delete_issue_link";
+pub const JIRA_GET_ISSUE_ATTACHMENTS_TOOL_NAME: &str = "jira_get_issue_attachments";
+pub const JIRA_GET_ISSUE_IMAGES_TOOL_NAME: &str = "jira_get_issue_image_attachments";
+pub const JIRA_LIST_AGILE_BOARDS_TOOL_NAME: &str = "jira_list_agile_boards";
+pub const JIRA_LIST_BOARD_ISSUES_TOOL_NAME: &str = "jira_list_board_issues";
+pub const JIRA_LIST_BOARD_SPRINTS_TOOL_NAME: &str = "jira_list_board_sprints";
+pub const JIRA_LIST_SPRINT_ISSUES_TOOL_NAME: &str = "jira_list_sprint_issues";
 pub const JIRA_CREATE_SPRINT_TOOL_NAME: &str = "jira_create_sprint";
 pub const JIRA_UPDATE_SPRINT_TOOL_NAME: &str = "jira_update_sprint";
 pub const JIRA_ADD_ISSUES_TO_SPRINT_TOOL_NAME: &str = "jira_add_issues_to_sprint";
-pub const JIRA_GET_SERVICE_DESK_FOR_PROJECT_TOOL_NAME: &str = "jira_get_service_desk_for_project";
-pub const JIRA_GET_SERVICE_DESK_QUEUES_TOOL_NAME: &str = "jira_get_service_desk_queues";
-pub const JIRA_GET_QUEUE_ISSUES_TOOL_NAME: &str = "jira_get_queue_issues";
-pub const JIRA_GET_ISSUE_PROFORMA_FORMS_TOOL_NAME: &str = "jira_get_issue_proforma_forms";
-pub const JIRA_GET_PROFORMA_FORM_DETAILS_TOOL_NAME: &str = "jira_get_proforma_form_details";
-pub const JIRA_UPDATE_PROFORMA_FORM_ANSWERS_TOOL_NAME: &str = "jira_update_proforma_form_answers";
-pub const JIRA_GET_ISSUE_DATES_TOOL_NAME: &str = "jira_get_issue_dates";
-pub const JIRA_GET_ISSUE_SLA_TOOL_NAME: &str = "jira_get_issue_sla";
-pub const JIRA_GET_ISSUE_DEVELOPMENT_INFO_TOOL_NAME: &str = "jira_get_issue_development_info";
-pub const JIRA_GET_ISSUES_DEVELOPMENT_INFO_TOOL_NAME: &str = "jira_get_issues_development_info";
+pub const JIRA_GET_SERVICE_DESK_FOR_PROJECT_TOOL_NAME: &str = "jira_get_project_service_desk";
+pub const JIRA_LIST_SERVICE_DESK_QUEUES_TOOL_NAME: &str = "jira_list_service_desk_queues";
+pub const JIRA_LIST_SERVICE_DESK_QUEUE_ISSUES_TOOL_NAME: &str =
+    "jira_list_service_desk_queue_issues";
+pub const JIRA_LIST_ISSUE_FORMS_TOOL_NAME: &str = "jira_list_issue_forms";
+pub const JIRA_GET_ISSUE_FORM_TOOL_NAME: &str = "jira_get_issue_form";
+pub const JIRA_UPDATE_ISSUE_FORM_ANSWERS_TOOL_NAME: &str = "jira_update_issue_form_answers";
+pub const JIRA_GET_ISSUE_TIMELINE_TOOL_NAME: &str = "jira_get_issue_timeline";
+pub const JIRA_GET_ISSUE_SLA_METRICS_TOOL_NAME: &str = "jira_get_issue_sla_metrics";
+pub const JIRA_GET_ISSUE_DEVELOPMENT_TOOL_NAME: &str = "jira_get_issue_development";
+pub const JIRA_GET_ISSUES_DEVELOPMENT_TOOL_NAME: &str = "jira_get_issues_development";
 
 #[cfg(test)]
 pub const JIRA_EXTENSION_TOOL_NAMES: &[&str] = &[
     JIRA_CREATE_ISSUE_TOOL_NAME,
-    JIRA_BATCH_CREATE_ISSUES_TOOL_NAME,
-    JIRA_BATCH_GET_CHANGELOGS_TOOL_NAME,
+    JIRA_CREATE_ISSUES_TOOL_NAME,
+    JIRA_GET_ISSUE_CHANGELOGS_TOOL_NAME,
     JIRA_UPDATE_ISSUE_TOOL_NAME,
     JIRA_DELETE_ISSUE_TOOL_NAME,
-    JIRA_GET_ALL_PROJECTS_TOOL_NAME,
-    JIRA_GET_PROJECT_VERSIONS_TOOL_NAME,
-    JIRA_GET_PROJECT_COMPONENTS_TOOL_NAME,
-    JIRA_CREATE_VERSION_TOOL_NAME,
-    JIRA_BATCH_CREATE_VERSIONS_TOOL_NAME,
-    JIRA_GET_USER_PROFILE_TOOL_NAME,
-    JIRA_GET_ISSUE_WATCHERS_TOOL_NAME,
+    JIRA_LIST_PROJECTS_TOOL_NAME,
+    JIRA_LIST_PROJECT_VERSIONS_TOOL_NAME,
+    JIRA_LIST_PROJECT_COMPONENTS_TOOL_NAME,
+    JIRA_CREATE_PROJECT_VERSION_TOOL_NAME,
+    JIRA_CREATE_PROJECT_VERSIONS_TOOL_NAME,
+    JIRA_GET_USER_TOOL_NAME,
+    JIRA_LIST_ISSUE_WATCHERS_TOOL_NAME,
     JIRA_ADD_WATCHER_TOOL_NAME,
     JIRA_REMOVE_WATCHER_TOOL_NAME,
-    JIRA_GET_WORKLOG_TOOL_NAME,
+    JIRA_LIST_ISSUE_WORKLOGS_TOOL_NAME,
     JIRA_ADD_WORKLOG_TOOL_NAME,
-    JIRA_GET_LINK_TYPES_TOOL_NAME,
-    JIRA_LINK_TO_EPIC_TOOL_NAME,
+    JIRA_LIST_ISSUE_LINK_TYPES_TOOL_NAME,
+    JIRA_SET_ISSUE_PARENT_TOOL_NAME,
     JIRA_CREATE_ISSUE_LINK_TOOL_NAME,
     JIRA_CREATE_REMOTE_ISSUE_LINK_TOOL_NAME,
-    JIRA_REMOVE_ISSUE_LINK_TOOL_NAME,
-    JIRA_DOWNLOAD_ATTACHMENTS_TOOL_NAME,
+    JIRA_DELETE_ISSUE_LINK_TOOL_NAME,
+    JIRA_GET_ISSUE_ATTACHMENTS_TOOL_NAME,
     JIRA_GET_ISSUE_IMAGES_TOOL_NAME,
-    JIRA_GET_AGILE_BOARDS_TOOL_NAME,
-    JIRA_GET_BOARD_ISSUES_TOOL_NAME,
-    JIRA_GET_SPRINTS_FROM_BOARD_TOOL_NAME,
-    JIRA_GET_SPRINT_ISSUES_TOOL_NAME,
+    JIRA_LIST_AGILE_BOARDS_TOOL_NAME,
+    JIRA_LIST_BOARD_ISSUES_TOOL_NAME,
+    JIRA_LIST_BOARD_SPRINTS_TOOL_NAME,
+    JIRA_LIST_SPRINT_ISSUES_TOOL_NAME,
     JIRA_CREATE_SPRINT_TOOL_NAME,
     JIRA_UPDATE_SPRINT_TOOL_NAME,
     JIRA_ADD_ISSUES_TO_SPRINT_TOOL_NAME,
     JIRA_GET_SERVICE_DESK_FOR_PROJECT_TOOL_NAME,
-    JIRA_GET_SERVICE_DESK_QUEUES_TOOL_NAME,
-    JIRA_GET_QUEUE_ISSUES_TOOL_NAME,
-    JIRA_GET_ISSUE_PROFORMA_FORMS_TOOL_NAME,
-    JIRA_GET_PROFORMA_FORM_DETAILS_TOOL_NAME,
-    JIRA_UPDATE_PROFORMA_FORM_ANSWERS_TOOL_NAME,
-    JIRA_GET_ISSUE_DATES_TOOL_NAME,
-    JIRA_GET_ISSUE_SLA_TOOL_NAME,
-    JIRA_GET_ISSUE_DEVELOPMENT_INFO_TOOL_NAME,
-    JIRA_GET_ISSUES_DEVELOPMENT_INFO_TOOL_NAME,
+    JIRA_LIST_SERVICE_DESK_QUEUES_TOOL_NAME,
+    JIRA_LIST_SERVICE_DESK_QUEUE_ISSUES_TOOL_NAME,
+    JIRA_LIST_ISSUE_FORMS_TOOL_NAME,
+    JIRA_GET_ISSUE_FORM_TOOL_NAME,
+    JIRA_UPDATE_ISSUE_FORM_ANSWERS_TOOL_NAME,
+    JIRA_GET_ISSUE_TIMELINE_TOOL_NAME,
+    JIRA_GET_ISSUE_SLA_METRICS_TOOL_NAME,
+    JIRA_GET_ISSUE_DEVELOPMENT_TOOL_NAME,
+    JIRA_GET_ISSUES_DEVELOPMENT_TOOL_NAME,
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -150,19 +154,30 @@ pub struct JiraGetIssueArgs {
 pub struct JiraSearchArgs {
     pub jql: String,
     #[serde(default)]
+    #[schemars(description = "Issue fields to return, as a comma-separated string or array.")]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub fields: Option<Value>,
     #[serde(default)]
+    #[schemars(description = "Maximum number of issues to return for this page.")]
     pub limit: Option<u64>,
     #[serde(default)]
+    #[schemars(
+        description = "Offset pagination start index for Server/Data Center and older Jira Cloud search paths."
+    )]
     pub start_at: Option<u64>,
     #[serde(default)]
+    #[schemars(
+        description = "Optional project keys to scope search results, as a comma-separated string or array."
+    )]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub projects_filter: Option<Value>,
     #[serde(default)]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub expand: Option<Value>,
     #[serde(default)]
+    #[schemars(
+        description = "Jira Cloud next-page cursor returned by a previous search response; do not combine with start_at."
+    )]
     pub page_token: Option<String>,
 }
 
@@ -187,14 +202,24 @@ pub struct JiraSearchFieldsArgs {
 pub struct JiraGetFieldOptionsArgs {
     pub field_id: String,
     #[serde(default)]
+    #[schemars(
+        description = "Jira Cloud field-context id. Use this when the custom field has multiple contexts."
+    )]
     pub context_id: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "Project key used to resolve field options when context_id is not available."
+    )]
     pub project_key: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "Issue type used with project_key for Server/Data Center field-option lookups."
+    )]
     pub issue_type: Option<String>,
     #[serde(default)]
     pub contains: Option<String>,
     #[serde(default)]
+    #[schemars(description = "Maximum number of field options to return.")]
     pub return_limit: Option<u64>,
     #[serde(default)]
     pub values_only: Option<bool>,
@@ -227,11 +252,16 @@ pub struct JiraGetTransitionsArgs {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct JiraTransitionIssueArgs {
     pub issue_key: String,
+    #[schemars(description = "Workflow transition id returned by jira_list_issue_transitions.")]
     pub transition_id: String,
     #[serde(default)]
+    #[schemars(
+        description = "Optional transition field values; Jira validates these against the selected transition screen."
+    )]
     #[schemars(schema_with = "object_schema")]
     pub fields: Option<Value>,
     #[serde(default)]
+    #[schemars(description = "Optional comment to add while applying the transition.")]
     pub comment: Option<String>,
 }
 
@@ -245,44 +275,69 @@ pub struct JiraCreateIssueArgs {
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
+    #[schemars(description = "Component names or ids, as a comma-separated string or array.")]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub components: Option<Value>,
     #[serde(default)]
+    #[schemars(
+        description = "Additional Jira field values keyed by field id or field name, such as customfield_10000."
+    )]
     #[schemars(schema_with = "object_schema")]
     pub additional_fields: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraBatchCreateIssuesArgs {
+pub struct JiraCreateIssuesArgs {
+    #[schemars(
+        description = "Issue creation objects. Each item must contain Jira create-issue fields such as project, issuetype, and summary."
+    )]
     #[schemars(schema_with = "object_list_schema")]
     pub issues: Value,
     #[serde(default)]
+    #[schemars(description = "When true, validate all issue payloads without creating issues.")]
     pub validate_only: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraBatchGetChangelogsArgs {
+pub struct JiraGetIssueChangelogsArgs {
+    #[schemars(
+        description = "Issue ids or keys to fetch changelogs for, as a comma-separated string or array."
+    )]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub issue_ids_or_keys: Value,
     #[serde(default)]
+    #[schemars(description = "Changelog fields to include, as a comma-separated string or array.")]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub fields: Option<Value>,
     #[serde(default)]
+    #[schemars(
+        description = "Maximum changelog items to request from the Jira Cloud bulk changelog endpoint."
+    )]
     pub limit: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct JiraUpdateIssueArgs {
     pub issue_key: String,
+    #[schemars(
+        description = "Jira fields to update, keyed by field id or field name. This mutates existing issue data."
+    )]
     #[schemars(schema_with = "object_schema")]
     pub fields: Value,
     #[serde(default)]
+    #[schemars(description = "Additional update payload merged into the Jira edit request.")]
     #[schemars(schema_with = "object_schema")]
     pub additional_fields: Option<Value>,
     #[serde(default)]
+    #[schemars(
+        description = "Replacement component names or ids, as a comma-separated string or array."
+    )]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub components: Option<Value>,
     #[serde(default)]
+    #[schemars(
+        description = "Set false to suppress Jira user notifications for this issue update when supported."
+    )]
     pub notify_users: Option<bool>,
 }
 
@@ -290,11 +345,12 @@ pub struct JiraUpdateIssueArgs {
 pub struct JiraDeleteIssueArgs {
     pub issue_key: String,
     #[serde(default)]
+    #[schemars(description = "When true, delete the issue's subtasks along with the issue.")]
     pub delete_subtasks: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetAllProjectsArgs {
+pub struct JiraListProjectsArgs {
     #[serde(default)]
     pub include_archived: Option<bool>,
 }
@@ -304,11 +360,11 @@ pub struct JiraProjectKeyArgs {
     pub project_key: String,
 }
 
-pub type JiraGetProjectVersionsArgs = JiraProjectKeyArgs;
-pub type JiraGetProjectComponentsArgs = JiraProjectKeyArgs;
+pub type JiraListProjectVersionsArgs = JiraProjectKeyArgs;
+pub type JiraListProjectComponentsArgs = JiraProjectKeyArgs;
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraCreateVersionArgs {
+pub struct JiraCreateProjectVersionArgs {
     pub project_key: String,
     pub name: String,
     #[serde(default)]
@@ -320,25 +376,34 @@ pub struct JiraCreateVersionArgs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraBatchCreateVersionsArgs {
+pub struct JiraCreateProjectVersionsArgs {
     pub project_key: String,
+    #[schemars(
+        description = "Version creation objects for one project. Partial success is possible across items."
+    )]
     #[schemars(schema_with = "object_list_schema")]
     pub versions: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetUserProfileArgs {
+pub struct JiraGetUserArgs {
+    #[schemars(
+        description = "Use me/currentuser(), a Jira Cloud accountId, or a Server/Data Center username."
+    )]
     pub user_identifier: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetIssueWatchersArgs {
+pub struct JiraListIssueWatchersArgs {
     pub issue_key: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct JiraWatcherMutationArgs {
     pub issue_key: String,
+    #[schemars(
+        description = "Watcher identity. Jira Cloud expects an accountId; Server/Data Center expects a username."
+    )]
     pub user_identifier: String,
 }
 
@@ -346,11 +411,13 @@ pub type JiraAddWatcherArgs = JiraWatcherMutationArgs;
 pub type JiraRemoveWatcherArgs = JiraWatcherMutationArgs;
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetWorklogArgs {
+pub struct JiraListIssueWorklogsArgs {
     pub issue_key: String,
     #[serde(default)]
+    #[schemars(description = "Offset pagination start index for issue worklogs.")]
     pub start_at: Option<u64>,
     #[serde(default)]
+    #[schemars(description = "Maximum number of worklogs to return.")]
     pub limit: Option<u64>,
 }
 
@@ -359,28 +426,43 @@ pub struct JiraAddWorklogArgs {
     pub issue_key: String,
     pub time_spent: String,
     #[serde(default)]
+    #[schemars(
+        description = "Worklog start timestamp in Jira's expected date-time format, including timezone offset."
+    )]
     pub started: Option<String>,
     #[serde(default)]
     pub comment: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "Optional Jira visibility object that restricts who can see the worklog."
+    )]
     #[schemars(schema_with = "object_schema")]
     pub visibility: Option<Value>,
     #[serde(default)]
+    #[schemars(
+        description = "Jira remaining-estimate adjustment mode, such as auto, new, manual, or leave."
+    )]
     pub adjust_estimate: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "New remaining estimate when adjust_estimate requests a replacement estimate."
+    )]
     pub new_estimate: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "Amount to reduce the remaining estimate when using manual reduction."
+    )]
     pub reduce_by: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetLinkTypesArgs {
+pub struct JiraListIssueLinkTypesArgs {
     #[serde(default)]
     pub name_filter: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraLinkToEpicArgs {
+pub struct JiraSetIssueParentArgs {
     pub issue_key: String,
     pub epic_key: String,
 }
@@ -391,41 +473,55 @@ pub struct JiraCreateIssueLinkArgs {
     pub inward_issue_key: String,
     pub outward_issue_key: String,
     #[serde(default)]
+    #[schemars(description = "Optional comment body to add when creating the issue link.")]
     pub comment: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct JiraCreateRemoteIssueLinkArgs {
     pub issue_key: String,
+    #[schemars(description = "External URL to attach to the Jira issue.")]
     pub url: String,
     pub title: String,
     #[serde(default)]
+    #[schemars(
+        description = "Stable remote-link global id used by Jira to identify or replace an existing remote link."
+    )]
     pub global_id: Option<String>,
     #[serde(default)]
     pub summary: Option<String>,
     #[serde(default)]
     pub relationship: Option<String>,
     #[serde(default)]
+    #[schemars(description = "Icon URL shown by Jira for the remote link.")]
     pub icon_url: Option<String>,
     #[serde(default)]
+    #[schemars(description = "Optional Jira remote-link status object.")]
     #[schemars(schema_with = "object_schema")]
     pub status: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraRemoveIssueLinkArgs {
+pub struct JiraDeleteIssueLinkArgs {
     pub link_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraDownloadAttachmentsArgs {
+pub struct JiraGetIssueAttachmentsArgs {
     pub issue_key: String,
     #[serde(default)]
+    #[schemars(
+        description = "Optional attachment ids to restrict the response, as a comma-separated string or array."
+    )]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub attachment_ids: Option<Value>,
     #[serde(default)]
+    #[schemars(
+        description = "When true, include bounded inline attachment content in structuredContent."
+    )]
     pub include_content: Option<bool>,
     #[serde(default)]
+    #[schemars(description = "Maximum bytes of inline content to include per attachment.")]
     pub max_bytes: Option<u64>,
 }
 
@@ -433,68 +529,97 @@ pub struct JiraDownloadAttachmentsArgs {
 pub struct JiraGetIssueImagesArgs {
     pub issue_key: String,
     #[serde(default)]
+    #[schemars(
+        description = "When true, include bounded inline image content in structuredContent."
+    )]
     pub include_content: Option<bool>,
     #[serde(default)]
+    #[schemars(description = "Maximum bytes of inline content to include per image attachment.")]
     pub max_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetAgileBoardsArgs {
+pub struct JiraListAgileBoardsArgs {
     #[serde(default)]
     pub project_key: Option<String>,
     #[serde(default)]
+    #[schemars(description = "Optional Jira Software board type filter, such as scrum or kanban.")]
     pub board_type: Option<String>,
     #[serde(default)]
+    #[schemars(description = "Offset pagination start index for Jira Software boards.")]
     pub start_at: Option<u64>,
     #[serde(default)]
+    #[schemars(description = "Maximum number of Jira Software boards to return.")]
     pub limit: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetBoardIssuesArgs {
+pub struct JiraListBoardIssuesArgs {
     pub board_id: u64,
     #[serde(default)]
     pub jql: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "Issue fields to return from the board query, as a comma-separated string or array."
+    )]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub fields: Option<Value>,
     #[serde(default)]
+    #[schemars(description = "Offset pagination start index for board issues.")]
     pub start_at: Option<u64>,
     #[serde(default)]
+    #[schemars(description = "Maximum number of board issues to return.")]
     pub limit: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetSprintsFromBoardArgs {
+pub struct JiraListBoardSprintsArgs {
     pub board_id: u64,
     #[serde(default)]
+    #[schemars(
+        description = "Sprint states to include, as a comma-separated string or array; common values are active, future, and closed."
+    )]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub state: Option<Value>,
     #[serde(default)]
+    #[schemars(description = "Offset pagination start index for board sprints.")]
     pub start_at: Option<u64>,
     #[serde(default)]
+    #[schemars(description = "Maximum number of board sprints to return.")]
     pub limit: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetSprintIssuesArgs {
+pub struct JiraListSprintIssuesArgs {
     pub sprint_id: u64,
     #[serde(default)]
+    #[schemars(
+        description = "Issue fields to return from the sprint query, as a comma-separated string or array."
+    )]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub fields: Option<Value>,
     #[serde(default)]
+    #[schemars(description = "Offset pagination start index for sprint issues.")]
     pub start_at: Option<u64>,
     #[serde(default)]
+    #[schemars(description = "Maximum number of sprint issues to return.")]
     pub limit: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct JiraCreateSprintArgs {
     pub name: String,
+    #[schemars(description = "Jira Software board id that will own the new sprint.")]
     pub origin_board_id: u64,
     #[serde(default)]
+    #[schemars(
+        description = "Sprint start date in Jira Software's expected ISO-8601 date-time format."
+    )]
     pub start_date: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "Sprint end date in Jira Software's expected ISO-8601 date-time format."
+    )]
     pub end_date: Option<String>,
     #[serde(default)]
     pub goal: Option<String>,
@@ -506,10 +631,19 @@ pub struct JiraUpdateSprintArgs {
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "New sprint state. Jira Software commonly accepts future, active, or closed depending on transition rules."
+    )]
     pub state: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "Updated sprint start date in Jira Software's expected ISO-8601 date-time format."
+    )]
     pub start_date: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "Updated sprint end date in Jira Software's expected ISO-8601 date-time format."
+    )]
     pub end_date: Option<String>,
     #[serde(default)]
     pub goal: Option<String>,
@@ -518,6 +652,9 @@ pub struct JiraUpdateSprintArgs {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct JiraAddIssuesToSprintArgs {
     pub sprint_id: u64,
+    #[schemars(
+        description = "Issue keys to move into the sprint, as a comma-separated string or array."
+    )]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub issue_keys: Value,
 }
@@ -528,45 +665,57 @@ pub struct JiraGetServiceDeskForProjectArgs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetServiceDeskQueuesArgs {
+pub struct JiraListServiceDeskQueuesArgs {
+    #[schemars(description = "Jira Service Management service desk id.")]
     pub service_desk_id: String,
     #[serde(default)]
+    #[schemars(description = "Offset pagination start index for service desk queues.")]
     pub start_at: Option<u64>,
     #[serde(default)]
+    #[schemars(description = "Maximum number of service desk queues to return.")]
     pub limit: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetQueueIssuesArgs {
+pub struct JiraListServiceDeskQueueIssuesArgs {
+    #[schemars(description = "Jira Service Management service desk id.")]
     pub service_desk_id: String,
+    #[schemars(description = "Jira Service Management queue id within the service desk.")]
     pub queue_id: String,
     #[serde(default)]
+    #[schemars(description = "Offset pagination start index for service desk queue issues.")]
     pub start_at: Option<u64>,
     #[serde(default)]
+    #[schemars(description = "Maximum number of service desk queue issues to return.")]
     pub limit: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetIssueProformaFormsArgs {
+pub struct JiraListIssueFormsArgs {
     pub issue_key: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetProformaFormDetailsArgs {
+pub struct JiraGetIssueFormArgs {
     pub issue_key: String,
+    #[schemars(description = "Jira Forms or ProForma form id attached to the issue.")]
     pub form_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraUpdateProformaFormAnswersArgs {
+pub struct JiraUpdateIssueFormAnswersArgs {
     pub issue_key: String,
+    #[schemars(description = "Jira Forms or ProForma form id attached to the issue.")]
     pub form_id: String,
+    #[schemars(
+        description = "Answer objects to update on the form. The required keys depend on Jira Forms or ProForma field definitions."
+    )]
     #[schemars(schema_with = "object_list_schema")]
     pub answers: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetIssueDatesArgs {
+pub struct JiraGetIssueTimelineArgs {
     pub issue_key: String,
     #[serde(default)]
     pub include_status_changes: Option<bool>,
@@ -575,31 +724,52 @@ pub struct JiraGetIssueDatesArgs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetIssueSlaArgs {
+pub struct JiraGetIssueSlaMetricsArgs {
     pub issue_key: String,
     #[serde(default)]
+    #[schemars(
+        description = "SLA metric names or field ids to include, as a comma-separated string or array."
+    )]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub metrics: Option<Value>,
     #[serde(default)]
+    #[schemars(
+        description = "When true, include raw Jira Service Management SLA date fields in the response."
+    )]
     pub include_raw_dates: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetIssueDevelopmentInfoArgs {
+pub struct JiraGetIssueDevelopmentArgs {
     pub issue_key: String,
     #[serde(default)]
+    #[schemars(
+        description = "Jira Software development application type filter, such as bitbucket or github."
+    )]
     pub application_type: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "Jira Software development data type selector, such as branch, commit, pullrequest, build, or deployment."
+    )]
     pub data_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct JiraGetIssuesDevelopmentInfoArgs {
+pub struct JiraGetIssuesDevelopmentArgs {
+    #[schemars(
+        description = "Issue keys to fetch Jira Software development information for, as a comma-separated string or array."
+    )]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub issue_keys: Value,
     #[serde(default)]
+    #[schemars(
+        description = "Jira Software development application type filter, such as bitbucket or github."
+    )]
     pub application_type: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "Jira Software development data type selector, such as branch, commit, pullrequest, build, or deployment."
+    )]
     pub data_type: Option<String>,
 }
 
@@ -616,19 +786,25 @@ mod tests {
         assert_eq!(JIRA_EXTENSION_TOOL_NAMES.len(), 40);
         assert_eq!(unique.len(), 40);
         assert!(unique.contains(&&JIRA_CREATE_ISSUE_TOOL_NAME));
-        assert!(unique.contains(&&JIRA_GET_ISSUES_DEVELOPMENT_INFO_TOOL_NAME));
+        assert!(unique.contains(&&JIRA_GET_ISSUES_DEVELOPMENT_TOOL_NAME));
     }
 
     #[test]
-    fn jira_core_tool_names_remain_unchanged() {
+    fn jira_core_tool_names_use_canonical_action_names() {
         assert_eq!(JIRA_GET_ISSUE_TOOL_NAME, "jira_get_issue");
-        assert_eq!(JIRA_SEARCH_TOOL_NAME, "jira_search");
-        assert_eq!(JIRA_GET_PROJECT_ISSUES_TOOL_NAME, "jira_get_project_issues");
+        assert_eq!(JIRA_SEARCH_TOOL_NAME, "jira_search_issues");
+        assert_eq!(
+            JIRA_GET_PROJECT_ISSUES_TOOL_NAME,
+            "jira_list_project_issues"
+        );
         assert_eq!(JIRA_SEARCH_FIELDS_TOOL_NAME, "jira_search_fields");
-        assert_eq!(JIRA_GET_FIELD_OPTIONS_TOOL_NAME, "jira_get_field_options");
-        assert_eq!(JIRA_ADD_COMMENT_TOOL_NAME, "jira_add_comment");
-        assert_eq!(JIRA_EDIT_COMMENT_TOOL_NAME, "jira_edit_comment");
-        assert_eq!(JIRA_GET_TRANSITIONS_TOOL_NAME, "jira_get_transitions");
+        assert_eq!(JIRA_GET_FIELD_OPTIONS_TOOL_NAME, "jira_list_field_options");
+        assert_eq!(JIRA_ADD_COMMENT_TOOL_NAME, "jira_add_issue_comment");
+        assert_eq!(JIRA_EDIT_COMMENT_TOOL_NAME, "jira_update_issue_comment");
+        assert_eq!(
+            JIRA_GET_TRANSITIONS_TOOL_NAME,
+            "jira_list_issue_transitions"
+        );
         assert_eq!(JIRA_TRANSITION_ISSUE_TOOL_NAME, "jira_transition_issue");
     }
 
@@ -646,7 +822,7 @@ mod tests {
 
     #[test]
     fn jira_extension_args_accept_python_style_json_inputs() {
-        let args: JiraBatchCreateIssuesArgs = serde_json::from_value(serde_json::json!({
+        let args: JiraCreateIssuesArgs = serde_json::from_value(serde_json::json!({
             "issues": "[{\"project_key\":\"ABC\",\"summary\":\"Demo\",\"issue_type\":\"Task\"}]",
             "validate_only": true
         }))

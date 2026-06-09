@@ -9,7 +9,7 @@ async fn jira_get_issue_handler_returns_structured_content_from_mock_rest() {
         ..runtime_config()
     });
     let result = server
-        .jira_get_issue(Parameters(tools::JiraGetIssueArgs {
+        .get_issue(Parameters(tools::JiraGetIssueArgs {
             issue_key: "ABC-1".to_string(),
             fields: Some(json!(["summary"])),
             expand: None,
@@ -38,7 +38,7 @@ async fn jira_create_issue_handler_posts_expected_payload_to_mock_rest() {
         ..runtime_config()
     });
     let result = server
-        .jira_create_issue(Parameters(tools::JiraCreateIssueArgs {
+        .create_issue(Parameters(tools::JiraCreateIssueArgs {
             project_key: "ABC".to_string(),
             summary: "Created issue".to_string(),
             issue_type: "Task".to_string(),
@@ -93,7 +93,7 @@ async fn jira_create_issue_handler_rejects_invalid_additional_fields_before_http
         ..runtime_config()
     });
     let error = server
-        .jira_create_issue(Parameters(tools::JiraCreateIssueArgs {
+        .create_issue(Parameters(tools::JiraCreateIssueArgs {
             project_key: "ABC".to_string(),
             summary: "Created issue".to_string(),
             issue_type: "Task".to_string(),
@@ -115,14 +115,14 @@ async fn jira_create_issue_handler_rejects_invalid_additional_fields_before_http
 }
 
 #[tokio::test]
-async fn jira_batch_create_issues_handler_posts_bulk_payload_to_mock_rest() {
+async fn jira_create_issues_handler_posts_bulk_payload_to_mock_rest() {
     let (base_url, requests) = mock_jira_server().await;
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let result = server
-        .jira_batch_create_issues(Parameters(tools::JiraBatchCreateIssuesArgs {
+        .create_issues(Parameters(tools::JiraCreateIssuesArgs {
             issues: json!([
                 {
                     "project_key": "ABC",
@@ -156,6 +156,10 @@ async fn jira_batch_create_issues_handler_posts_bulk_payload_to_mock_rest() {
         result.structured_content.as_ref().unwrap()["data"]["errors"][0]["failedElementNumber"],
         json!(1)
     );
+    assert_registered_output_schema_declares_properties(
+        tools::JIRA_CREATE_ISSUES_TOOL_NAME,
+        &["success", "data"],
+    );
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].method, Method::POST);
     assert_eq!(requests[0].path, "/rest/api/2/issue/bulk");
@@ -175,14 +179,14 @@ async fn jira_batch_create_issues_handler_posts_bulk_payload_to_mock_rest() {
 }
 
 #[tokio::test]
-async fn jira_batch_create_issues_handler_rejects_invalid_issue_before_http() {
+async fn jira_create_issues_handler_rejects_invalid_issue_before_http() {
     let (base_url, requests) = mock_jira_server().await;
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let error = server
-        .jira_batch_create_issues(Parameters(tools::JiraBatchCreateIssuesArgs {
+        .create_issues(Parameters(tools::JiraCreateIssuesArgs {
             issues: json!([{
                 "project_key": "ABC",
                 "issue_type": "Task"
@@ -198,7 +202,7 @@ async fn jira_batch_create_issues_handler_rejects_invalid_issue_before_http() {
 }
 
 #[tokio::test]
-async fn jira_batch_get_changelogs_handler_posts_cloud_payload_to_mock_rest() {
+async fn jira_get_issue_changelogs_handler_posts_cloud_payload_to_mock_rest() {
     let (base_url, requests) = mock_jira_server().await;
     let mut jira = jira_config_with_base_url(base_url);
     jira.deployment = JiraDeployment::Cloud;
@@ -207,7 +211,7 @@ async fn jira_batch_get_changelogs_handler_posts_cloud_payload_to_mock_rest() {
         ..runtime_config()
     });
     let result = server
-        .jira_batch_get_changelogs(Parameters(tools::JiraBatchGetChangelogsArgs {
+        .get_issue_changelogs(Parameters(tools::JiraGetIssueChangelogsArgs {
             issue_ids_or_keys: json!(["ABC-1", "ABC-2"]),
             fields: Some(json!("status,assignee")),
             limit: Some(25),
@@ -236,14 +240,14 @@ async fn jira_batch_get_changelogs_handler_posts_cloud_payload_to_mock_rest() {
 }
 
 #[tokio::test]
-async fn jira_batch_get_changelogs_handler_returns_safe_server_dc_unsupported_result() {
+async fn jira_get_issue_changelogs_handler_returns_safe_server_dc_unsupported_result() {
     let (base_url, requests) = mock_jira_server().await;
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let result = server
-        .jira_batch_get_changelogs(Parameters(tools::JiraBatchGetChangelogsArgs {
+        .get_issue_changelogs(Parameters(tools::JiraGetIssueChangelogsArgs {
             issue_ids_or_keys: json!("ABC-1"),
             fields: None,
             limit: None,
@@ -271,7 +275,7 @@ async fn jira_update_issue_handler_puts_expected_payload_and_handles_no_content(
         ..runtime_config()
     });
     let result = server
-        .jira_update_issue(Parameters(tools::JiraUpdateIssueArgs {
+        .update_issue(Parameters(tools::JiraUpdateIssueArgs {
             issue_key: "ABC-1".to_string(),
             fields: json!({
                 "summary": "Updated",
@@ -292,6 +296,10 @@ async fn jira_update_issue_handler_puts_expected_payload_and_handles_no_content(
     assert_eq!(
         result.structured_content.as_ref().unwrap()["data"],
         Value::Null
+    );
+    assert_registered_output_schema_declares_properties(
+        tools::JIRA_UPDATE_ISSUE_TOOL_NAME,
+        &["success", "data"],
     );
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].method, Method::PUT);
@@ -322,7 +330,7 @@ async fn jira_update_issue_handler_rejects_attachments_before_http() {
         ..runtime_config()
     });
     let error = server
-        .jira_update_issue(Parameters(tools::JiraUpdateIssueArgs {
+        .update_issue(Parameters(tools::JiraUpdateIssueArgs {
             issue_key: "ABC-1".to_string(),
             fields: json!({"attachments": ["/tmp/file.txt"]}),
             additional_fields: None,
@@ -349,7 +357,7 @@ async fn jira_delete_issue_handler_sends_delete_subtasks_query_and_handles_no_co
         ..runtime_config()
     });
     let result = server
-        .jira_delete_issue(Parameters(tools::JiraDeleteIssueArgs {
+        .delete_issue(Parameters(tools::JiraDeleteIssueArgs {
             issue_key: "ABC-1".to_string(),
             delete_subtasks: Some(true),
         }))
@@ -365,6 +373,10 @@ async fn jira_delete_issue_handler_sends_delete_subtasks_query_and_handles_no_co
         result.structured_content.as_ref().unwrap()["data"],
         Value::Null
     );
+    assert_registered_output_schema_declares_properties(
+        tools::JIRA_DELETE_ISSUE_TOOL_NAME,
+        &["success", "data"],
+    );
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].method, Method::DELETE);
     assert_eq!(
@@ -374,7 +386,7 @@ async fn jira_delete_issue_handler_sends_delete_subtasks_query_and_handles_no_co
 }
 
 #[tokio::test]
-async fn jira_project_read_handlers_use_project_filter_and_tolerate_sparse_values() {
+async fn jira_projects_read_handlers_use_project_filter_and_tolerate_sparse_values() {
     let (base_url, requests) = mock_jira_server().await;
     let mut jira = jira_config_with_base_url(base_url);
     jira.projects_filter = BTreeSet::from(["ABC".to_string()]);
@@ -384,31 +396,31 @@ async fn jira_project_read_handlers_use_project_filter_and_tolerate_sparse_value
     });
 
     let projects = server
-        .jira_get_all_projects(Parameters(tools::JiraGetAllProjectsArgs {
+        .list_projects(Parameters(tools::JiraListProjectsArgs {
             include_archived: Some(false),
         }))
         .await
         .unwrap();
     let versions = server
-        .jira_get_project_versions(Parameters(tools::JiraGetProjectVersionsArgs {
+        .list_project_versions(Parameters(tools::JiraListProjectVersionsArgs {
             project_key: "ABC".to_string(),
         }))
         .await
         .unwrap();
     let components = server
-        .jira_get_project_components(Parameters(tools::JiraGetProjectComponentsArgs {
+        .list_project_components(Parameters(tools::JiraListProjectComponentsArgs {
             project_key: "ABC".to_string(),
         }))
         .await
         .unwrap();
     let forbidden_versions = server
-        .jira_get_project_versions(Parameters(tools::JiraGetProjectVersionsArgs {
+        .list_project_versions(Parameters(tools::JiraListProjectVersionsArgs {
             project_key: "XYZ".to_string(),
         }))
         .await
         .unwrap_err();
     let forbidden_components = server
-        .jira_get_project_components(Parameters(tools::JiraGetProjectComponentsArgs {
+        .list_project_components(Parameters(tools::JiraListProjectComponentsArgs {
             project_key: "XYZ".to_string(),
         }))
         .await
@@ -454,14 +466,14 @@ async fn jira_project_read_handlers_use_project_filter_and_tolerate_sparse_value
 }
 
 #[tokio::test]
-async fn jira_create_version_handler_posts_expected_payload_to_mock_rest() {
+async fn jira_create_project_version_handler_posts_expected_payload_to_mock_rest() {
     let (base_url, requests) = mock_jira_server().await;
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let result = server
-        .jira_create_version(Parameters(tools::JiraCreateVersionArgs {
+        .create_project_version(Parameters(tools::JiraCreateProjectVersionArgs {
             project_key: "ABC".to_string(),
             name: "v1".to_string(),
             start_date: Some("2026-01-01".to_string()),
@@ -487,14 +499,14 @@ async fn jira_create_version_handler_posts_expected_payload_to_mock_rest() {
 }
 
 #[tokio::test]
-async fn jira_batch_create_versions_handler_returns_success_and_error_partitions() {
+async fn jira_create_project_versions_handler_returns_success_and_error_partitions() {
     let (base_url, requests) = mock_jira_server().await;
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let result = server
-        .jira_batch_create_versions(Parameters(tools::JiraBatchCreateVersionsArgs {
+        .create_project_versions(Parameters(tools::JiraCreateProjectVersionsArgs {
             project_key: "ABC".to_string(),
             versions: json!([
                 {"name": "v2", "released": true},
@@ -513,6 +525,11 @@ async fn jira_batch_create_versions_handler_returns_success_and_error_partitions
         result.structured_content.as_ref().unwrap()["versions"][1]["success"],
         json!(false)
     );
+    assert_eq!(result.is_error, Some(false));
+    assert_registered_output_schema_declares_properties(
+        tools::JIRA_CREATE_PROJECT_VERSIONS_TOOL_NAME,
+        &["versions"],
+    );
     assert_eq!(requests.len(), 2);
     assert_eq!(requests[0].path, "/rest/api/2/version");
     assert_eq!(requests[0].body["project"], json!("ABC"));
@@ -521,14 +538,14 @@ async fn jira_batch_create_versions_handler_returns_success_and_error_partitions
 }
 
 #[tokio::test]
-async fn jira_get_user_profile_handler_allows_absent_email_privacy_field() {
+async fn jira_get_user_handler_allows_absent_email_privacy_field() {
     let (base_url, requests) = mock_jira_server().await;
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let result = server
-        .jira_get_user_profile(Parameters(tools::JiraGetUserProfileArgs {
+        .get_user(Parameters(tools::JiraGetUserArgs {
             user_identifier: "ada".to_string(),
         }))
         .await
@@ -555,20 +572,20 @@ async fn jira_watcher_handlers_read_add_and_remove_watchers() {
         ..runtime_config()
     });
     let watchers = server
-        .jira_get_issue_watchers(Parameters(tools::JiraGetIssueWatchersArgs {
+        .list_issue_watchers(Parameters(tools::JiraListIssueWatchersArgs {
             issue_key: "ABC-1".to_string(),
         }))
         .await
         .unwrap();
     let add = server
-        .jira_add_watcher(Parameters(tools::JiraAddWatcherArgs {
+        .add_issue_watcher(Parameters(tools::JiraAddWatcherArgs {
             issue_key: "ABC-1".to_string(),
             user_identifier: "ada".to_string(),
         }))
         .await
         .unwrap();
     let remove = server
-        .jira_remove_watcher(Parameters(tools::JiraRemoveWatcherArgs {
+        .remove_issue_watcher(Parameters(tools::JiraRemoveWatcherArgs {
             issue_key: "ABC-1".to_string(),
             user_identifier: "ada".to_string(),
         }))
@@ -603,14 +620,14 @@ async fn jira_watcher_handlers_read_add_and_remove_watchers() {
 }
 
 #[tokio::test]
-async fn jira_get_worklog_handler_sends_pagination_and_tolerates_missing_optional_fields() {
+async fn jira_list_issue_worklogs_handler_sends_pagination_and_tolerates_missing_optional_fields() {
     let (base_url, requests) = mock_jira_server().await;
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let result = server
-        .jira_get_worklog(Parameters(tools::JiraGetWorklogArgs {
+        .list_issue_worklogs(Parameters(tools::JiraListIssueWorklogsArgs {
             issue_key: "ABC-1".to_string(),
             start_at: Some(0),
             limit: Some(10),
@@ -634,14 +651,14 @@ async fn jira_get_worklog_handler_sends_pagination_and_tolerates_missing_optiona
 }
 
 #[tokio::test]
-async fn jira_add_worklog_handler_posts_body_and_estimate_query() {
+async fn jira_add_issue_worklog_handler_posts_body_and_estimate_query() {
     let (base_url, requests) = mock_jira_server().await;
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let result = server
-        .jira_add_worklog(Parameters(tools::JiraAddWorklogArgs {
+        .add_issue_worklog(Parameters(tools::JiraAddWorklogArgs {
             issue_key: "ABC-1".to_string(),
             time_spent: "1h".to_string(),
             started: Some("2026-01-01T00:00:00.000+0000".to_string()),
@@ -677,14 +694,14 @@ async fn jira_add_worklog_handler_posts_body_and_estimate_query() {
 }
 
 #[tokio::test]
-async fn jira_add_worklog_handler_rejects_invalid_visibility_before_http() {
+async fn jira_add_issue_worklog_handler_rejects_invalid_visibility_before_http() {
     let (base_url, requests) = mock_jira_server().await;
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let error = server
-        .jira_add_worklog(Parameters(tools::JiraAddWorklogArgs {
+        .add_issue_worklog(Parameters(tools::JiraAddWorklogArgs {
             issue_key: "ABC-1".to_string(),
             time_spent: "1h".to_string(),
             started: None,
@@ -710,19 +727,19 @@ async fn jira_link_type_and_epic_handlers_use_expected_payloads() {
         ..runtime_config()
     });
     let all_link_types = server
-        .jira_get_link_types(Parameters(tools::JiraGetLinkTypesArgs {
+        .list_issue_link_types(Parameters(tools::JiraListIssueLinkTypesArgs {
             name_filter: None,
         }))
         .await
         .unwrap();
     let link_types = server
-        .jira_get_link_types(Parameters(tools::JiraGetLinkTypesArgs {
+        .list_issue_link_types(Parameters(tools::JiraListIssueLinkTypesArgs {
             name_filter: Some("block".to_string()),
         }))
         .await
         .unwrap();
     let epic = server
-        .jira_link_to_epic(Parameters(tools::JiraLinkToEpicArgs {
+        .set_issue_parent(Parameters(tools::JiraSetIssueParentArgs {
             issue_key: "ABC-1".to_string(),
             epic_key: "ABC-EPIC".to_string(),
         }))
@@ -767,7 +784,7 @@ async fn jira_issue_link_handlers_post_remote_and_delete_expected_payloads() {
         ..runtime_config()
     });
     let issue_link = server
-        .jira_create_issue_link(Parameters(tools::JiraCreateIssueLinkArgs {
+        .create_issue_link(Parameters(tools::JiraCreateIssueLinkArgs {
             link_type: "Blocks".to_string(),
             inward_issue_key: "ABC-1".to_string(),
             outward_issue_key: "ABC-2".to_string(),
@@ -776,7 +793,7 @@ async fn jira_issue_link_handlers_post_remote_and_delete_expected_payloads() {
         .await
         .unwrap();
     let remote_link = server
-        .jira_create_remote_issue_link(Parameters(tools::JiraCreateRemoteIssueLinkArgs {
+        .create_remote_issue_link(Parameters(tools::JiraCreateRemoteIssueLinkArgs {
             issue_key: "ABC-1".to_string(),
             url: "https://example.invalid/doc".to_string(),
             title: "Design doc".to_string(),
@@ -789,7 +806,7 @@ async fn jira_issue_link_handlers_post_remote_and_delete_expected_payloads() {
         .await
         .unwrap();
     let remove = server
-        .jira_remove_issue_link(Parameters(tools::JiraRemoveIssueLinkArgs {
+        .delete_issue_link(Parameters(tools::JiraDeleteIssueLinkArgs {
             link_id: "200".to_string(),
         }))
         .await
@@ -857,7 +874,7 @@ async fn jira_create_remote_issue_link_rejects_invalid_status_before_http() {
         ..runtime_config()
     });
     let error = server
-        .jira_create_remote_issue_link(Parameters(tools::JiraCreateRemoteIssueLinkArgs {
+        .create_remote_issue_link(Parameters(tools::JiraCreateRemoteIssueLinkArgs {
             issue_key: "ABC-1".to_string(),
             url: "https://example.invalid/doc".to_string(),
             title: "Design doc".to_string(),
@@ -876,14 +893,14 @@ async fn jira_create_remote_issue_link_rejects_invalid_status_before_http() {
 }
 
 #[tokio::test]
-async fn jira_download_attachments_rejects_invalid_max_bytes_before_http() {
+async fn jira_get_issue_attachments_rejects_invalid_max_bytes_before_http() {
     let (base_url, requests) = mock_jira_server().await;
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let error = server
-        .jira_download_attachments(Parameters(tools::JiraDownloadAttachmentsArgs {
+        .get_issue_attachments(Parameters(tools::JiraGetIssueAttachmentsArgs {
             issue_key: "ABC-1".to_string(),
             attachment_ids: None,
             include_content: Some(true),
@@ -898,14 +915,14 @@ async fn jira_download_attachments_rejects_invalid_max_bytes_before_http() {
 }
 
 #[tokio::test]
-async fn jira_get_issue_images_handler_filters_non_images_and_returns_safe_content() {
+async fn jira_get_issue_image_attachments_handler_filters_non_images_and_returns_safe_content() {
     let (base_url, requests) = mock_jira_server().await;
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let result = server
-        .jira_get_issue_images(Parameters(tools::JiraGetIssueImagesArgs {
+        .get_issue_image_attachments(Parameters(tools::JiraGetIssueImagesArgs {
             issue_key: "ABC-1".to_string(),
             include_content: Some(true),
             max_bytes: Some(20),
@@ -919,6 +936,10 @@ async fn jira_get_issue_images_handler_filters_non_images_and_returns_safe_conte
     assert_eq!(structured["count"], json!(1));
     assert_eq!(structured["attachments"][0]["filename"], json!("file.png"));
     assert_eq!(structured["attachments"][0]["is_image"], json!(true));
+    assert_registered_output_schema_declares_properties(
+        tools::JIRA_GET_ISSUE_IMAGES_TOOL_NAME,
+        &["issue_key", "count", "images_only", "attachments"],
+    );
     assert_eq!(
         structured["attachments"][0]["content"]["data"],
         json!("aW1hZ2UtYnl0ZXM=")
@@ -939,14 +960,14 @@ async fn jira_get_issue_images_handler_filters_non_images_and_returns_safe_conte
 }
 
 #[tokio::test]
-async fn jira_get_issue_images_handler_returns_empty_list_when_issue_has_no_images() {
+async fn jira_get_issue_image_attachments_handler_returns_empty_list_when_issue_has_no_images() {
     let (base_url, requests) = mock_jira_server().await;
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let result = server
-        .jira_get_issue_images(Parameters(tools::JiraGetIssueImagesArgs {
+        .get_issue_image_attachments(Parameters(tools::JiraGetIssueImagesArgs {
             issue_key: "TXT-1".to_string(),
             include_content: Some(true),
             max_bytes: Some(20),
@@ -967,14 +988,14 @@ async fn jira_get_issue_images_handler_returns_empty_list_when_issue_has_no_imag
 }
 
 #[tokio::test]
-async fn jira_agile_read_handlers_send_expected_queries_and_return_pages() {
+async fn jira_agile_boards_read_handlers_send_expected_queries_and_return_pages() {
     let (base_url, requests) = mock_jira_server().await;
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let boards = server
-        .jira_get_agile_boards(Parameters(tools::JiraGetAgileBoardsArgs {
+        .list_agile_boards(Parameters(tools::JiraListAgileBoardsArgs {
             project_key: Some("ABC".to_string()),
             board_type: Some("scrum".to_string()),
             start_at: Some(0),
@@ -983,7 +1004,7 @@ async fn jira_agile_read_handlers_send_expected_queries_and_return_pages() {
         .await
         .unwrap();
     let board_issues = server
-        .jira_get_board_issues(Parameters(tools::JiraGetBoardIssuesArgs {
+        .list_board_issues(Parameters(tools::JiraListBoardIssuesArgs {
             board_id: 1,
             jql: Some("status = Done".to_string()),
             fields: Some(json!("summary,status")),
@@ -993,7 +1014,7 @@ async fn jira_agile_read_handlers_send_expected_queries_and_return_pages() {
         .await
         .unwrap();
     let sprints = server
-        .jira_get_sprints_from_board(Parameters(tools::JiraGetSprintsFromBoardArgs {
+        .list_board_sprints(Parameters(tools::JiraListBoardSprintsArgs {
             board_id: 1,
             state: Some(json!(["active", "future"])),
             start_at: Some(0),
@@ -1002,7 +1023,7 @@ async fn jira_agile_read_handlers_send_expected_queries_and_return_pages() {
         .await
         .unwrap();
     let sprint_issues = server
-        .jira_get_sprint_issues(Parameters(tools::JiraGetSprintIssuesArgs {
+        .list_sprint_issues(Parameters(tools::JiraListSprintIssuesArgs {
             sprint_id: 2,
             fields: Some(json!(["summary", "status"])),
             start_at: Some(0),
@@ -1054,7 +1075,7 @@ async fn jira_agile_boards_handler_returns_product_unavailable_when_software_mis
         ..runtime_config()
     });
     let result = server
-        .jira_get_agile_boards(Parameters(tools::JiraGetAgileBoardsArgs {
+        .list_agile_boards(Parameters(tools::JiraListAgileBoardsArgs {
             project_key: Some("NOAGILE".to_string()),
             board_type: None,
             start_at: None,
@@ -1071,6 +1092,11 @@ async fn jira_agile_boards_handler_returns_product_unavailable_when_software_mis
         json!("Jira Software Agile REST")
     );
     assert_eq!(structured["product_dependency"]["available"], json!(false));
+    assert_eq!(result.is_error, Some(false));
+    assert_registered_output_schema_declares_properties(
+        tools::JIRA_LIST_AGILE_BOARDS_TOOL_NAME,
+        &["success", "product_dependency"],
+    );
     assert_eq!(
         requests[0].path,
         "/rest/agile/1.0/board?projectKeyOrId=NOAGILE"
@@ -1085,7 +1111,7 @@ async fn jira_agile_write_handlers_send_expected_payloads_and_handle_no_content(
         ..runtime_config()
     });
     let created = server
-        .jira_create_sprint(Parameters(tools::JiraCreateSprintArgs {
+        .create_sprint(Parameters(tools::JiraCreateSprintArgs {
             name: "Sprint 2".to_string(),
             origin_board_id: 1,
             start_date: Some("2026-01-01T00:00:00.000Z".to_string()),
@@ -1095,7 +1121,7 @@ async fn jira_agile_write_handlers_send_expected_payloads_and_handle_no_content(
         .await
         .unwrap();
     let updated = server
-        .jira_update_sprint(Parameters(tools::JiraUpdateSprintArgs {
+        .update_sprint(Parameters(tools::JiraUpdateSprintArgs {
             sprint_id: 2,
             name: Some("Sprint 2 updated".to_string()),
             state: Some("active".to_string()),
@@ -1106,7 +1132,7 @@ async fn jira_agile_write_handlers_send_expected_payloads_and_handle_no_content(
         .await
         .unwrap();
     let added = server
-        .jira_add_issues_to_sprint(Parameters(tools::JiraAddIssuesToSprintArgs {
+        .add_issues_to_sprint(Parameters(tools::JiraAddIssuesToSprintArgs {
             sprint_id: 2,
             issue_keys: json!("ABC-1, ABC-2"),
         }))
@@ -1155,7 +1181,7 @@ async fn jira_update_sprint_rejects_empty_payload_before_http() {
         ..runtime_config()
     });
     let error = server
-        .jira_update_sprint(Parameters(tools::JiraUpdateSprintArgs {
+        .update_sprint(Parameters(tools::JiraUpdateSprintArgs {
             sprint_id: 2,
             name: None,
             state: None,
@@ -1183,13 +1209,13 @@ async fn jira_service_desk_handlers_lookup_queues_and_queue_issues() {
         ..runtime_config()
     });
     let desk = server
-        .jira_get_service_desk_for_project(Parameters(tools::JiraGetServiceDeskForProjectArgs {
+        .get_project_service_desk(Parameters(tools::JiraGetServiceDeskForProjectArgs {
             project_key: "ABC".to_string(),
         }))
         .await
         .unwrap();
     let queues = server
-        .jira_get_service_desk_queues(Parameters(tools::JiraGetServiceDeskQueuesArgs {
+        .list_service_desk_queues(Parameters(tools::JiraListServiceDeskQueuesArgs {
             service_desk_id: "4".to_string(),
             start_at: Some(0),
             limit: Some(50),
@@ -1197,7 +1223,7 @@ async fn jira_service_desk_handlers_lookup_queues_and_queue_issues() {
         .await
         .unwrap();
     let issues = server
-        .jira_get_queue_issues(Parameters(tools::JiraGetQueueIssuesArgs {
+        .list_service_desk_queue_issues(Parameters(tools::JiraListServiceDeskQueueIssuesArgs {
             service_desk_id: "4".to_string(),
             queue_id: "47".to_string(),
             start_at: Some(0),
@@ -1238,7 +1264,7 @@ async fn jira_service_desk_handler_returns_product_unavailable_when_jsm_missing(
         ..runtime_config()
     });
     let result = server
-        .jira_get_service_desk_for_project(Parameters(tools::JiraGetServiceDeskForProjectArgs {
+        .get_project_service_desk(Parameters(tools::JiraGetServiceDeskForProjectArgs {
             project_key: "ABC".to_string(),
         }))
         .await
@@ -1268,13 +1294,13 @@ async fn jira_forms_read_handlers_use_cloud_id_config_and_return_forms() {
     });
 
     let forms = server
-        .jira_get_issue_proforma_forms(Parameters(tools::JiraGetIssueProformaFormsArgs {
+        .list_issue_forms(Parameters(tools::JiraListIssueFormsArgs {
             issue_key: "ABC-1".to_string(),
         }))
         .await
         .unwrap();
     let details = server
-        .jira_get_proforma_form_details(Parameters(tools::JiraGetProformaFormDetailsArgs {
+        .get_issue_form(Parameters(tools::JiraGetIssueFormArgs {
             issue_key: "ABC-1".to_string(),
             form_id: "form-1".to_string(),
         }))
@@ -1309,7 +1335,7 @@ async fn jira_forms_read_handlers_return_product_unavailable_when_cloud_id_missi
     });
 
     let result = server
-        .jira_get_issue_proforma_forms(Parameters(tools::JiraGetIssueProformaFormsArgs {
+        .list_issue_forms(Parameters(tools::JiraListIssueFormsArgs {
             issue_key: "ABC-1".to_string(),
         }))
         .await
@@ -1336,7 +1362,7 @@ async fn jira_forms_read_handlers_return_product_unavailable_when_forms_api_miss
     });
 
     let result = server
-        .jira_get_issue_proforma_forms(Parameters(tools::JiraGetIssueProformaFormsArgs {
+        .list_issue_forms(Parameters(tools::JiraListIssueFormsArgs {
             issue_key: "ABC-1".to_string(),
         }))
         .await
@@ -1366,7 +1392,7 @@ async fn jira_forms_write_handler_sends_answer_payload() {
     });
 
     let result = server
-        .jira_update_proforma_form_answers(Parameters(tools::JiraUpdateProformaFormAnswersArgs {
+        .update_issue_form_answers(Parameters(tools::JiraUpdateIssueFormAnswersArgs {
             issue_key: "ABC-1".to_string(),
             form_id: "form-1".to_string(),
             answers: json!([
@@ -1407,7 +1433,7 @@ async fn jira_forms_write_handler_returns_product_unavailable_when_cloud_id_miss
     });
 
     let result = server
-        .jira_update_proforma_form_answers(Parameters(tools::JiraUpdateProformaFormAnswersArgs {
+        .update_issue_form_answers(Parameters(tools::JiraUpdateIssueFormAnswersArgs {
             issue_key: "ABC-1".to_string(),
             form_id: "form-1".to_string(),
             answers: json!([{"questionId": "q1", "type": "TEXT", "value": "Updated"}]),
@@ -1436,7 +1462,7 @@ async fn jira_forms_write_handler_rejects_invalid_answers_before_http() {
     });
 
     let error = server
-        .jira_update_proforma_form_answers(Parameters(tools::JiraUpdateProformaFormAnswersArgs {
+        .update_issue_form_answers(Parameters(tools::JiraUpdateIssueFormAnswersArgs {
             issue_key: "ABC-1".to_string(),
             form_id: "form-1".to_string(),
             answers: json!("not-answers"),
@@ -1458,7 +1484,7 @@ async fn jira_issue_dates_handler_returns_date_fields_and_flags() {
     });
 
     let result = server
-        .jira_get_issue_dates(Parameters(tools::JiraGetIssueDatesArgs {
+        .get_issue_timeline(Parameters(tools::JiraGetIssueTimelineArgs {
             issue_key: "ABC-1".to_string(),
             include_status_changes: Some(true),
             include_status_summary: Some(true),
@@ -1513,7 +1539,7 @@ async fn jira_issue_dates_handler_handles_missing_date_fields() {
     });
 
     let result = server
-        .jira_get_issue_dates(Parameters(tools::JiraGetIssueDatesArgs {
+        .get_issue_timeline(Parameters(tools::JiraGetIssueTimelineArgs {
             issue_key: "TXT-1".to_string(),
             include_status_changes: None,
             include_status_summary: None,
@@ -1544,7 +1570,7 @@ async fn jira_issue_sla_handler_parses_mock_sla_fields_and_args() {
     });
 
     let result = server
-        .jira_get_issue_sla(Parameters(tools::JiraGetIssueSlaArgs {
+        .get_issue_sla_metrics(Parameters(tools::JiraGetIssueSlaMetricsArgs {
             issue_key: "ABC-1".to_string(),
             metrics: Some(json!("time_to_resolution, time_to_first_response")),
             include_raw_dates: Some(true),
@@ -1590,7 +1616,7 @@ async fn jira_development_handlers_return_single_and_batch_info() {
     });
 
     let single = server
-        .jira_get_issue_development_info(Parameters(tools::JiraGetIssueDevelopmentInfoArgs {
+        .get_issue_development(Parameters(tools::JiraGetIssueDevelopmentArgs {
             issue_key: "ABC-1".to_string(),
             application_type: Some("github".to_string()),
             data_type: Some("pullrequest".to_string()),
@@ -1598,7 +1624,7 @@ async fn jira_development_handlers_return_single_and_batch_info() {
         .await
         .unwrap();
     let batch = server
-        .jira_get_issues_development_info(Parameters(tools::JiraGetIssuesDevelopmentInfoArgs {
+        .get_issues_development(Parameters(tools::JiraGetIssuesDevelopmentArgs {
             issue_keys: json!(["10001", "10002"]),
             application_type: Some("github".to_string()),
             data_type: Some("pullrequest".to_string()),
@@ -1643,7 +1669,7 @@ async fn jira_development_handler_returns_product_unavailable_when_plugin_missin
     });
 
     let result = server
-        .jira_get_issue_development_info(Parameters(tools::JiraGetIssueDevelopmentInfoArgs {
+        .get_issue_development(Parameters(tools::JiraGetIssueDevelopmentArgs {
             issue_key: "10001".to_string(),
             application_type: None,
             data_type: None,
@@ -1673,7 +1699,7 @@ async fn jira_tool_handler_rejects_invalid_json_object_input_before_http() {
         ..runtime_config()
     });
     let error = server
-        .jira_transition_issue(Parameters(tools::JiraTransitionIssueArgs {
+        .transition_issue(Parameters(tools::JiraTransitionIssueArgs {
             issue_key: "ABC-1".to_string(),
             transition_id: "31".to_string(),
             fields: Some(json!("[]")),
@@ -1710,14 +1736,14 @@ fn jira_extension_handler_arg_helpers_validate_json_shapes() {
 }
 
 #[tokio::test]
-async fn c4_product_dependency_responses_are_structured() {
+async fn jira_product_dependency_responses_are_structured() {
     let (base_url, _requests) = mock_jira_server().await;
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let agile = server
-        .jira_get_agile_boards(Parameters(tools::JiraGetAgileBoardsArgs {
+        .list_agile_boards(Parameters(tools::JiraListAgileBoardsArgs {
             project_key: Some("NOAGILE".to_string()),
             board_type: None,
             start_at: None,
@@ -1726,13 +1752,13 @@ async fn c4_product_dependency_responses_are_structured() {
         .await
         .unwrap();
     let forms = server
-        .jira_get_issue_proforma_forms(Parameters(tools::JiraGetIssueProformaFormsArgs {
+        .list_issue_forms(Parameters(tools::JiraListIssueFormsArgs {
             issue_key: "ABC-1".to_string(),
         }))
         .await
         .unwrap();
     let sla = server
-        .jira_get_issue_sla(Parameters(tools::JiraGetIssueSlaArgs {
+        .get_issue_sla_metrics(Parameters(tools::JiraGetIssueSlaMetricsArgs {
             issue_key: "ABC-1".to_string(),
             metrics: None,
             include_raw_dates: None,
@@ -1745,7 +1771,7 @@ async fn c4_product_dependency_responses_are_structured() {
         jira: Some(jira_config_with_base_url(format!("{jsm_url}/jsm-down"))),
         ..runtime_config()
     })
-    .jira_get_service_desk_for_project(Parameters(tools::JiraGetServiceDeskForProjectArgs {
+    .get_project_service_desk(Parameters(tools::JiraGetServiceDeskForProjectArgs {
         project_key: "ABC".to_string(),
     }))
     .await
@@ -1756,7 +1782,7 @@ async fn c4_product_dependency_responses_are_structured() {
         jira: Some(jira_config_with_base_url(format!("{dev_url}/dev-down"))),
         ..runtime_config()
     })
-    .jira_get_issue_development_info(Parameters(tools::JiraGetIssueDevelopmentInfoArgs {
+    .get_issue_development(Parameters(tools::JiraGetIssueDevelopmentArgs {
         issue_key: "10001".to_string(),
         application_type: None,
         data_type: None,
@@ -1791,14 +1817,14 @@ async fn c4_product_dependency_responses_are_structured() {
 }
 
 #[tokio::test]
-async fn jira_download_attachments_handler_returns_safe_metadata_and_content_results() {
+async fn jira_get_issue_attachments_handler_returns_safe_metadata_and_content_results() {
     let (base_url, requests) = mock_jira_server().await;
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let result = server
-        .jira_download_attachments(Parameters(tools::JiraDownloadAttachmentsArgs {
+        .get_issue_attachments(Parameters(tools::JiraGetIssueAttachmentsArgs {
             issue_key: "ABC-1".to_string(),
             attachment_ids: Some(json!(["1", "2"])),
             include_content: Some(true),
@@ -1814,6 +1840,10 @@ async fn jira_download_attachments_handler_returns_safe_metadata_and_content_res
     assert_eq!(structured["attachments"][0]["filename"], json!("file.png"));
     assert_eq!(structured["attachments"][0]["has_content_url"], json!(true));
     assert!(structured["attachments"][0].get("thumbnail").is_none());
+    assert_registered_output_schema_declares_properties(
+        tools::JIRA_GET_ISSUE_ATTACHMENTS_TOOL_NAME,
+        &["issue_key", "count", "attachments"],
+    );
     assert_eq!(
         structured["attachments"][0]["content"],
         json!({

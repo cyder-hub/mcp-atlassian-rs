@@ -1,8 +1,8 @@
 # mcp-atlassian-rs
 
-Rust migration workspace for MCP Atlassian.
+Rust-native MCP server for Atlassian Jira and Confluence.
 
-This repository is migrating the Python `mcp-atlassian` Jira and Confluence MCP server to a Rust-native implementation. The Rust binary currently has the shared MCP runtime/control plane, 49 Jira business tools, and 24 Confluence business tools implemented with local mock REST and MCP smoke coverage. Integrated acceptance has validated representative real Jira, real Confluence, dual-service MCP, release, Docker, and compose paths. The current release includes production safety support for redaction, request-scoped streamable HTTP auth, SSRF/allowed-domain checks, redirect protection, BYOT access tokens, Bearer disambiguation, Cloud API gateway base rewrite, HTTP/HTTPS proxy, NO_PROXY, custom outbound headers, and mTLS client cert/key.
+The Rust binary has the shared MCP runtime/control plane, 49 Jira business tools, and 24 Confluence business tools implemented with local mock REST and MCP smoke coverage. Integrated acceptance has validated representative real Jira, real Confluence, dual-service MCP, release, Docker, and compose paths. The current release includes production safety support for redaction, request-scoped streamable HTTP auth, SSRF/allowed-domain checks, redirect protection, BYOT access tokens, Bearer disambiguation, Cloud API gateway base rewrite, HTTP/HTTPS proxy, NO_PROXY, custom outbound headers, and mTLS client cert/key.
 
 The final support matrix is in [`docs/support-matrix.md`](docs/support-matrix.md). It covers all 49 Jira and 24 Confluence business tools, local/MCP coverage, real acceptance status, blocker/local-only notes, and the runtime/auth/transport/network support boundaries.
 
@@ -33,9 +33,9 @@ Implemented in the Rust root project:
 
 Deferred:
 
-- `confluence_get_page_views` is Cloud-only. Confluence Server/Data Center returns a structured unavailable response; real acceptance validated the Cloud representative path.
+- `confluence_get_page_view_analytics` is Cloud-only. Confluence Server/Data Center returns a structured unavailable response; real acceptance validated the Cloud representative path.
 - Jira Service Management and Forms/ProForma remain objectively blocked in the test tenant: JSM service desk lookup returned 403, and the current Forms client path did not receive an effective Forms API response. These toolsets are implemented with local mock/product-dependency coverage but are not documented as real-accepted.
-- `confluence_search_user` is implemented with local mock coverage. Real acceptance did not include a dedicated user-search row, so it remains local-validated only.
+- `confluence_search_users` is implemented with local mock coverage. Real acceptance did not include a dedicated user-search row, so it remains local-validated only.
 - OAuth Cloud 3LO, OAuth proxy/DCR, OAuth refresh/token storage, and Data Center OAuth authorization-code/refresh flows are not implemented and are fixed in the support matrix and backlog.
 - SSE transport, SOCKS proxy, and system truststore injection are not implemented in the Rust server. Supported transports are `stdio` and streamable HTTP.
 - Release workflow, production deployment documentation, final per-tool support matrix, configuration/auth/transport/network support matrix, fixed long-term backlog, migration-tool cleanup, zero-warning check, final release gate, and completion audit are now complete.
@@ -48,7 +48,7 @@ Deferred:
 | Release/container | Passed: release build, Docker image build, compose config, compose startup, and `/healthz` smoke. |
 | Real Jira core | Passed: issue read, JQL search, project issue search, field search/options, watchers read, and disabled-tool guards. |
 | Real Jira product paths | Passed for Agile board lookup, SLA read, and development single/batch reads. JSM is blocked by 403 in the test tenant; Forms/ProForma is blocked by product/interface availability. |
-| Real Confluence | Passed for search, page read, children/tree, comments, test-object create/update, add/reply comment, labels, Cloud page views, attachments list/download/content/images/upload/batch upload, and disabled-tool delete/move/delete-attachment guards. `confluence_search_user` was not separately real-executed. |
+| Real Confluence | Passed for search, page read, children/tree, comments, test-object create/update, add/reply comment, labels, Cloud page views, attachments list/download/content/images/upload/batch upload, and disabled-tool delete/move/delete-attachment guards. `confluence_search_users` was not separately real-executed. |
 | Dual-service MCP | Passed for stdio and streamable HTTP discovery and representative Jira/Confluence read calls, including `TOOL_PROFILE=basic` and `DISABLED_TOOLS` samples. |
 
 ## Requirements
@@ -115,16 +115,16 @@ Most users should choose a single profile and leave lower-level tool controls un
 
 | Variable | Default | Behavior |
 | --- | --- | --- |
-| `TOOL_PROFILE` | `basic` | Supports `basic`, `developer`, `manager`, `full`, or `custom`. Profiles expand to default toolsets. Unknown values fail startup. |
+| `TOOL_PROFILE` | `basic` | Supports `basic`, `developer`, `manager`, `full`, or `custom`. Profiles expand to default toolsets; with both services configured they expose 15, 35, 70, 73, or 0 tools respectively. Unknown values fail startup. |
 
 Profiles are ordered from least to most capable:
 
 | Profile | Intended use |
 | --- | --- |
-| `basic` | Common issue/page read/write and workflow transition tasks. No destructive delete tools. |
-| `developer` | `basic` plus board, sprint planning reads, development info, attachments read, worklog, and metrics. Does not create/update sprints. |
-| `manager` | `developer` plus sprint management, project/admin-style metadata, issue deletion, bulk writes, and Confluence content writes. |
-| `full` | All registered Jira and Confluence toolsets. |
+| `basic` | 15 common Jira and Confluence tools: issue/page reads, Jira issue creation, Jira comments, field/project reads, and Confluence content/comment/label reads. No destructive updates or deletes. |
+| `developer` | 35 tools: `basic` plus workflow transitions, Agile board/sprint reads, sprint membership changes, development info, issue attachments, worklogs, issue metrics, Confluence page versions, and Confluence attachment reads. |
+| `manager` | 70 tools: `developer` plus issue updates/deletes, bulk issue creation, issue history, project metadata/version writes, sprint management, links, users, watchers, JSM, Forms, Confluence writes, analytics, and attachment uploads. |
+| `full` | All 73 registered Jira and Confluence tools, including Confluence destructive delete toolsets and user search. |
 | `custom` | No profile baseline; use `TOOLSETS` and/or exact tool variables. |
 
 Advanced tool overrides:
@@ -232,7 +232,7 @@ SOCKS proxy support is not compiled in.
 
 The Confluence implementation uses a deterministic minimal Markdown to Confluence storage conversion for local mock validation. It covers headings, paragraphs, unordered lists, simple inline links, fenced code blocks, line breaks, and HTML escaping.
 
-The Rust implementation does not claim Python `md2conf` parity. Mermaid rendering, macro rendering, and full heading anchor parity remain outside the current local Confluence loop.
+The Rust implementation does not claim full `md2conf` feature parity. Mermaid rendering, macro rendering, and full heading anchor parity remain outside the current local Confluence loop.
 
 ## Security And Request Auth
 
@@ -265,93 +265,93 @@ The Rust server exposes these Jira core tools when Jira is configured:
 
 | Tool | Access | Toolset |
 | --- | --- | --- |
-| `jira_get_issue` | read | `jira_issue_read` |
-| `jira_search` | read | `jira_issue_read` |
-| `jira_get_project_issues` | read | `jira_issue_read` |
+| `jira_get_issue` | read | `jira_issues_read` |
+| `jira_search_issues` | read | `jira_issues_read` |
+| `jira_list_project_issues` | read | `jira_issues_read` |
 | `jira_search_fields` | read | `jira_fields_read` |
-| `jira_get_field_options` | read | `jira_fields_read` |
-| `jira_add_comment` | write | `jira_comments_write` |
-| `jira_edit_comment` | write | `jira_comments_write` |
-| `jira_get_transitions` | read | `jira_workflow_read` |
-| `jira_transition_issue` | write | `jira_workflow_write` |
+| `jira_list_field_options` | read | `jira_fields_read` |
+| `jira_add_issue_comment` | write | `jira_issue_comments_write` |
+| `jira_update_issue_comment` | write | `jira_issue_comments_update` |
+| `jira_list_issue_transitions` | read | `jira_issue_workflows_read` |
+| `jira_transition_issue` | write | `jira_issue_workflows_write` |
 
 The Rust server also exposes these Jira extended tools when Jira is configured. These are locally validated with mock Jira. Real acceptance passed representative Jira core, Agile, SLA, and development paths; Jira Service Management and Forms/ProForma remain objectively blocked as described above.
 
 | Tool | Access | Toolset |
 | --- | --- | --- |
-| `jira_create_issue` | write | `jira_issue_write` |
-| `jira_batch_create_issues` | write | `jira_issue_bulk_write` |
-| `jira_batch_get_changelogs` | read | `jira_issue_history_read` |
-| `jira_update_issue` | write | `jira_issue_write` |
-| `jira_delete_issue` | write | `jira_issue_delete` |
-| `jira_get_all_projects` | read | `jira_project_read` |
-| `jira_get_project_versions` | read | `jira_project_metadata_read` |
-| `jira_get_project_components` | read | `jira_project_metadata_read` |
-| `jira_create_version` | write | `jira_project_write` |
-| `jira_batch_create_versions` | write | `jira_project_write` |
-| `jira_get_user_profile` | read | `jira_users` |
-| `jira_get_issue_watchers` | read | `jira_watchers` |
-| `jira_add_watcher` | write | `jira_watchers` |
-| `jira_remove_watcher` | write | `jira_watchers` |
-| `jira_get_worklog` | read | `jira_worklog` |
-| `jira_add_worklog` | write | `jira_worklog` |
-| `jira_get_link_types` | read | `jira_links` |
-| `jira_link_to_epic` | write | `jira_links` |
-| `jira_create_issue_link` | write | `jira_links` |
-| `jira_create_remote_issue_link` | write | `jira_links` |
-| `jira_remove_issue_link` | write | `jira_links` |
-| `jira_download_attachments` | read | `jira_attachments_read` |
-| `jira_get_issue_images` | read | `jira_attachments_read` |
-| `jira_get_agile_boards` | read | `jira_agile_read` |
-| `jira_get_board_issues` | read | `jira_agile_read` |
-| `jira_get_sprints_from_board` | read | `jira_agile_read` |
-| `jira_get_sprint_issues` | read | `jira_agile_read` |
-| `jira_create_sprint` | write | `jira_sprint_manage` |
-| `jira_update_sprint` | write | `jira_sprint_manage` |
-| `jira_add_issues_to_sprint` | write | `jira_sprint_planning` |
-| `jira_get_service_desk_for_project` | read | `jira_service_desk` |
-| `jira_get_service_desk_queues` | read | `jira_service_desk` |
-| `jira_get_queue_issues` | read | `jira_service_desk` |
-| `jira_get_issue_proforma_forms` | read | `jira_forms` |
-| `jira_get_proforma_form_details` | read | `jira_forms` |
-| `jira_update_proforma_form_answers` | write | `jira_forms` |
-| `jira_get_issue_dates` | read | `jira_metrics_read` |
-| `jira_get_issue_sla` | read | `jira_metrics_read` |
-| `jira_get_issue_development_info` | read | `jira_development_read` |
-| `jira_get_issues_development_info` | read | `jira_development_read` |
+| `jira_create_issue` | write | `jira_issues_write` |
+| `jira_create_issues` | write | `jira_issues_bulk_write` |
+| `jira_get_issue_changelogs` | read | `jira_issues_history_read` |
+| `jira_update_issue` | write | `jira_issues_update` |
+| `jira_delete_issue` | write | `jira_issues_delete` |
+| `jira_list_projects` | read | `jira_projects_read` |
+| `jira_list_project_versions` | read | `jira_projects_metadata_read` |
+| `jira_list_project_components` | read | `jira_projects_metadata_read` |
+| `jira_create_project_version` | write | `jira_project_versions_write` |
+| `jira_create_project_versions` | write | `jira_project_versions_write` |
+| `jira_get_user` | read | `jira_users_read` |
+| `jira_list_issue_watchers` | read | `jira_issue_watchers_read` |
+| `jira_add_issue_watcher` | write | `jira_issue_watchers_write` |
+| `jira_remove_issue_watcher` | write | `jira_issue_watchers_delete` |
+| `jira_list_issue_worklogs` | read | `jira_issue_worklogs_read` |
+| `jira_add_issue_worklog` | write | `jira_issue_worklogs_write` |
+| `jira_list_issue_link_types` | read | `jira_issue_links_read` |
+| `jira_set_issue_parent` | write | `jira_issue_links_write` |
+| `jira_create_issue_link` | write | `jira_issue_links_write` |
+| `jira_create_remote_issue_link` | write | `jira_issue_links_write` |
+| `jira_delete_issue_link` | write | `jira_issue_links_delete` |
+| `jira_get_issue_attachments` | read | `jira_issue_attachments_read` |
+| `jira_get_issue_image_attachments` | read | `jira_issue_attachments_read` |
+| `jira_list_agile_boards` | read | `jira_agile_boards_read` |
+| `jira_list_board_issues` | read | `jira_agile_boards_read` |
+| `jira_list_board_sprints` | read | `jira_sprints_read` |
+| `jira_list_sprint_issues` | read | `jira_sprints_read` |
+| `jira_create_sprint` | write | `jira_sprints_write` |
+| `jira_update_sprint` | write | `jira_sprints_write` |
+| `jira_add_issues_to_sprint` | write | `jira_sprint_membership_write` |
+| `jira_get_project_service_desk` | read | `jira_service_desks_read` |
+| `jira_list_service_desk_queues` | read | `jira_service_desks_read` |
+| `jira_list_service_desk_queue_issues` | read | `jira_service_desks_read` |
+| `jira_list_issue_forms` | read | `jira_issue_forms_read` |
+| `jira_get_issue_form` | read | `jira_issue_forms_read` |
+| `jira_update_issue_form_answers` | write | `jira_issue_forms_write` |
+| `jira_get_issue_timeline` | read | `jira_issue_metrics_read` |
+| `jira_get_issue_sla_metrics` | read | `jira_issue_metrics_read` |
+| `jira_get_issue_development` | read | `jira_issue_development_read` |
+| `jira_get_issues_development` | read | `jira_issue_development_read` |
 
-`jira_get_issue_sla` parses SLA values from Jira/JSM issue fields and returns `parsing_limitations`; it does not apply a local working-hours calendar or recompute SLA timers.
+`jira_get_issue_sla_metrics` parses SLA values from Jira/JSM issue fields and returns `parsing_limitations`; it does not apply a local working-hours calendar or recompute SLA timers.
 
-The Rust server also exposes these Confluence tools when Confluence is configured. These are locally validated with mock Confluence. Real acceptance passed representative pages, comments, labels, analytics, and attachments paths on test objects; `confluence_search_user` remains local-validated only.
+The Rust server also exposes these Confluence tools when Confluence is configured. These are locally validated with mock Confluence. Real acceptance passed representative pages, comments, labels, analytics, and attachments paths on test objects; `confluence_search_users` remains local-validated only.
 
 | Tool | Access | Toolset |
 | --- | --- | --- |
-| `confluence_search` | read | `confluence_content_read` |
+| `confluence_search_content` | read | `confluence_content_read` |
 | `confluence_get_page` | read | `confluence_content_read` |
-| `confluence_get_page_children` | read | `confluence_content_read` |
+| `confluence_list_page_children` | read | `confluence_content_read` |
 | `confluence_get_space_page_tree` | read | `confluence_content_read` |
 | `confluence_create_page` | write | `confluence_content_write` |
-| `confluence_update_page` | write | `confluence_content_write` |
+| `confluence_update_page` | write | `confluence_content_update` |
 | `confluence_delete_page` | write | `confluence_content_delete` |
-| `confluence_move_page` | write | `confluence_content_delete` |
-| `confluence_get_comments` | read | `confluence_comments_read` |
-| `confluence_add_comment` | write | `confluence_comments_write` |
-| `confluence_reply_to_comment` | write | `confluence_comments_write` |
-| `confluence_get_labels` | read | `confluence_labels_read` |
-| `confluence_add_label` | write | `confluence_labels_write` |
-| `confluence_search_user` | read | `confluence_users_read` |
-| `confluence_get_page_history` | read | `confluence_versions_read` |
-| `confluence_get_page_diff` | read | `confluence_versions_read` |
-| `confluence_get_page_views` | read | `confluence_analytics_read` |
-| `confluence_upload_attachment` | write | `confluence_attachments_write` |
-| `confluence_upload_attachments` | write | `confluence_attachments_write` |
-| `confluence_get_attachments` | read | `confluence_attachments_read` |
+| `confluence_move_page` | write | `confluence_content_update` |
+| `confluence_list_page_comments` | read | `confluence_page_comments_read` |
+| `confluence_add_page_comment` | write | `confluence_page_comments_write` |
+| `confluence_reply_to_comment` | write | `confluence_page_comments_write` |
+| `confluence_list_content_labels` | read | `confluence_content_labels_read` |
+| `confluence_add_content_label` | write | `confluence_content_labels_write` |
+| `confluence_search_users` | read | `confluence_users_read` |
+| `confluence_get_page_version` | read | `confluence_page_versions_read` |
+| `confluence_get_page_diff` | read | `confluence_page_versions_read` |
+| `confluence_get_page_view_analytics` | read | `confluence_page_analytics_read` |
+| `confluence_upload_content_attachment` | write | `confluence_attachments_write` |
+| `confluence_upload_content_attachments` | write | `confluence_attachments_write` |
+| `confluence_list_content_attachments` | read | `confluence_attachments_read` |
 | `confluence_download_attachment` | read | `confluence_attachments_read` |
 | `confluence_download_content_attachments` | read | `confluence_attachments_read` |
 | `confluence_delete_attachment` | write | `confluence_attachments_delete` |
-| `confluence_get_page_images` | read | `confluence_attachments_read` |
+| `confluence_get_content_image_attachments` | read | `confluence_attachments_read` |
 
-`confluence_get_page_children` applies the requested limit to the combined page/folder result set and returns page/folder query statistics. `confluence_create_page` and `confluence_update_page` return `emoji_status` for the optional emoji sub-operation. `confluence_get_page_views` is Cloud-only. Attachment download/image tools return bounded structured content; the current inline content limit is 1 MiB per attachment. `confluence_download_content_attachments` paginates attachment listings up to 10 pages and returns `has_more`, `next_start`, `pages_fetched`, and `limit_applied` in the summary. Attachment upload tools accept explicit local file paths readable by the server process, reject files larger than 10 MiB before reading them, and do not implement directory allowlists or remote URL upload in this release.
+`confluence_list_page_children` applies the requested limit to the combined page/folder result set and returns page/folder query statistics. `confluence_create_page` and `confluence_update_page` return `emoji_status` for the optional emoji sub-operation. `confluence_get_page_view_analytics` is Cloud-only. Attachment download/image tools return bounded structured content; the current inline content limit is 1 MiB per attachment. `confluence_download_content_attachments` paginates attachment listings up to 10 pages and returns `has_more`, `next_start`, `pages_fetched`, and `limit_applied` in the summary. Attachment upload tools accept explicit local file paths readable by the server process, reject files larger than 10 MiB before reading them, and do not implement directory allowlists or remote URL upload in this release.
 
 ## Commands
 

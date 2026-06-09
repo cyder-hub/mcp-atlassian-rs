@@ -176,7 +176,7 @@ fn cloud_unbounded_jql_error(jql: &str) -> AtlassianError {
 
 fn cloud_offset_pagination_removed_error() -> AtlassianError {
     AtlassianError::invalid_input(
-        "Jira Cloud offset pagination with start_at requires the removed /rest/api/3/search API. Use page_token from a previous jira_search response instead.",
+        "Jira Cloud offset pagination with start_at requires the removed /rest/api/3/search API. Use page_token from a previous jira_search_issues response instead.",
     )
 }
 
@@ -489,7 +489,7 @@ fn simplify_sla_value(value: &Value, include_raw_dates: bool) -> Value {
     Value::Object(simplified)
 }
 
-fn proforma_answers_payload(answers: Vec<Value>) -> Result<Value, AtlassianError> {
+fn issue_form_answers_payload(answers: Vec<Value>) -> Result<Value, AtlassianError> {
     let mut payload_answers = serde_json::Map::new();
 
     for answer in answers {

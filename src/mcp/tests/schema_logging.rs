@@ -83,16 +83,260 @@ fn atlassian_error_reports_non_http_categories() {
 }
 
 #[test]
+fn high_risk_schema_baseline_covers_existing_tools_fields_and_payloads() {
+    let server = server_with_config(RuntimeConfig {
+        jira: Some(jira_config()),
+        confluence: Some(confluence_config()),
+        enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config()
+    });
+    let tools = server.current_tools_result().tools;
+    let names = tool_names(tools.clone())
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+
+    assert!(high_risk_schema_tool_names().len() >= 40);
+    for name in high_risk_schema_tool_names() {
+        assert!(
+            names.contains(name),
+            "{name} should be in the high-risk tool baseline"
+        );
+    }
+
+    assert!(high_risk_input_fields().len() >= 20);
+    for field in high_risk_input_fields() {
+        let tool = tools
+            .iter()
+            .find(|tool| tool.name == field.tool_name)
+            .unwrap_or_else(|| panic!("{} should be discoverable", field.tool_name));
+        let properties = tool
+            .input_schema
+            .get("properties")
+            .and_then(Value::as_object)
+            .unwrap_or_else(|| panic!("{} should expose an object schema", field.tool_name));
+
+        assert!(
+            properties.contains_key(field.field_name),
+            "{} should expose high-risk field {} ({})",
+            field.tool_name,
+            field.field_name,
+            field.reason
+        );
+        let description = properties
+            .get(field.field_name)
+            .and_then(|schema| schema.get("description"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim();
+        assert!(
+            !description.is_empty(),
+            "{} high-risk field {} should expose a schema description ({})",
+            field.tool_name,
+            field.field_name,
+            field.reason
+        );
+        assert!(!field.reason.is_empty());
+    }
+
+    assert!(high_risk_output_tools().len() >= 10);
+    for output in high_risk_output_tools() {
+        let tool = tools
+            .iter()
+            .find(|tool| tool.name == output.tool_name)
+            .unwrap_or_else(|| panic!("{} should be discoverable", output.tool_name));
+        let output_schema = tool
+            .output_schema
+            .as_ref()
+            .unwrap_or_else(|| panic!("{} should expose output schema", output.tool_name));
+        assert_eq!(
+            output_schema.get("type").and_then(Value::as_str),
+            Some("object"),
+            "{} output schema should describe structuredContent root object",
+            output.tool_name
+        );
+        assert!(
+            output_schema
+                .get("description")
+                .and_then(Value::as_str)
+                .is_some_and(|description| !description.trim().is_empty()),
+            "{} output schema should have a description",
+            output.tool_name
+        );
+        assert!(
+            output_schema
+                .get("properties")
+                .and_then(Value::as_object)
+                .is_some_and(|properties| !properties.is_empty()),
+            "{} output schema should describe stable payload keys",
+            output.tool_name
+        );
+        assert!(
+            names.contains(output.tool_name),
+            "{} should be in the high-risk output baseline",
+            output.tool_name
+        );
+        assert!(!output.reason.is_empty());
+    }
+}
+
+#[test]
+fn high_risk_output_schemas_declare_representative_payload_keys() {
+    let server = server_with_config(RuntimeConfig {
+        jira: Some(jira_config()),
+        confluence: Some(confluence_config()),
+        enabled_toolsets: tool_registry::all_toolsets(),
+        atlassian_oauth_cloud_id: Some("cloud-123".to_string()),
+        ..runtime_config()
+    });
+    let discovered_tools = server.current_tools_result().tools;
+
+    for (tool_name, expected_properties) in [
+        (tools::JIRA_CREATE_ISSUES_TOOL_NAME, vec!["success", "data"]),
+        (
+            tools::JIRA_CREATE_PROJECT_VERSIONS_TOOL_NAME,
+            vec!["versions"],
+        ),
+        (tools::JIRA_UPDATE_ISSUE_TOOL_NAME, vec!["success", "data"]),
+        (tools::JIRA_DELETE_ISSUE_TOOL_NAME, vec!["success", "data"]),
+        (
+            tools::JIRA_GET_ISSUE_ATTACHMENTS_TOOL_NAME,
+            vec!["issue_key", "count", "attachments"],
+        ),
+        (
+            tools::JIRA_GET_ISSUE_IMAGES_TOOL_NAME,
+            vec!["issue_key", "count", "images_only", "attachments"],
+        ),
+        (
+            tools::JIRA_LIST_AGILE_BOARDS_TOOL_NAME,
+            vec!["success", "product_dependency"],
+        ),
+        (
+            confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
+            vec![
+                "success",
+                "partial_success",
+                "summary",
+                "attachments",
+                "failed",
+            ],
+        ),
+        (
+            confluence_tools::CONFLUENCE_DOWNLOAD_ATTACHMENT_TOOL_NAME,
+            vec!["success", "attachment", "error"],
+        ),
+        (
+            confluence_tools::CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
+            vec!["success", "summary", "attachments", "failed"],
+        ),
+        (
+            confluence_tools::CONFLUENCE_GET_PAGE_VIEW_ANALYTICS_TOOL_NAME,
+            vec!["success", "available", "page_id", "total_views", "error"],
+        ),
+    ] {
+        let tool = discovered_tools
+            .iter()
+            .find(|tool| tool.name == tool_name)
+            .unwrap_or_else(|| panic!("{tool_name} should be discoverable"));
+        let properties = tool
+            .output_schema
+            .as_ref()
+            .unwrap_or_else(|| panic!("{tool_name} should expose output schema"))
+            .get("properties")
+            .and_then(Value::as_object)
+            .unwrap_or_else(|| panic!("{tool_name} output schema should expose properties"));
+
+        for property in expected_properties {
+            assert!(
+                properties.contains_key(property),
+                "{tool_name} output schema should declare {property}"
+            );
+        }
+    }
+}
+
+#[test]
+fn output_schema_sanitizer_preserves_boolean_const_literals() {
+    let server = server_with_config(RuntimeConfig {
+        jira: Some(jira_config()),
+        enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config()
+    });
+    let discovered_tools = server.current_tools_result().tools;
+
+    for (tool_name, expected_const) in [
+        (tools::JIRA_GET_ISSUE_ATTACHMENTS_TOOL_NAME, false),
+        (tools::JIRA_GET_ISSUE_IMAGES_TOOL_NAME, true),
+    ] {
+        let tool = discovered_tools
+            .iter()
+            .find(|tool| tool.name == tool_name)
+            .unwrap_or_else(|| panic!("{tool_name} should be discoverable"));
+        let images_only = tool
+            .output_schema
+            .as_ref()
+            .unwrap_or_else(|| panic!("{tool_name} should expose output schema"))
+            .get("properties")
+            .and_then(Value::as_object)
+            .and_then(|properties| properties.get("images_only"))
+            .and_then(Value::as_object)
+            .unwrap_or_else(|| panic!("{tool_name} should describe images_only"));
+
+        assert_eq!(
+            images_only.get("type").and_then(Value::as_str),
+            Some("boolean")
+        );
+        assert_eq!(images_only.get("const"), Some(&json!(expected_const)));
+    }
+}
+
+#[test]
+fn jira_mutation_output_schema_allows_no_content_data_null() {
+    let server = server_with_config(RuntimeConfig {
+        jira: Some(jira_config()),
+        enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config()
+    });
+    let discovered_tools = server.current_tools_result().tools;
+
+    for tool_name in [
+        tools::JIRA_UPDATE_ISSUE_TOOL_NAME,
+        tools::JIRA_DELETE_ISSUE_TOOL_NAME,
+    ] {
+        let tool = discovered_tools
+            .iter()
+            .find(|tool| tool.name == tool_name)
+            .unwrap_or_else(|| panic!("{tool_name} should be discoverable"));
+        let any_of = tool
+            .output_schema
+            .as_ref()
+            .unwrap_or_else(|| panic!("{tool_name} should expose output schema"))
+            .get("properties")
+            .and_then(Value::as_object)
+            .and_then(|properties| properties.get("data"))
+            .and_then(|data| data.get("anyOf"))
+            .and_then(Value::as_array)
+            .unwrap_or_else(|| panic!("{tool_name} data schema should expose anyOf"));
+
+        assert!(
+            any_of
+                .iter()
+                .any(|schema| schema.get("type").and_then(Value::as_str) == Some("null")),
+            "{tool_name} data schema should allow null for no-content responses"
+        );
+    }
+}
+
+#[test]
 fn default_jira_tool_schemas_are_client_compatible() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
         enabled_toolsets: BTreeSet::from([
-            "jira_issue_read".to_string(),
-            "jira_issue_write".to_string(),
+            "jira_issues_read".to_string(),
+            "jira_issues_write".to_string(),
             "jira_fields_read".to_string(),
-            "jira_comments_write".to_string(),
-            "jira_workflow_read".to_string(),
-            "jira_workflow_write".to_string(),
+            "jira_issue_comments_write".to_string(),
+            "jira_issue_workflows_read".to_string(),
+            "jira_issue_workflows_write".to_string(),
         ]),
         ..runtime_config()
     });
@@ -115,12 +359,12 @@ fn all_jira_tool_schemas_are_client_compatible() {
     let names = tool_names(tools.clone());
 
     assert!(names.contains(&tools::JIRA_GET_ISSUE_TOOL_NAME.to_string()));
-    assert!(names.contains(&tools::JIRA_GET_ISSUE_SLA_TOOL_NAME.to_string()));
+    assert!(names.contains(&tools::JIRA_GET_ISSUE_SLA_METRICS_TOOL_NAME.to_string()));
     assert_client_compatible_tool_schemas(&tools);
     assert_tool_schema_lacks_property(&tools, tools::JIRA_SEARCH_FIELDS_TOOL_NAME, "refresh");
     assert_tool_schema_lacks_property(
         &tools,
-        tools::JIRA_GET_ISSUE_SLA_TOOL_NAME,
+        tools::JIRA_GET_ISSUE_SLA_METRICS_TOOL_NAME,
         concat!("working_hours", "_only"),
     );
 }
@@ -132,8 +376,9 @@ fn confluence_content_toolsets_have_client_compatible_schemas() {
         enabled_toolsets: BTreeSet::from([
             "confluence_content_read".to_string(),
             "confluence_content_write".to_string(),
-            "confluence_comments_read".to_string(),
-            "confluence_comments_write".to_string(),
+            "confluence_content_update".to_string(),
+            "confluence_page_comments_read".to_string(),
+            "confluence_page_comments_write".to_string(),
         ]),
         ..runtime_config()
     });

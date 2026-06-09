@@ -499,17 +499,17 @@ async fn run_stdio(service: SmokeService, binary: &PathBuf, url: &str) -> Result
             )?)?;
             assert_worklog_result(&session.call_tool(
                 4,
-                "jira_get_worklog",
+                "jira_list_issue_worklogs",
                 json!({"issue_key": "ABC-1", "limit": 1}),
             )?)?;
             assert_agile_boards_result(&session.call_tool(
                 5,
-                "jira_get_agile_boards",
+                "jira_list_agile_boards",
                 json!({"project_key": "ABC", "board_type": "scrum", "limit": 1}),
             )?)?;
             assert_issue_dates_result(&session.call_tool(
                 6,
-                "jira_get_issue_dates",
+                "jira_get_issue_timeline",
                 json!({
                     "issue_key": "ABC-1",
                     "include_status_changes": true,
@@ -518,7 +518,7 @@ async fn run_stdio(service: SmokeService, binary: &PathBuf, url: &str) -> Result
             )?)?;
             assert_issue_sla_result(&session.call_tool(
                 7,
-                "jira_get_issue_sla",
+                "jira_get_issue_sla_metrics",
                 json!({"issue_key": "ABC-1", "include_raw_dates": true}),
             )?)?;
             println!(
@@ -528,7 +528,7 @@ async fn run_stdio(service: SmokeService, binary: &PathBuf, url: &str) -> Result
         SmokeService::Confluence => {
             assert_search_result(&session.call_tool(
                 3,
-                "confluence_search",
+                "confluence_search_content",
                 json!({"query": "project docs", "limit": 10, "spaces_filter": "ENG"}),
             )?)?;
             assert_page_result(&session.call_tool(
@@ -648,7 +648,7 @@ async fn run_http_inner(service: SmokeService, port: u16, path: &str) -> Result<
                     path,
                     &session_id,
                     4,
-                    "jira_get_worklog",
+                    "jira_list_issue_worklogs",
                     json!({"issue_key": "ABC-1", "limit": 1}),
                 )
                 .await?,
@@ -660,7 +660,7 @@ async fn run_http_inner(service: SmokeService, port: u16, path: &str) -> Result<
                     path,
                     &session_id,
                     5,
-                    "jira_get_agile_boards",
+                    "jira_list_agile_boards",
                     json!({"project_key": "ABC", "board_type": "scrum", "limit": 1}),
                 )
                 .await?,
@@ -672,7 +672,7 @@ async fn run_http_inner(service: SmokeService, port: u16, path: &str) -> Result<
                     path,
                     &session_id,
                     6,
-                    "jira_get_issue_dates",
+                    "jira_get_issue_timeline",
                     json!({
                         "issue_key": "ABC-1",
                         "include_status_changes": true,
@@ -688,7 +688,7 @@ async fn run_http_inner(service: SmokeService, port: u16, path: &str) -> Result<
                     path,
                     &session_id,
                     7,
-                    "jira_get_issue_sla",
+                    "jira_get_issue_sla_metrics",
                     json!({"issue_key": "ABC-1", "include_raw_dates": true}),
                 )
                 .await?,
@@ -705,7 +705,7 @@ async fn run_http_inner(service: SmokeService, port: u16, path: &str) -> Result<
                     path,
                     &session_id,
                     3,
-                    "confluence_search",
+                    "confluence_search_content",
                     json!({"query": "project docs", "limit": 10, "spaces_filter": "ENG"}),
                 )
                 .await?,
@@ -790,7 +790,7 @@ fn smoke_env(service: SmokeService, url: &str, restricted: bool) -> EnvMap {
             env.insert("JIRA_SSL_VERIFY".to_string(), "false".to_string());
             env.insert(
                 "TOOLSETS".to_string(),
-                "jira_worklog,jira_agile_read,jira_metrics_read".to_string(),
+                "jira_issue_worklogs_read,jira_agile_boards_read,jira_sprints_read,jira_issue_metrics_read".to_string(),
             );
             if restricted {
                 env.insert(
@@ -834,12 +834,12 @@ fn assert_required_tools(
     let required = match service {
         SmokeService::Jira => vec![
             "jira_get_issue",
-            "jira_get_worklog",
-            "jira_get_agile_boards",
-            "jira_get_issue_dates",
-            "jira_get_issue_sla",
+            "jira_list_issue_worklogs",
+            "jira_list_agile_boards",
+            "jira_get_issue_timeline",
+            "jira_get_issue_sla_metrics",
         ],
-        SmokeService::Confluence => vec!["confluence_search", "confluence_get_page"],
+        SmokeService::Confluence => vec!["confluence_search_content", "confluence_get_page"],
     };
     let missing = required
         .into_iter()
@@ -903,7 +903,7 @@ fn assert_jira_issue_result(response: &Value) -> Result<(), String> {
 }
 
 fn assert_worklog_result(response: &Value) -> Result<(), String> {
-    let structured = structured(response, "jira_get_worklog")?;
+    let structured = structured(response, "jira_list_issue_worklogs")?;
     let id = structured
         .get("worklogs")
         .and_then(Value::as_array)
@@ -914,13 +914,13 @@ fn assert_worklog_result(response: &Value) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "jira_get_worklog did not return mock worklog: {response}"
+            "jira_list_issue_worklogs did not return mock worklog: {response}"
         ))
     }
 }
 
 fn assert_agile_boards_result(response: &Value) -> Result<(), String> {
-    let structured = structured(response, "jira_get_agile_boards")?;
+    let structured = structured(response, "jira_list_agile_boards")?;
     let name = structured
         .get("values")
         .and_then(Value::as_array)
@@ -931,17 +931,19 @@ fn assert_agile_boards_result(response: &Value) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "jira_get_agile_boards did not return mock board: {response}"
+            "jira_list_agile_boards did not return mock board: {response}"
         ))
     }
 }
 
 fn assert_issue_dates_result(response: &Value) -> Result<(), String> {
-    let structured = structured(response, "jira_get_issue_dates")?;
+    let structured = structured(response, "jira_get_issue_timeline")?;
     let summary = structured
         .get("status_summary")
         .and_then(Value::as_object)
-        .ok_or_else(|| format!("jira_get_issue_dates did not return status_summary: {response}"))?;
+        .ok_or_else(|| {
+            format!("jira_get_issue_timeline did not return status_summary: {response}")
+        })?;
     let transition_count = summary.get("transition_count").and_then(Value::as_u64);
     let status_name = summary
         .get("current_status")
@@ -952,13 +954,13 @@ fn assert_issue_dates_result(response: &Value) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "jira_get_issue_dates did not return current status summary: {response}"
+            "jira_get_issue_timeline did not return current status summary: {response}"
         ))
     }
 }
 
 fn assert_issue_sla_result(response: &Value) -> Result<(), String> {
-    let structured = structured(response, "jira_get_issue_sla")?;
+    let structured = structured(response, "jira_get_issue_sla_metrics")?;
     let limitation = structured
         .get("parsing_limitations")
         .and_then(Value::as_object)
@@ -968,13 +970,13 @@ fn assert_issue_sla_result(response: &Value) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "jira_get_issue_sla did not return parsing_limitations: {response}"
+            "jira_get_issue_sla_metrics did not return parsing_limitations: {response}"
         ))
     }
 }
 
 fn assert_search_result(response: &Value) -> Result<(), String> {
-    let structured = structured(response, "confluence_search")?;
+    let structured = structured(response, "confluence_search_content")?;
     let title = structured
         .get("results")
         .and_then(Value::as_array)
@@ -985,7 +987,7 @@ fn assert_search_result(response: &Value) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "confluence_search did not return mock page: {response}"
+            "confluence_search_content did not return mock page: {response}"
         ))
     }
 }

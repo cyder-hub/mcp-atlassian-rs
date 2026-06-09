@@ -9,7 +9,7 @@ use crate::{
         },
         tools::{
             JiraAddWorklogArgs, JiraCreateIssueArgs, JiraCreateIssueLinkArgs,
-            JiraCreateRemoteIssueLinkArgs, JiraCreateSprintArgs, JiraCreateVersionArgs,
+            JiraCreateProjectVersionArgs, JiraCreateRemoteIssueLinkArgs, JiraCreateSprintArgs,
             JiraUpdateIssueArgs, JiraUpdateSprintArgs,
         },
     },
@@ -195,7 +195,9 @@ pub(super) fn reject_unsupported_attachments(
     }
 }
 
-pub(super) fn version_payload_from_args(args: JiraCreateVersionArgs) -> Result<Value, ErrorData> {
+pub(super) fn version_payload_from_args(
+    args: JiraCreateProjectVersionArgs,
+) -> Result<Value, ErrorData> {
     let project_key = required_non_empty_arg(args.project_key, "project_key")?;
     let name = required_non_empty_arg(args.name, "name")?;
     let mut payload = json!({

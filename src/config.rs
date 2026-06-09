@@ -9,9 +9,6 @@ use crate::{
     error::ConfigError, jira::config::JiraConfig,
 };
 
-#[cfg(test)]
-pub use crate::confluence::config::ENV_CONFLUENCE_URL;
-
 pub const DEFAULT_HTTP_HOST: &str = "127.0.0.1";
 pub const DEFAULT_HTTP_PORT: u16 = 8000;
 pub const DEFAULT_HTTP_PATH: &str = "/mcp";
@@ -409,10 +406,10 @@ mod tests {
     #[test]
     fn enabled_and_disabled_tools_are_trimmed_and_empty_values_are_ignored() {
         let config =
-            config_from_pairs(&[(ENV_ENABLED_TOOLS, " jira_search, , get_issue ")]).unwrap();
+            config_from_pairs(&[(ENV_ENABLED_TOOLS, " jira_search_issues, , get_issue ")]).unwrap();
         let tools = config.enabled_tools.unwrap();
 
-        assert!(tools.contains("jira_search"));
+        assert!(tools.contains("jira_search_issues"));
         assert!(tools.contains("get_issue"));
         assert_eq!(tools.len(), 2);
 
@@ -441,14 +438,14 @@ mod tests {
             config_from_pairs(&[(ENV_TOOL_PROFILE, "developer")])
                 .unwrap()
                 .enabled_toolsets
-                .contains("jira_sprint_planning"),
+                .contains("jira_sprint_membership_write"),
             true
         );
         assert_eq!(
             config_from_pairs(&[(ENV_TOOL_PROFILE, "manager")])
                 .unwrap()
                 .enabled_toolsets
-                .contains("jira_issue_delete"),
+                .contains("jira_issues_delete"),
             true
         );
         assert_eq!(
@@ -474,9 +471,9 @@ mod tests {
 
     #[test]
     fn toolsets_are_additive_to_profile_and_all_explicitly_enables_everything() {
-        let config = config_from_pairs(&[(ENV_TOOLSETS, "jira_sprint_manage")]).unwrap();
+        let config = config_from_pairs(&[(ENV_TOOLSETS, "jira_sprints_write")]).unwrap();
         let mut expected = default_toolsets();
-        expected.insert("jira_sprint_manage".to_string());
+        expected.insert("jira_sprints_write".to_string());
 
         assert_eq!(config.enabled_toolsets, expected);
 

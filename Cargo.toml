@@ -10,6 +10,9 @@ default-run = "mcp-atlassian-rs"
 members = [".", "xtask"]
 resolver = "3"
 
+[profile.release]
+strip = "symbols"
+
 [[bin]]
 name = "mcp-atlassian-rs"
 path = "src/main.rs"

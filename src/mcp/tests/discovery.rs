@@ -35,6 +35,25 @@ fn tool_discovery_has_no_tools_without_service_config() {
 }
 
 #[test]
+fn tool_discovery_uses_public_names_not_handler_method_names() {
+    let server = server_with_config(RuntimeConfig {
+        jira: Some(jira_config()),
+        confluence: Some(confluence_config()),
+        enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config()
+    });
+
+    assert!(server.get_tool(tools::JIRA_SEARCH_TOOL_NAME).is_some());
+    assert!(
+        server
+            .get_tool(confluence_tools::CONFLUENCE_LIST_PAGE_COMMENTS_TOOL_NAME)
+            .is_some()
+    );
+    assert!(server.get_tool("search_issues").is_none());
+    assert!(server.get_tool("list_page_comments").is_none());
+}
+
+#[test]
 fn tool_discovery_lists_jira_default_tools_when_configured() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
@@ -83,7 +102,7 @@ fn tool_discovery_applies_toolsets_and_disabled_tools_to_real_jira_tools() {
 fn jira_extension_tool_discovery_uses_registered_metadata_at_mcp_boundary() {
     let agile_only = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_toolsets: BTreeSet::from(["jira_agile_read".to_string()]),
+        enabled_toolsets: BTreeSet::from(["jira_agile_boards_read".to_string()]),
         ..runtime_config()
     });
     let default_profile = server_with_config(RuntimeConfig {
@@ -94,10 +113,8 @@ fn jira_extension_tool_discovery_uses_registered_metadata_at_mcp_boundary() {
     assert_eq!(
         tool_names(agile_only.filtered_tools_from(jira_extension_candidate_tools())),
         vec![
-            tools::JIRA_GET_AGILE_BOARDS_TOOL_NAME.to_string(),
-            tools::JIRA_GET_BOARD_ISSUES_TOOL_NAME.to_string(),
-            tools::JIRA_GET_SPRINT_ISSUES_TOOL_NAME.to_string(),
-            tools::JIRA_GET_SPRINTS_FROM_BOARD_TOOL_NAME.to_string(),
+            tools::JIRA_LIST_AGILE_BOARDS_TOOL_NAME.to_string(),
+            tools::JIRA_LIST_BOARD_ISSUES_TOOL_NAME.to_string(),
         ]
     );
     assert!(
@@ -106,12 +123,12 @@ fn jira_extension_tool_discovery_uses_registered_metadata_at_mcp_boundary() {
     );
     assert!(
         !tool_names(default_profile.filtered_tools_from(jira_extension_candidate_tools()))
-            .contains(&tools::JIRA_BATCH_GET_CHANGELOGS_TOOL_NAME.to_string())
+            .contains(&tools::JIRA_GET_ISSUE_CHANGELOGS_TOOL_NAME.to_string())
     );
 }
 
 #[test]
-fn c4_product_dependent_tools_have_routes_and_registered_metadata() {
+fn jira_product_dependent_tools_have_routes_and_registered_metadata() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
         enabled_toolsets: tool_registry::all_toolsets(),
@@ -119,10 +136,10 @@ fn c4_product_dependent_tools_have_routes_and_registered_metadata() {
         ..runtime_config()
     });
     let names = current_tool_names(&server);
-    let c4_tools = jira_product_extension_tool_names();
+    let jira_product_tools = jira_product_extension_tool_names();
 
-    assert_eq!(c4_tools.len(), 17);
-    for name in c4_tools {
+    assert_eq!(jira_product_tools.len(), 17);
+    for name in jira_product_tools {
         assert!(
             tool_registry::metadata_for(name).is_some(),
             "{name} should have registered metadata"
@@ -139,60 +156,68 @@ fn c4_product_dependent_tools_have_routes_and_registered_metadata() {
 }
 
 #[test]
-fn c4_product_dependent_toolsets_filter_to_expected_tools() {
+fn jira_product_dependent_toolsets_filter_to_expected_tools() {
     let cases = [
         (
-            "jira_agile_read",
+            "jira_agile_boards_read",
             vec![
-                tools::JIRA_GET_AGILE_BOARDS_TOOL_NAME,
-                tools::JIRA_GET_BOARD_ISSUES_TOOL_NAME,
-                tools::JIRA_GET_SPRINTS_FROM_BOARD_TOOL_NAME,
-                tools::JIRA_GET_SPRINT_ISSUES_TOOL_NAME,
+                tools::JIRA_LIST_AGILE_BOARDS_TOOL_NAME,
+                tools::JIRA_LIST_BOARD_ISSUES_TOOL_NAME,
             ],
         ),
         (
-            "jira_sprint_manage",
+            "jira_sprints_read",
+            vec![
+                tools::JIRA_LIST_BOARD_SPRINTS_TOOL_NAME,
+                tools::JIRA_LIST_SPRINT_ISSUES_TOOL_NAME,
+            ],
+        ),
+        (
+            "jira_sprints_write",
             vec![
                 tools::JIRA_CREATE_SPRINT_TOOL_NAME,
                 tools::JIRA_UPDATE_SPRINT_TOOL_NAME,
             ],
         ),
         (
-            "jira_sprint_planning",
+            "jira_sprint_membership_write",
             vec![tools::JIRA_ADD_ISSUES_TO_SPRINT_TOOL_NAME],
         ),
         (
-            "jira_service_desk",
+            "jira_service_desks_read",
             vec![
                 tools::JIRA_GET_SERVICE_DESK_FOR_PROJECT_TOOL_NAME,
-                tools::JIRA_GET_SERVICE_DESK_QUEUES_TOOL_NAME,
-                tools::JIRA_GET_QUEUE_ISSUES_TOOL_NAME,
+                tools::JIRA_LIST_SERVICE_DESK_QUEUES_TOOL_NAME,
+                tools::JIRA_LIST_SERVICE_DESK_QUEUE_ISSUES_TOOL_NAME,
             ],
         ),
         (
-            "jira_forms",
+            "jira_issue_forms_read",
             vec![
-                tools::JIRA_GET_ISSUE_PROFORMA_FORMS_TOOL_NAME,
-                tools::JIRA_GET_PROFORMA_FORM_DETAILS_TOOL_NAME,
-                tools::JIRA_UPDATE_PROFORMA_FORM_ANSWERS_TOOL_NAME,
+                tools::JIRA_LIST_ISSUE_FORMS_TOOL_NAME,
+                tools::JIRA_GET_ISSUE_FORM_TOOL_NAME,
             ],
         ),
         (
-            "jira_metrics_read",
+            "jira_issue_forms_write",
+            vec![tools::JIRA_UPDATE_ISSUE_FORM_ANSWERS_TOOL_NAME],
+        ),
+        (
+            "jira_issue_metrics_read",
             vec![
-                tools::JIRA_GET_ISSUE_DATES_TOOL_NAME,
-                tools::JIRA_GET_ISSUE_SLA_TOOL_NAME,
+                tools::JIRA_GET_ISSUE_TIMELINE_TOOL_NAME,
+                tools::JIRA_GET_ISSUE_SLA_METRICS_TOOL_NAME,
             ],
         ),
         (
-            "jira_development_read",
+            "jira_issue_development_read",
             vec![
-                tools::JIRA_GET_ISSUE_DEVELOPMENT_INFO_TOOL_NAME,
-                tools::JIRA_GET_ISSUES_DEVELOPMENT_INFO_TOOL_NAME,
+                tools::JIRA_GET_ISSUE_DEVELOPMENT_TOOL_NAME,
+                tools::JIRA_GET_ISSUES_DEVELOPMENT_TOOL_NAME,
             ],
         ),
     ];
-    let c4_tools = jira_product_extension_tool_names();
+    let jira_product_tools = jira_product_extension_tool_names();
 
     for (toolset, expected) in cases {
         let server = server_with_config(RuntimeConfig {
@@ -208,7 +233,7 @@ fn c4_product_dependent_toolsets_filter_to_expected_tools() {
                 "{toolset} should expose {expected_name}"
             );
         }
-        for name in c4_tools.iter().copied() {
+        for name in jira_product_tools.iter().copied() {
             if tool_registry::metadata_for(name)
                 .and_then(|metadata| metadata.toolset)
                 .is_some_and(|metadata_toolset| metadata_toolset != toolset)
@@ -229,6 +254,7 @@ fn all_business_tools_have_metadata_routes_docs_and_control_plane_policy() {
     let mut all_names = jira_names.clone();
     all_names.extend(confluence_names.clone());
     let unique_names = all_names.iter().collect::<BTreeSet<_>>();
+    let support_matrix_rows = support_matrix_tool_rows();
     let support_matrix_names = support_matrix_tool_names();
     let read_write = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
@@ -243,6 +269,8 @@ fn all_business_tools_have_metadata_routes_docs_and_control_plane_policy() {
     assert_eq!(confluence_names.len(), 24);
     assert_eq!(all_names.len(), 73);
     assert_eq!(unique_names.len(), all_names.len());
+    assert_eq!(support_matrix_rows.len(), 73);
+    assert_eq!(support_matrix_names.len(), support_matrix_rows.len());
     assert_eq!(
         support_matrix_names
             .iter()
@@ -274,10 +302,71 @@ fn all_business_tools_have_metadata_routes_docs_and_control_plane_policy() {
             support_matrix_names.contains(&name),
             "{name} should be documented in docs/support-matrix.md"
         );
+        let support_matrix_row = support_matrix_rows
+            .iter()
+            .find(|row| row.name == name)
+            .unwrap_or_else(|| panic!("{name} should have a support matrix row"));
+        assert_eq!(
+            support_matrix_row.access,
+            match metadata.access {
+                ToolAccess::Read => "read",
+                ToolAccess::Write => "write",
+            },
+            "{name} support matrix access should match registry"
+        );
+        assert_eq!(
+            Some(support_matrix_row.toolset.as_str()),
+            metadata.toolset,
+            "{name} support matrix toolset should match registry"
+        );
 
         read_write
             .guard_registered_tool_call(&name)
             .unwrap_or_else(|_| panic!("{name} should be callable when enabled"));
+    }
+}
+
+#[test]
+fn tool_discovery_uses_registry_metadata_as_single_source() {
+    let server = server_with_config(RuntimeConfig {
+        jira: Some(jira_config()),
+        confluence: Some(confluence_config()),
+        enabled_toolsets: tool_registry::all_toolsets(),
+        atlassian_oauth_cloud_id: Some("cloud-123".to_string()),
+        ..runtime_config()
+    });
+
+    for tool in server.current_tools_result().tools {
+        let metadata = tool_registry::metadata_for(tool.name.as_ref())
+            .unwrap_or_else(|| panic!("{} should have metadata", tool.name));
+        let annotations = tool
+            .annotations
+            .as_ref()
+            .unwrap_or_else(|| panic!("{} should have annotations", tool.name));
+
+        assert_eq!(tool.title.as_deref(), Some(metadata.title));
+        assert_eq!(tool.description.as_deref(), Some(metadata.description));
+        assert_eq!(
+            tool.output_schema.is_some(),
+            metadata.output_schema.is_some()
+        );
+        assert_eq!(annotations.title.as_deref(), Some(metadata.title));
+        assert_eq!(
+            annotations.read_only_hint,
+            Some(metadata.annotations.read_only)
+        );
+        assert_eq!(
+            annotations.destructive_hint,
+            Some(metadata.annotations.destructive)
+        );
+        assert_eq!(
+            annotations.idempotent_hint,
+            Some(metadata.annotations.idempotent)
+        );
+        assert_eq!(
+            annotations.open_world_hint,
+            Some(metadata.annotations.open_world)
+        );
     }
 }
 
@@ -306,15 +395,16 @@ fn confluence_scaffold_routes_are_discoverable_with_registered_metadata() {
 }
 
 #[test]
-fn confluence_c2_toolsets_are_exact_at_mcp_boundary() {
+fn confluence_content_toolsets_are_exact_at_mcp_boundary() {
     let read_write = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config()),
         enabled_toolsets: BTreeSet::from([
             "confluence_content_read".to_string(),
             "confluence_content_write".to_string(),
+            "confluence_content_update".to_string(),
             "confluence_content_delete".to_string(),
-            "confluence_comments_read".to_string(),
-            "confluence_comments_write".to_string(),
+            "confluence_page_comments_read".to_string(),
+            "confluence_page_comments_write".to_string(),
         ]),
         ..runtime_config()
     });
@@ -328,23 +418,24 @@ fn confluence_c2_toolsets_are_exact_at_mcp_boundary() {
     for expected in [
         confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME,
         confluence_tools::CONFLUENCE_GET_PAGE_TOOL_NAME,
-        confluence_tools::CONFLUENCE_GET_PAGE_CHILDREN_TOOL_NAME,
+        confluence_tools::CONFLUENCE_LIST_PAGE_CHILDREN_TOOL_NAME,
         confluence_tools::CONFLUENCE_GET_SPACE_PAGE_TREE_TOOL_NAME,
         confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME,
         confluence_tools::CONFLUENCE_UPDATE_PAGE_TOOL_NAME,
         confluence_tools::CONFLUENCE_DELETE_PAGE_TOOL_NAME,
         confluence_tools::CONFLUENCE_MOVE_PAGE_TOOL_NAME,
-        confluence_tools::CONFLUENCE_GET_COMMENTS_TOOL_NAME,
+        confluence_tools::CONFLUENCE_LIST_PAGE_COMMENTS_TOOL_NAME,
         confluence_tools::CONFLUENCE_ADD_COMMENT_TOOL_NAME,
         confluence_tools::CONFLUENCE_REPLY_TO_COMMENT_TOOL_NAME,
     ] {
         assert!(
             read_write_names.contains(&expected.to_string()),
-            "{expected} should be visible in C2 read/write"
+            "{expected} should be visible in Confluence content read/write"
         );
     }
     assert!(
-        !read_write_names.contains(&confluence_tools::CONFLUENCE_GET_LABELS_TOOL_NAME.to_string())
+        !read_write_names
+            .contains(&confluence_tools::CONFLUENCE_LIST_CONTENT_LABELS_TOOL_NAME.to_string())
     );
     assert!(current_tool_names(&unknown_only).is_empty());
     assert!(
@@ -369,13 +460,13 @@ fn confluence_attachments_toolsets_are_split_at_mcp_boundary() {
     let read_write_names = tool_names(read_write_tools.clone());
 
     for expected in [
-        confluence_tools::CONFLUENCE_UPLOAD_ATTACHMENT_TOOL_NAME,
-        confluence_tools::CONFLUENCE_UPLOAD_ATTACHMENTS_TOOL_NAME,
-        confluence_tools::CONFLUENCE_GET_ATTACHMENTS_TOOL_NAME,
+        confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENT_TOOL_NAME,
+        confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
+        confluence_tools::CONFLUENCE_LIST_CONTENT_ATTACHMENTS_TOOL_NAME,
         confluence_tools::CONFLUENCE_DOWNLOAD_ATTACHMENT_TOOL_NAME,
         confluence_tools::CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
         confluence_tools::CONFLUENCE_DELETE_ATTACHMENT_TOOL_NAME,
-        confluence_tools::CONFLUENCE_GET_PAGE_IMAGES_TOOL_NAME,
+        confluence_tools::CONFLUENCE_GET_CONTENT_IMAGE_ATTACHMENTS_TOOL_NAME,
     ] {
         assert!(
             read_write_names.contains(&expected.to_string()),
@@ -596,7 +687,7 @@ fn jira_extension_direct_call_guard_uses_registered_metadata_at_mcp_boundary() {
 }
 
 #[test]
-fn c3_common_tool_cross_check_lists_all_names_and_routes() {
+fn jira_general_extension_cross_check_lists_all_names_and_routes() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
         enabled_toolsets: tool_registry::all_toolsets(),
@@ -617,20 +708,20 @@ fn c3_common_tool_cross_check_lists_all_names_and_routes() {
 }
 
 #[test]
-fn c3_toolset_and_enabled_tools_filters_are_exact_at_mcp_boundary() {
+fn jira_general_toolset_and_enabled_tools_filters_are_exact_at_mcp_boundary() {
     let projects_only = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
         enabled_toolsets: BTreeSet::from([
-            "jira_project_read".to_string(),
-            "jira_project_metadata_read".to_string(),
-            "jira_project_write".to_string(),
+            "jira_projects_read".to_string(),
+            "jira_projects_metadata_read".to_string(),
+            "jira_project_versions_write".to_string(),
         ]),
         ..runtime_config()
     });
     let worklog_only = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
         enabled_tools: Some(BTreeSet::from([
-            tools::JIRA_GET_WORKLOG_TOOL_NAME.to_string()
+            tools::JIRA_LIST_ISSUE_WORKLOGS_TOOL_NAME.to_string()
         ])),
         enabled_toolsets: BTreeSet::new(),
         ..runtime_config()
@@ -639,25 +730,25 @@ fn c3_toolset_and_enabled_tools_filters_are_exact_at_mcp_boundary() {
     assert_eq!(
         current_tool_names(&projects_only),
         vec![
-            tools::JIRA_BATCH_CREATE_VERSIONS_TOOL_NAME.to_string(),
-            tools::JIRA_CREATE_VERSION_TOOL_NAME.to_string(),
-            tools::JIRA_GET_ALL_PROJECTS_TOOL_NAME.to_string(),
-            tools::JIRA_GET_PROJECT_COMPONENTS_TOOL_NAME.to_string(),
-            tools::JIRA_GET_PROJECT_VERSIONS_TOOL_NAME.to_string(),
+            tools::JIRA_CREATE_PROJECT_VERSION_TOOL_NAME.to_string(),
+            tools::JIRA_CREATE_PROJECT_VERSIONS_TOOL_NAME.to_string(),
+            tools::JIRA_LIST_PROJECT_COMPONENTS_TOOL_NAME.to_string(),
+            tools::JIRA_LIST_PROJECT_VERSIONS_TOOL_NAME.to_string(),
+            tools::JIRA_LIST_PROJECTS_TOOL_NAME.to_string(),
         ]
     );
     assert_eq!(
         current_tool_names(&worklog_only),
-        vec![tools::JIRA_GET_WORKLOG_TOOL_NAME.to_string()]
+        vec![tools::JIRA_LIST_ISSUE_WORKLOGS_TOOL_NAME.to_string()]
     );
     assert!(
         worklog_only
-            .guard_registered_tool_call(tools::JIRA_GET_WORKLOG_TOOL_NAME)
+            .guard_registered_tool_call(tools::JIRA_LIST_ISSUE_WORKLOGS_TOOL_NAME)
             .is_ok()
     );
     assert!(
         worklog_only
-            .guard_registered_tool_call(tools::JIRA_GET_LINK_TYPES_TOOL_NAME)
+            .guard_registered_tool_call(tools::JIRA_LIST_ISSUE_LINK_TYPES_TOOL_NAME)
             .is_err()
     );
 }

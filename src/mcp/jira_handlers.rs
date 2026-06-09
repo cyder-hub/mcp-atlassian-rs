@@ -6,21 +6,21 @@ use crate::{
         },
         tools::{
             JiraAddCommentArgs, JiraAddIssuesToSprintArgs, JiraAddWatcherArgs, JiraAddWorklogArgs,
-            JiraBatchCreateIssuesArgs, JiraBatchCreateVersionsArgs, JiraBatchGetChangelogsArgs,
-            JiraCreateIssueArgs, JiraCreateIssueLinkArgs, JiraCreateRemoteIssueLinkArgs,
-            JiraCreateSprintArgs, JiraCreateVersionArgs, JiraDeleteIssueArgs,
-            JiraDownloadAttachmentsArgs, JiraEditCommentArgs, JiraGetAgileBoardsArgs,
-            JiraGetAllProjectsArgs, JiraGetBoardIssuesArgs, JiraGetFieldOptionsArgs,
-            JiraGetIssueArgs, JiraGetIssueDatesArgs, JiraGetIssueDevelopmentInfoArgs,
-            JiraGetIssueImagesArgs, JiraGetIssueProformaFormsArgs, JiraGetIssueSlaArgs,
-            JiraGetIssueWatchersArgs, JiraGetIssuesDevelopmentInfoArgs, JiraGetLinkTypesArgs,
-            JiraGetProformaFormDetailsArgs, JiraGetProjectComponentsArgs, JiraGetProjectIssuesArgs,
-            JiraGetProjectVersionsArgs, JiraGetQueueIssuesArgs, JiraGetServiceDeskForProjectArgs,
-            JiraGetServiceDeskQueuesArgs, JiraGetSprintIssuesArgs, JiraGetSprintsFromBoardArgs,
-            JiraGetTransitionsArgs, JiraGetUserProfileArgs, JiraGetWorklogArgs, JiraLinkToEpicArgs,
-            JiraRemoveIssueLinkArgs, JiraRemoveWatcherArgs, JiraSearchArgs, JiraSearchFieldsArgs,
-            JiraTransitionIssueArgs, JiraUpdateIssueArgs, JiraUpdateProformaFormAnswersArgs,
-            JiraUpdateSprintArgs,
+            JiraCreateIssueArgs, JiraCreateIssueLinkArgs, JiraCreateIssuesArgs,
+            JiraCreateProjectVersionArgs, JiraCreateProjectVersionsArgs,
+            JiraCreateRemoteIssueLinkArgs, JiraCreateSprintArgs, JiraDeleteIssueArgs,
+            JiraDeleteIssueLinkArgs, JiraEditCommentArgs, JiraGetFieldOptionsArgs,
+            JiraGetIssueArgs, JiraGetIssueAttachmentsArgs, JiraGetIssueChangelogsArgs,
+            JiraGetIssueDevelopmentArgs, JiraGetIssueFormArgs, JiraGetIssueImagesArgs,
+            JiraGetIssueSlaMetricsArgs, JiraGetIssueTimelineArgs, JiraGetIssuesDevelopmentArgs,
+            JiraGetProjectIssuesArgs, JiraGetServiceDeskForProjectArgs, JiraGetTransitionsArgs,
+            JiraGetUserArgs, JiraListAgileBoardsArgs, JiraListBoardIssuesArgs,
+            JiraListBoardSprintsArgs, JiraListIssueFormsArgs, JiraListIssueLinkTypesArgs,
+            JiraListIssueWatchersArgs, JiraListIssueWorklogsArgs, JiraListProjectComponentsArgs,
+            JiraListProjectVersionsArgs, JiraListProjectsArgs, JiraListServiceDeskQueueIssuesArgs,
+            JiraListServiceDeskQueuesArgs, JiraListSprintIssuesArgs, JiraRemoveWatcherArgs,
+            JiraSearchArgs, JiraSearchFieldsArgs, JiraSetIssueParentArgs, JiraTransitionIssueArgs,
+            JiraUpdateIssueArgs, JiraUpdateIssueFormAnswersArgs, JiraUpdateSprintArgs,
         },
     },
     mcp_errors::atlassian_error,
@@ -46,8 +46,8 @@ use super::{
 
 #[tool_router(router = jira_tool_router, vis = "pub(super)")]
 impl AtlassianMcpServer {
-    #[tool(description = "Get a Jira issue by key")]
-    pub(super) async fn jira_get_issue(
+    #[tool(name = "jira_get_issue")]
+    pub(super) async fn get_issue(
         &self,
         Parameters(args): Parameters<JiraGetIssueArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -70,8 +70,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Search Jira issues with JQL")]
-    pub(super) async fn jira_search(
+    #[tool(name = "jira_search_issues")]
+    pub(super) async fn search_issues(
         &self,
         Parameters(args): Parameters<JiraSearchArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -96,8 +96,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "List Jira issues for a project")]
-    pub(super) async fn jira_get_project_issues(
+    #[tool(name = "jira_list_project_issues")]
+    pub(super) async fn list_project_issues(
         &self,
         Parameters(args): Parameters<JiraGetProjectIssuesArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -110,8 +110,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Search Jira fields by keyword")]
-    pub(super) async fn jira_search_fields(
+    #[tool(name = "jira_search_fields")]
+    pub(super) async fn search_fields(
         &self,
         Parameters(args): Parameters<JiraSearchFieldsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -124,8 +124,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get options for a Jira field")]
-    pub(super) async fn jira_get_field_options(
+    #[tool(name = "jira_list_field_options")]
+    pub(super) async fn list_field_options(
         &self,
         Parameters(args): Parameters<JiraGetFieldOptionsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -146,8 +146,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Add a comment to a Jira issue")]
-    pub(super) async fn jira_add_comment(
+    #[tool(name = "jira_add_issue_comment")]
+    pub(super) async fn add_issue_comment(
         &self,
         Parameters(args): Parameters<JiraAddCommentArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -161,8 +161,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Edit a Jira issue comment")]
-    pub(super) async fn jira_edit_comment(
+    #[tool(name = "jira_update_issue_comment")]
+    pub(super) async fn update_issue_comment(
         &self,
         Parameters(args): Parameters<JiraEditCommentArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -176,8 +176,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get available transitions for a Jira issue")]
-    pub(super) async fn jira_get_transitions(
+    #[tool(name = "jira_list_issue_transitions")]
+    pub(super) async fn list_issue_transitions(
         &self,
         Parameters(args): Parameters<JiraGetTransitionsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -190,8 +190,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Transition a Jira issue")]
-    pub(super) async fn jira_transition_issue(
+    #[tool(name = "jira_transition_issue")]
+    pub(super) async fn transition_issue(
         &self,
         Parameters(args): Parameters<JiraTransitionIssueArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -205,8 +205,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Create a Jira issue")]
-    pub(super) async fn jira_create_issue(
+    #[tool(name = "jira_create_issue")]
+    pub(super) async fn create_issue(
         &self,
         Parameters(args): Parameters<JiraCreateIssueArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -225,10 +225,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Create multiple Jira issues in a batch")]
-    pub(super) async fn jira_batch_create_issues(
+    #[tool(name = "jira_create_issues")]
+    pub(super) async fn create_issues(
         &self,
-        Parameters(args): Parameters<JiraBatchCreateIssuesArgs>,
+        Parameters(args): Parameters<JiraCreateIssuesArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let deployment = self
             .context
@@ -245,10 +245,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get changelogs for multiple Jira issues")]
-    pub(super) async fn jira_batch_get_changelogs(
+    #[tool(name = "jira_get_issue_changelogs")]
+    pub(super) async fn get_issue_changelogs(
         &self,
-        Parameters(args): Parameters<JiraBatchGetChangelogsArgs>,
+        Parameters(args): Parameters<JiraGetIssueChangelogsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let issue_ids_or_keys =
             parse_required_string_list_arg(args.issue_ids_or_keys, "issue_ids_or_keys")?;
@@ -263,8 +263,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Update fields on a Jira issue")]
-    pub(super) async fn jira_update_issue(
+    #[tool(name = "jira_update_issue")]
+    pub(super) async fn update_issue(
         &self,
         Parameters(args): Parameters<JiraUpdateIssueArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -288,8 +288,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Delete a Jira issue")]
-    pub(super) async fn jira_delete_issue(
+    #[tool(name = "jira_delete_issue")]
+    pub(super) async fn delete_issue(
         &self,
         Parameters(args): Parameters<JiraDeleteIssueArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -302,10 +302,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "List Jira projects visible to the current user")]
-    pub(super) async fn jira_get_all_projects(
+    #[tool(name = "jira_list_projects")]
+    pub(super) async fn list_projects(
         &self,
-        Parameters(args): Parameters<JiraGetAllProjectsArgs>,
+        Parameters(args): Parameters<JiraListProjectsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
@@ -316,10 +316,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "List versions for a Jira project")]
-    pub(super) async fn jira_get_project_versions(
+    #[tool(name = "jira_list_project_versions")]
+    pub(super) async fn list_project_versions(
         &self,
-        Parameters(args): Parameters<JiraGetProjectVersionsArgs>,
+        Parameters(args): Parameters<JiraListProjectVersionsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
@@ -330,10 +330,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "List components for a Jira project")]
-    pub(super) async fn jira_get_project_components(
+    #[tool(name = "jira_list_project_components")]
+    pub(super) async fn list_project_components(
         &self,
-        Parameters(args): Parameters<JiraGetProjectComponentsArgs>,
+        Parameters(args): Parameters<JiraListProjectComponentsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
@@ -344,10 +344,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Create a Jira project version")]
-    pub(super) async fn jira_create_version(
+    #[tool(name = "jira_create_project_version")]
+    pub(super) async fn create_project_version(
         &self,
-        Parameters(args): Parameters<JiraCreateVersionArgs>,
+        Parameters(args): Parameters<JiraCreateProjectVersionArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
@@ -358,10 +358,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Create multiple Jira project versions")]
-    pub(super) async fn jira_batch_create_versions(
+    #[tool(name = "jira_create_project_versions")]
+    pub(super) async fn create_project_versions(
         &self,
-        Parameters(args): Parameters<JiraBatchCreateVersionsArgs>,
+        Parameters(args): Parameters<JiraCreateProjectVersionsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let project_key = required_non_empty_arg(args.project_key, "project_key")?;
         let versions = parse_required_object_list_arg(args.versions, "versions")?
@@ -377,10 +377,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Retrieve a Jira user profile")]
-    pub(super) async fn jira_get_user_profile(
+    #[tool(name = "jira_get_user")]
+    pub(super) async fn get_user(
         &self,
-        Parameters(args): Parameters<JiraGetUserProfileArgs>,
+        Parameters(args): Parameters<JiraGetUserArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
@@ -394,10 +394,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get watchers for a Jira issue")]
-    pub(super) async fn jira_get_issue_watchers(
+    #[tool(name = "jira_list_issue_watchers")]
+    pub(super) async fn list_issue_watchers(
         &self,
-        Parameters(args): Parameters<JiraGetIssueWatchersArgs>,
+        Parameters(args): Parameters<JiraListIssueWatchersArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
@@ -408,8 +408,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Add a watcher to a Jira issue")]
-    pub(super) async fn jira_add_watcher(
+    #[tool(name = "jira_add_issue_watcher")]
+    pub(super) async fn add_issue_watcher(
         &self,
         Parameters(args): Parameters<JiraAddWatcherArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -425,8 +425,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Remove a watcher from a Jira issue")]
-    pub(super) async fn jira_remove_watcher(
+    #[tool(name = "jira_remove_issue_watcher")]
+    pub(super) async fn remove_issue_watcher(
         &self,
         Parameters(args): Parameters<JiraRemoveWatcherArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -442,10 +442,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get worklogs for a Jira issue")]
-    pub(super) async fn jira_get_worklog(
+    #[tool(name = "jira_list_issue_worklogs")]
+    pub(super) async fn list_issue_worklogs(
         &self,
-        Parameters(args): Parameters<JiraGetWorklogArgs>,
+        Parameters(args): Parameters<JiraListIssueWorklogsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
@@ -456,8 +456,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Add a worklog entry to a Jira issue")]
-    pub(super) async fn jira_add_worklog(
+    #[tool(name = "jira_add_issue_worklog")]
+    pub(super) async fn add_issue_worklog(
         &self,
         Parameters(args): Parameters<JiraAddWorklogArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -476,10 +476,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get Jira issue link types")]
-    pub(super) async fn jira_get_link_types(
+    #[tool(name = "jira_list_issue_link_types")]
+    pub(super) async fn list_issue_link_types(
         &self,
-        Parameters(args): Parameters<JiraGetLinkTypesArgs>,
+        Parameters(args): Parameters<JiraListIssueLinkTypesArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let mut value = self
             .jira_client()?
@@ -505,10 +505,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Link a Jira issue to an epic using parent key")]
-    pub(super) async fn jira_link_to_epic(
+    #[tool(name = "jira_set_issue_parent")]
+    pub(super) async fn set_issue_parent(
         &self,
-        Parameters(args): Parameters<JiraLinkToEpicArgs>,
+        Parameters(args): Parameters<JiraSetIssueParentArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
@@ -522,8 +522,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Create a link between two Jira issues")]
-    pub(super) async fn jira_create_issue_link(
+    #[tool(name = "jira_create_issue_link")]
+    pub(super) async fn create_issue_link(
         &self,
         Parameters(args): Parameters<JiraCreateIssueLinkArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -541,8 +541,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Create a remote link on a Jira issue")]
-    pub(super) async fn jira_create_remote_issue_link(
+    #[tool(name = "jira_create_remote_issue_link")]
+    pub(super) async fn create_remote_issue_link(
         &self,
         Parameters(args): Parameters<JiraCreateRemoteIssueLinkArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -556,10 +556,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Remove a Jira issue link by id")]
-    pub(super) async fn jira_remove_issue_link(
+    #[tool(name = "jira_delete_issue_link")]
+    pub(super) async fn delete_issue_link(
         &self,
-        Parameters(args): Parameters<JiraRemoveIssueLinkArgs>,
+        Parameters(args): Parameters<JiraDeleteIssueLinkArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
@@ -570,10 +570,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Download Jira issue attachments with bounded safe content output")]
-    pub(super) async fn jira_download_attachments(
+    #[tool(name = "jira_get_issue_attachments")]
+    pub(super) async fn get_issue_attachments(
         &self,
-        Parameters(args): Parameters<JiraDownloadAttachmentsArgs>,
+        Parameters(args): Parameters<JiraGetIssueAttachmentsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let attachment_ids = parse_optional_string_list_arg(args.attachment_ids, "attachment_ids")?;
         let max_bytes = optional_positive_u64_arg(args.max_bytes, "max_bytes")?
@@ -595,8 +595,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get image attachments for a Jira issue with safe content output")]
-    pub(super) async fn jira_get_issue_images(
+    #[tool(name = "jira_get_issue_image_attachments")]
+    pub(super) async fn get_issue_image_attachments(
         &self,
         Parameters(args): Parameters<JiraGetIssueImagesArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -619,10 +619,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get Jira Software agile boards")]
-    pub(super) async fn jira_get_agile_boards(
+    #[tool(name = "jira_list_agile_boards")]
+    pub(super) async fn list_agile_boards(
         &self,
-        Parameters(args): Parameters<JiraGetAgileBoardsArgs>,
+        Parameters(args): Parameters<JiraListAgileBoardsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
@@ -633,10 +633,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get issues on a Jira Software agile board")]
-    pub(super) async fn jira_get_board_issues(
+    #[tool(name = "jira_list_board_issues")]
+    pub(super) async fn list_board_issues(
         &self,
-        Parameters(args): Parameters<JiraGetBoardIssuesArgs>,
+        Parameters(args): Parameters<JiraListBoardIssuesArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let fields = parse_optional_string_list_arg(args.fields, "fields")?;
         let value = self
@@ -648,10 +648,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get sprints for a Jira Software agile board")]
-    pub(super) async fn jira_get_sprints_from_board(
+    #[tool(name = "jira_list_board_sprints")]
+    pub(super) async fn list_board_sprints(
         &self,
-        Parameters(args): Parameters<JiraGetSprintsFromBoardArgs>,
+        Parameters(args): Parameters<JiraListBoardSprintsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let state = parse_optional_string_list_arg(args.state, "state")?;
         let value = self
@@ -663,10 +663,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get issues for a Jira Software sprint")]
-    pub(super) async fn jira_get_sprint_issues(
+    #[tool(name = "jira_list_sprint_issues")]
+    pub(super) async fn list_sprint_issues(
         &self,
-        Parameters(args): Parameters<JiraGetSprintIssuesArgs>,
+        Parameters(args): Parameters<JiraListSprintIssuesArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let fields = parse_optional_string_list_arg(args.fields, "fields")?;
         let value = self
@@ -678,8 +678,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Create a Jira Software sprint")]
-    pub(super) async fn jira_create_sprint(
+    #[tool(name = "jira_create_sprint")]
+    pub(super) async fn create_sprint(
         &self,
         Parameters(args): Parameters<JiraCreateSprintArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -692,8 +692,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Update a Jira Software sprint")]
-    pub(super) async fn jira_update_sprint(
+    #[tool(name = "jira_update_sprint")]
+    pub(super) async fn update_sprint(
         &self,
         Parameters(args): Parameters<JiraUpdateSprintArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -707,8 +707,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Add Jira issues to a sprint")]
-    pub(super) async fn jira_add_issues_to_sprint(
+    #[tool(name = "jira_add_issues_to_sprint")]
+    pub(super) async fn add_issues_to_sprint(
         &self,
         Parameters(args): Parameters<JiraAddIssuesToSprintArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -722,8 +722,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get the Jira Service Management service desk for a project")]
-    pub(super) async fn jira_get_service_desk_for_project(
+    #[tool(name = "jira_get_project_service_desk")]
+    pub(super) async fn get_project_service_desk(
         &self,
         Parameters(args): Parameters<JiraGetServiceDeskForProjectArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -736,10 +736,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get queues for a Jira Service Management service desk")]
-    pub(super) async fn jira_get_service_desk_queues(
+    #[tool(name = "jira_list_service_desk_queues")]
+    pub(super) async fn list_service_desk_queues(
         &self,
-        Parameters(args): Parameters<JiraGetServiceDeskQueuesArgs>,
+        Parameters(args): Parameters<JiraListServiceDeskQueuesArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
@@ -750,10 +750,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get issues for a Jira Service Management queue")]
-    pub(super) async fn jira_get_queue_issues(
+    #[tool(name = "jira_list_service_desk_queue_issues")]
+    pub(super) async fn list_service_desk_queue_issues(
         &self,
-        Parameters(args): Parameters<JiraGetQueueIssuesArgs>,
+        Parameters(args): Parameters<JiraListServiceDeskQueueIssuesArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
@@ -769,14 +769,14 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get Jira Forms or ProForma forms for an issue")]
-    pub(super) async fn jira_get_issue_proforma_forms(
+    #[tool(name = "jira_list_issue_forms")]
+    pub(super) async fn list_issue_forms(
         &self,
-        Parameters(args): Parameters<JiraGetIssueProformaFormsArgs>,
+        Parameters(args): Parameters<JiraListIssueFormsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
-            .get_issue_proforma_forms(
+            .get_issue_forms(
                 required_non_empty_arg(args.issue_key, "issue_key")?,
                 self.context.atlassian_oauth_cloud_id(),
             )
@@ -786,14 +786,14 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get details for a Jira Form or ProForma form")]
-    pub(super) async fn jira_get_proforma_form_details(
+    #[tool(name = "jira_get_issue_form")]
+    pub(super) async fn get_issue_form(
         &self,
-        Parameters(args): Parameters<JiraGetProformaFormDetailsArgs>,
+        Parameters(args): Parameters<JiraGetIssueFormArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
-            .get_proforma_form_details(
+            .get_issue_form(
                 required_non_empty_arg(args.issue_key, "issue_key")?,
                 required_non_empty_arg(args.form_id, "form_id")?,
                 self.context.atlassian_oauth_cloud_id(),
@@ -804,15 +804,15 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Update answers on a Jira Form or ProForma form")]
-    pub(super) async fn jira_update_proforma_form_answers(
+    #[tool(name = "jira_update_issue_form_answers")]
+    pub(super) async fn update_issue_form_answers(
         &self,
-        Parameters(args): Parameters<JiraUpdateProformaFormAnswersArgs>,
+        Parameters(args): Parameters<JiraUpdateIssueFormAnswersArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let answers = parse_required_object_list_arg(args.answers, "answers")?;
         let value = self
             .jira_client()?
-            .update_proforma_form_answers(
+            .update_issue_form_answers(
                 required_non_empty_arg(args.issue_key, "issue_key")?,
                 required_non_empty_arg(args.form_id, "form_id")?,
                 answers,
@@ -824,10 +824,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get Jira issue date and status timing information")]
-    pub(super) async fn jira_get_issue_dates(
+    #[tool(name = "jira_get_issue_timeline")]
+    pub(super) async fn get_issue_timeline(
         &self,
-        Parameters(args): Parameters<JiraGetIssueDatesArgs>,
+        Parameters(args): Parameters<JiraGetIssueTimelineArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
@@ -842,10 +842,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get Jira Service Management SLA metrics for an issue")]
-    pub(super) async fn jira_get_issue_sla(
+    #[tool(name = "jira_get_issue_sla_metrics")]
+    pub(super) async fn get_issue_sla_metrics(
         &self,
-        Parameters(args): Parameters<JiraGetIssueSlaArgs>,
+        Parameters(args): Parameters<JiraGetIssueSlaMetricsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let metrics = parse_optional_string_list_arg(args.metrics, "metrics")?;
         let value = self
@@ -861,10 +861,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get Jira development information for an issue")]
-    pub(super) async fn jira_get_issue_development_info(
+    #[tool(name = "jira_get_issue_development")]
+    pub(super) async fn get_issue_development(
         &self,
-        Parameters(args): Parameters<JiraGetIssueDevelopmentInfoArgs>,
+        Parameters(args): Parameters<JiraGetIssueDevelopmentArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let value = self
             .jira_client()?
@@ -879,10 +879,10 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get Jira development information for multiple issues")]
-    pub(super) async fn jira_get_issues_development_info(
+    #[tool(name = "jira_get_issues_development")]
+    pub(super) async fn get_issues_development(
         &self,
-        Parameters(args): Parameters<JiraGetIssuesDevelopmentInfoArgs>,
+        Parameters(args): Parameters<JiraGetIssuesDevelopmentArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let issue_keys = parse_required_string_list_arg(args.issue_keys, "issue_keys")?;
         let value = self

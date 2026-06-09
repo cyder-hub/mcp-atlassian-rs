@@ -25,72 +25,101 @@ where
     }
 }
 
-pub const CONFLUENCE_SEARCH_TOOL_NAME: &str = "confluence_search";
+fn string_or_number_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "description": "Accepts a Confluence numeric id as either a JSON string or number.",
+        "oneOf": [
+            { "type": "string" },
+            { "type": "number" }
+        ]
+    })
+}
+
+fn optional_string_or_number_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "description": "Accepts a Confluence numeric id as either a JSON string or number.",
+        "oneOf": [
+            { "type": "string" },
+            { "type": "number" }
+        ]
+    })
+}
+
+pub const CONFLUENCE_SEARCH_TOOL_NAME: &str = "confluence_search_content";
 pub const CONFLUENCE_GET_PAGE_TOOL_NAME: &str = "confluence_get_page";
-pub const CONFLUENCE_GET_PAGE_CHILDREN_TOOL_NAME: &str = "confluence_get_page_children";
+pub const CONFLUENCE_LIST_PAGE_CHILDREN_TOOL_NAME: &str = "confluence_list_page_children";
 pub const CONFLUENCE_GET_SPACE_PAGE_TREE_TOOL_NAME: &str = "confluence_get_space_page_tree";
 pub const CONFLUENCE_CREATE_PAGE_TOOL_NAME: &str = "confluence_create_page";
 pub const CONFLUENCE_UPDATE_PAGE_TOOL_NAME: &str = "confluence_update_page";
 pub const CONFLUENCE_DELETE_PAGE_TOOL_NAME: &str = "confluence_delete_page";
 pub const CONFLUENCE_MOVE_PAGE_TOOL_NAME: &str = "confluence_move_page";
-pub const CONFLUENCE_GET_COMMENTS_TOOL_NAME: &str = "confluence_get_comments";
-pub const CONFLUENCE_ADD_COMMENT_TOOL_NAME: &str = "confluence_add_comment";
+pub const CONFLUENCE_LIST_PAGE_COMMENTS_TOOL_NAME: &str = "confluence_list_page_comments";
+pub const CONFLUENCE_ADD_COMMENT_TOOL_NAME: &str = "confluence_add_page_comment";
 pub const CONFLUENCE_REPLY_TO_COMMENT_TOOL_NAME: &str = "confluence_reply_to_comment";
-pub const CONFLUENCE_GET_LABELS_TOOL_NAME: &str = "confluence_get_labels";
-pub const CONFLUENCE_ADD_LABEL_TOOL_NAME: &str = "confluence_add_label";
-pub const CONFLUENCE_SEARCH_USER_TOOL_NAME: &str = "confluence_search_user";
-pub const CONFLUENCE_GET_PAGE_HISTORY_TOOL_NAME: &str = "confluence_get_page_history";
+pub const CONFLUENCE_LIST_CONTENT_LABELS_TOOL_NAME: &str = "confluence_list_content_labels";
+pub const CONFLUENCE_ADD_LABEL_TOOL_NAME: &str = "confluence_add_content_label";
+pub const CONFLUENCE_SEARCH_USER_TOOL_NAME: &str = "confluence_search_users";
+pub const CONFLUENCE_GET_PAGE_VERSION_TOOL_NAME: &str = "confluence_get_page_version";
 pub const CONFLUENCE_GET_PAGE_DIFF_TOOL_NAME: &str = "confluence_get_page_diff";
-pub const CONFLUENCE_GET_PAGE_VIEWS_TOOL_NAME: &str = "confluence_get_page_views";
-pub const CONFLUENCE_UPLOAD_ATTACHMENT_TOOL_NAME: &str = "confluence_upload_attachment";
-pub const CONFLUENCE_UPLOAD_ATTACHMENTS_TOOL_NAME: &str = "confluence_upload_attachments";
-pub const CONFLUENCE_GET_ATTACHMENTS_TOOL_NAME: &str = "confluence_get_attachments";
+pub const CONFLUENCE_GET_PAGE_VIEW_ANALYTICS_TOOL_NAME: &str = "confluence_get_page_view_analytics";
+pub const CONFLUENCE_UPLOAD_CONTENT_ATTACHMENT_TOOL_NAME: &str =
+    "confluence_upload_content_attachment";
+pub const CONFLUENCE_UPLOAD_CONTENT_ATTACHMENTS_TOOL_NAME: &str =
+    "confluence_upload_content_attachments";
+pub const CONFLUENCE_LIST_CONTENT_ATTACHMENTS_TOOL_NAME: &str =
+    "confluence_list_content_attachments";
 pub const CONFLUENCE_DOWNLOAD_ATTACHMENT_TOOL_NAME: &str = "confluence_download_attachment";
 pub const CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_TOOL_NAME: &str =
     "confluence_download_content_attachments";
 pub const CONFLUENCE_DELETE_ATTACHMENT_TOOL_NAME: &str = "confluence_delete_attachment";
-pub const CONFLUENCE_GET_PAGE_IMAGES_TOOL_NAME: &str = "confluence_get_page_images";
+pub const CONFLUENCE_GET_CONTENT_IMAGE_ATTACHMENTS_TOOL_NAME: &str =
+    "confluence_get_content_image_attachments";
 
 #[cfg(test)]
 pub const CONFLUENCE_TOOL_NAMES: &[&str] = &[
     CONFLUENCE_SEARCH_TOOL_NAME,
     CONFLUENCE_GET_PAGE_TOOL_NAME,
-    CONFLUENCE_GET_PAGE_CHILDREN_TOOL_NAME,
+    CONFLUENCE_LIST_PAGE_CHILDREN_TOOL_NAME,
     CONFLUENCE_GET_SPACE_PAGE_TREE_TOOL_NAME,
     CONFLUENCE_CREATE_PAGE_TOOL_NAME,
     CONFLUENCE_UPDATE_PAGE_TOOL_NAME,
     CONFLUENCE_DELETE_PAGE_TOOL_NAME,
     CONFLUENCE_MOVE_PAGE_TOOL_NAME,
-    CONFLUENCE_GET_COMMENTS_TOOL_NAME,
+    CONFLUENCE_LIST_PAGE_COMMENTS_TOOL_NAME,
     CONFLUENCE_ADD_COMMENT_TOOL_NAME,
     CONFLUENCE_REPLY_TO_COMMENT_TOOL_NAME,
-    CONFLUENCE_GET_LABELS_TOOL_NAME,
+    CONFLUENCE_LIST_CONTENT_LABELS_TOOL_NAME,
     CONFLUENCE_ADD_LABEL_TOOL_NAME,
     CONFLUENCE_SEARCH_USER_TOOL_NAME,
-    CONFLUENCE_GET_PAGE_HISTORY_TOOL_NAME,
+    CONFLUENCE_GET_PAGE_VERSION_TOOL_NAME,
     CONFLUENCE_GET_PAGE_DIFF_TOOL_NAME,
-    CONFLUENCE_GET_PAGE_VIEWS_TOOL_NAME,
-    CONFLUENCE_UPLOAD_ATTACHMENT_TOOL_NAME,
-    CONFLUENCE_UPLOAD_ATTACHMENTS_TOOL_NAME,
-    CONFLUENCE_GET_ATTACHMENTS_TOOL_NAME,
+    CONFLUENCE_GET_PAGE_VIEW_ANALYTICS_TOOL_NAME,
+    CONFLUENCE_UPLOAD_CONTENT_ATTACHMENT_TOOL_NAME,
+    CONFLUENCE_UPLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
+    CONFLUENCE_LIST_CONTENT_ATTACHMENTS_TOOL_NAME,
     CONFLUENCE_DOWNLOAD_ATTACHMENT_TOOL_NAME,
     CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
     CONFLUENCE_DELETE_ATTACHMENT_TOOL_NAME,
-    CONFLUENCE_GET_PAGE_IMAGES_TOOL_NAME,
+    CONFLUENCE_GET_CONTENT_IMAGE_ATTACHMENTS_TOOL_NAME,
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceSearchArgs {
     pub query: String,
     #[serde(default)]
+    #[schemars(description = "Maximum number of Confluence search results to return.")]
     pub limit: Option<u64>,
     #[serde(default)]
+    #[schemars(
+        description = "Comma-separated Confluence space keys used to restrict search results."
+    )]
     pub spaces_filter: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceGetPageArgs {
     #[serde(default, deserialize_with = "optional_string_or_number")]
+    #[schemars(schema_with = "optional_string_or_number_schema")]
     pub page_id: Option<String>,
     #[serde(default)]
     pub title: Option<String>,
@@ -103,18 +132,22 @@ pub struct ConfluenceGetPageArgs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct ConfluenceGetPageChildrenArgs {
+pub struct ConfluenceListPageChildrenArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub parent_id: String,
     #[serde(default)]
     pub expand: Option<String>,
     #[serde(default)]
+    #[schemars(description = "Maximum number of child pages or folders to return.")]
     pub limit: Option<u64>,
     #[serde(default)]
+    #[schemars(description = "When true, include bounded child-page content in the response.")]
     pub include_content: Option<bool>,
     #[serde(default)]
     pub convert_to_markdown: Option<bool>,
     #[serde(default)]
+    #[schemars(description = "Offset pagination start index for page children.")]
     pub start: Option<u64>,
     #[serde(default)]
     pub include_folders: Option<bool>,
@@ -133,10 +166,17 @@ pub struct ConfluenceCreatePageArgs {
     pub title: String,
     pub content: String,
     #[serde(default, deserialize_with = "optional_string_or_number")]
+    #[schemars(schema_with = "optional_string_or_number_schema")]
     pub parent_id: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "Content input format. Use markdown for normal text, or storage when passing Confluence storage-format XHTML."
+    )]
     pub content_format: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "When true, include the created page content in the structured response."
+    )]
     pub include_content: Option<bool>,
     #[serde(default)]
     pub emoji: Option<String>,
@@ -145,18 +185,30 @@ pub struct ConfluenceCreatePageArgs {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceUpdatePageArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub page_id: String,
     pub title: String,
     pub content: String,
     #[serde(default)]
+    #[schemars(
+        description = "When true, mark the update as a minor edit in Confluence version history."
+    )]
     pub is_minor_edit: Option<bool>,
     #[serde(default)]
+    #[schemars(description = "Optional Confluence version comment to store with the page update.")]
     pub version_comment: Option<String>,
     #[serde(default, deserialize_with = "optional_string_or_number")]
+    #[schemars(schema_with = "optional_string_or_number_schema")]
     pub parent_id: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "Content input format. Use markdown for normal text, or storage when passing Confluence storage-format XHTML."
+    )]
     pub content_format: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "When true, include the updated page content in the structured response."
+    )]
     pub include_content: Option<bool>,
     #[serde(default)]
     pub emoji: Option<String>,
@@ -165,51 +217,68 @@ pub struct ConfluenceUpdatePageArgs {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceDeletePageArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub page_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceMovePageArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub page_id: String,
     #[serde(default, deserialize_with = "optional_string_or_number")]
+    #[schemars(schema_with = "optional_string_or_number_schema")]
     pub target_parent_id: Option<String>,
     #[serde(default)]
+    #[schemars(description = "Target space key when moving the page across spaces.")]
     pub target_space_key: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "Move placement relative to the target, such as append, before, or after depending on Confluence API support."
+    )]
     pub position: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct ConfluenceGetCommentsArgs {
+pub struct ConfluenceListPageCommentsArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub page_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceAddCommentArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub page_id: String,
+    #[schemars(
+        description = "Comment body in Markdown; it is converted before calling Confluence."
+    )]
     pub body: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceReplyToCommentArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub comment_id: String,
+    #[schemars(description = "Reply body in Markdown; it is converted before calling Confluence.")]
     pub body: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct ConfluenceGetLabelsArgs {
+pub struct ConfluenceListContentLabelsArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub page_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceAddLabelArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub page_id: String,
+    #[schemars(description = "Label name to add to the Confluence content.")]
     pub name: String,
 }
 
@@ -223,8 +292,9 @@ pub struct ConfluenceSearchUserArgs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct ConfluenceGetPageHistoryArgs {
+pub struct ConfluenceGetPageVersionArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub page_id: String,
     pub version: u64,
     #[serde(default)]
@@ -234,48 +304,72 @@ pub struct ConfluenceGetPageHistoryArgs {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceGetPageDiffArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub page_id: String,
     pub from_version: u64,
     pub to_version: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct ConfluenceGetPageViewsArgs {
+pub struct ConfluenceGetPageViewAnalyticsArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub page_id: String,
     #[serde(default)]
+    #[schemars(
+        description = "When true, include the Confluence page title in the Cloud-only analytics response."
+    )]
     pub include_title: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct ConfluenceUploadAttachmentArgs {
+pub struct ConfluenceUploadContentAttachmentArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub content_id: String,
+    #[schemars(
+        description = "Server-local file path to upload. The path is read on the MCP server host, not the client machine."
+    )]
     pub file_path: String,
     #[serde(default)]
+    #[schemars(description = "Optional attachment comment stored by Confluence.")]
     pub comment: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "When true, mark the attachment upload as a minor edit when Confluence supports it."
+    )]
     pub minor_edit: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct ConfluenceUploadAttachmentsArgs {
+pub struct ConfluenceUploadContentAttachmentsArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub content_id: String,
+    #[schemars(
+        description = "Comma-separated server-local file paths to upload. Paths are read on the MCP server host."
+    )]
     pub file_paths: String,
     #[serde(default)]
+    #[schemars(description = "Optional attachment comment applied to uploaded files.")]
     pub comment: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "When true, mark uploads as minor edits when Confluence supports it."
+    )]
     pub minor_edit: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct ConfluenceGetAttachmentsArgs {
+pub struct ConfluenceListContentAttachmentsArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub content_id: String,
     #[serde(default)]
+    #[schemars(description = "Offset pagination start index for attachment listing.")]
     pub start: Option<u64>,
     #[serde(default)]
+    #[schemars(description = "Maximum number of attachments to list.")]
     pub limit: Option<u64>,
     #[serde(default)]
     pub filename: Option<String>,
@@ -286,24 +380,28 @@ pub struct ConfluenceGetAttachmentsArgs {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceDownloadAttachmentArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub attachment_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceDownloadContentAttachmentsArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub content_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceDeleteAttachmentArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub attachment_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct ConfluenceGetPageImagesArgs {
+pub struct ConfluenceGetContentImageAttachmentsArgs {
     #[serde(deserialize_with = "string_or_number")]
+    #[schemars(schema_with = "string_or_number_schema")]
     pub content_id: String,
 }
 
@@ -316,7 +414,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn confluence_tool_names_match_python_baseline_count() {
+    fn confluence_tool_names_match_current_surface_count() {
         assert_eq!(CONFLUENCE_TOOL_NAMES.len(), 24);
     }
 
@@ -331,32 +429,32 @@ mod tests {
     }
 
     #[test]
-    fn confluence_tool_names_include_canonical_python_names() {
+    fn confluence_tool_names_use_canonical_action_names() {
         let expected = [
-            "confluence_search",
+            "confluence_search_content",
             "confluence_get_page",
-            "confluence_get_page_children",
+            "confluence_list_page_children",
             "confluence_get_space_page_tree",
             "confluence_create_page",
             "confluence_update_page",
             "confluence_delete_page",
             "confluence_move_page",
-            "confluence_get_comments",
-            "confluence_add_comment",
+            "confluence_list_page_comments",
+            "confluence_add_page_comment",
             "confluence_reply_to_comment",
-            "confluence_get_labels",
-            "confluence_add_label",
-            "confluence_search_user",
-            "confluence_get_page_history",
+            "confluence_list_content_labels",
+            "confluence_add_content_label",
+            "confluence_search_users",
+            "confluence_get_page_version",
             "confluence_get_page_diff",
-            "confluence_get_page_views",
-            "confluence_upload_attachment",
-            "confluence_upload_attachments",
-            "confluence_get_attachments",
+            "confluence_get_page_view_analytics",
+            "confluence_upload_content_attachment",
+            "confluence_upload_content_attachments",
+            "confluence_list_content_attachments",
             "confluence_download_attachment",
             "confluence_download_content_attachments",
             "confluence_delete_attachment",
-            "confluence_get_page_images",
+            "confluence_get_content_image_attachments",
         ];
 
         assert_eq!(CONFLUENCE_TOOL_NAMES, expected);
@@ -405,13 +503,13 @@ mod tests {
 
     #[test]
     fn attachment_args_cover_single_batch_download_and_images() {
-        let upload: ConfluenceUploadAttachmentArgs = serde_json::from_value(json!({
+        let upload: ConfluenceUploadContentAttachmentArgs = serde_json::from_value(json!({
             "content_id": 123,
             "file_path": "./diagram.png",
             "minor_edit": true
         }))
         .unwrap();
-        let batch: ConfluenceUploadAttachmentsArgs = serde_json::from_value(json!({
+        let batch: ConfluenceUploadContentAttachmentsArgs = serde_json::from_value(json!({
             "content_id": "123",
             "file_paths": "./a.png,./b.png",
             "comment": "assets"
@@ -421,7 +519,7 @@ mod tests {
             "attachment_id": "att123"
         }))
         .unwrap();
-        let images: ConfluenceGetPageImagesArgs = serde_json::from_value(json!({
+        let images: ConfluenceGetContentImageAttachmentsArgs = serde_json::from_value(json!({
             "content_id": 123
         }))
         .unwrap();

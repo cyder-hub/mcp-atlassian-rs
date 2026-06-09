@@ -45,12 +45,12 @@ const CONFLUENCE_CHILDREN_MAX_LIMIT: u64 = 50;
 const CONFLUENCE_TREE_DEFAULT_LIMIT: u64 = 500;
 const CONFLUENCE_TREE_MAX_LIMIT: u64 = 1_000;
 const CONFLUENCE_TREE_PAGE_SIZE: u64 = 200;
-pub(super) const CONFLUENCE_DOWNLOAD_ATTACHMENTS_MAX_PAGES: u64 = 10;
+pub(super) const CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_MAX_PAGES: u64 = 10;
 
 #[tool_router(router = confluence_tool_router, vis = "pub(super)")]
 impl AtlassianMcpServer {
-    #[tool(description = "Search Confluence content using simple terms or CQL")]
-    pub(super) async fn confluence_search(
+    #[tool(name = "confluence_search_content")]
+    pub(super) async fn search_content(
         &self,
         Parameters(args): Parameters<confluence_tools::ConfluenceSearchArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -66,8 +66,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
 
-    #[tool(description = "Get a Confluence page by ID or title and space key")]
-    pub(super) async fn confluence_get_page(
+    #[tool(name = "confluence_get_page")]
+    pub(super) async fn get_page(
         &self,
         Parameters(args): Parameters<confluence_tools::ConfluenceGetPageArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -82,7 +82,7 @@ impl AtlassianMcpServer {
             {
                 Ok(page) => page,
                 Err(AtlassianError::HttpStatus { status: 404, .. }) => {
-                    return Ok(CallToolResult::structured(json!({
+                    return Ok(CallToolResult::structured_error(json!({
                         "error": format!("Failed to retrieve page by ID '{page_id}': page not found")
                     })));
                 }
@@ -109,7 +109,7 @@ impl AtlassianMcpServer {
             .await
             .map_err(atlassian_error)?
         else {
-            return Ok(CallToolResult::structured(json!({
+            return Ok(CallToolResult::structured_error(json!({
                 "error": format!("Page with title '{title}' not found in space '{space_key}'.")
             })));
         };
@@ -121,10 +121,10 @@ impl AtlassianMcpServer {
         )))
     }
 
-    #[tool(description = "List child pages and folders for a Confluence page")]
-    pub(super) async fn confluence_get_page_children(
+    #[tool(name = "confluence_list_page_children")]
+    pub(super) async fn list_page_children(
         &self,
-        Parameters(args): Parameters<confluence_tools::ConfluenceGetPageChildrenArgs>,
+        Parameters(args): Parameters<confluence_tools::ConfluenceListPageChildrenArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let parent_id = required_non_empty_arg(args.parent_id, "parent_id")?;
         let limit = optional_u64_range_arg(
@@ -171,8 +171,8 @@ impl AtlassianMcpServer {
         })))
     }
 
-    #[tool(description = "Get a flat page hierarchy for a Confluence space")]
-    pub(super) async fn confluence_get_space_page_tree(
+    #[tool(name = "confluence_get_space_page_tree")]
+    pub(super) async fn get_space_page_tree(
         &self,
         Parameters(args): Parameters<confluence_tools::ConfluenceGetSpacePageTreeArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -232,8 +232,8 @@ impl AtlassianMcpServer {
         Ok(CallToolResult::structured(crate::mcp::wrap_array(result)))
     }
 
-    #[tool(description = "Create a Confluence page")]
-    pub(super) async fn confluence_create_page(
+    #[tool(name = "confluence_create_page")]
+    pub(super) async fn create_page(
         &self,
         Parameters(args): Parameters<confluence_tools::ConfluenceCreatePageArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -264,8 +264,8 @@ impl AtlassianMcpServer {
         })))
     }
 
-    #[tool(description = "Update a Confluence page")]
-    pub(super) async fn confluence_update_page(
+    #[tool(name = "confluence_update_page")]
+    pub(super) async fn update_page(
         &self,
         Parameters(args): Parameters<confluence_tools::ConfluenceUpdatePageArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -303,8 +303,8 @@ impl AtlassianMcpServer {
         })))
     }
 
-    #[tool(description = "Delete a Confluence page")]
-    pub(super) async fn confluence_delete_page(
+    #[tool(name = "confluence_delete_page")]
+    pub(super) async fn delete_page(
         &self,
         Parameters(args): Parameters<confluence_tools::ConfluenceDeletePageArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -314,7 +314,7 @@ impl AtlassianMcpServer {
                 "success": true,
                 "message": format!("Page {page_id} deleted successfully"),
             }))),
-            Err(error) => Ok(CallToolResult::structured(json!({
+            Err(error) => Ok(CallToolResult::structured_error(json!({
                 "success": false,
                 "message": format!("Error deleting page {page_id}"),
                 "error": error.to_string(),
@@ -322,8 +322,8 @@ impl AtlassianMcpServer {
         }
     }
 
-    #[tool(description = "Move a Confluence page to a new parent or space")]
-    pub(super) async fn confluence_move_page(
+    #[tool(name = "confluence_move_page")]
+    pub(super) async fn move_page(
         &self,
         Parameters(args): Parameters<confluence_tools::ConfluenceMovePageArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -346,10 +346,10 @@ impl AtlassianMcpServer {
         })))
     }
 
-    #[tool(description = "List comments for a Confluence page")]
-    pub(super) async fn confluence_get_comments(
+    #[tool(name = "confluence_list_page_comments")]
+    pub(super) async fn list_page_comments(
         &self,
-        Parameters(args): Parameters<confluence_tools::ConfluenceGetCommentsArgs>,
+        Parameters(args): Parameters<confluence_tools::ConfluenceListPageCommentsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let page_id = required_non_empty_arg(args.page_id, "page_id")?;
         let comments = self
@@ -374,8 +374,8 @@ impl AtlassianMcpServer {
         })))
     }
 
-    #[tool(description = "Add a comment to a Confluence page")]
-    pub(super) async fn confluence_add_comment(
+    #[tool(name = "confluence_add_page_comment")]
+    pub(super) async fn add_page_comment(
         &self,
         Parameters(args): Parameters<confluence_tools::ConfluenceAddCommentArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -393,7 +393,7 @@ impl AtlassianMcpServer {
                 "message": "Comment added successfully",
                 "comment": comment.to_simplified_value(),
             }))),
-            Err(error) => Ok(CallToolResult::structured(json!({
+            Err(error) => Ok(CallToolResult::structured_error(json!({
                 "success": false,
                 "message": format!("Error adding comment to page {page_id}"),
                 "error": error.to_string(),
@@ -401,8 +401,8 @@ impl AtlassianMcpServer {
         }
     }
 
-    #[tool(description = "Reply to a Confluence comment thread")]
-    pub(super) async fn confluence_reply_to_comment(
+    #[tool(name = "confluence_reply_to_comment")]
+    pub(super) async fn reply_to_comment(
         &self,
         Parameters(args): Parameters<confluence_tools::ConfluenceReplyToCommentArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -420,7 +420,7 @@ impl AtlassianMcpServer {
                 "message": "Reply added successfully",
                 "comment": comment.to_simplified_value(),
             }))),
-            Err(error) => Ok(CallToolResult::structured(json!({
+            Err(error) => Ok(CallToolResult::structured_error(json!({
                 "success": false,
                 "message": format!("Error replying to comment {comment_id}"),
                 "error": error.to_string(),
@@ -428,10 +428,10 @@ impl AtlassianMcpServer {
         }
     }
 
-    #[tool(description = "List labels for Confluence content")]
-    pub(super) async fn confluence_get_labels(
+    #[tool(name = "confluence_list_content_labels")]
+    pub(super) async fn list_content_labels(
         &self,
-        Parameters(args): Parameters<confluence_tools::ConfluenceGetLabelsArgs>,
+        Parameters(args): Parameters<confluence_tools::ConfluenceListContentLabelsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let content_id = required_non_empty_arg(args.page_id, "page_id")?;
         let labels = self
@@ -456,8 +456,8 @@ impl AtlassianMcpServer {
         })))
     }
 
-    #[tool(description = "Add a label to Confluence content")]
-    pub(super) async fn confluence_add_label(
+    #[tool(name = "confluence_add_content_label")]
+    pub(super) async fn add_content_label(
         &self,
         Parameters(args): Parameters<confluence_tools::ConfluenceAddLabelArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -486,8 +486,8 @@ impl AtlassianMcpServer {
         })))
     }
 
-    #[tool(description = "Search Confluence users")]
-    pub(super) async fn confluence_search_user(
+    #[tool(name = "confluence_search_users")]
+    pub(super) async fn search_users(
         &self,
         Parameters(args): Parameters<confluence_tools::ConfluenceSearchUserArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -520,7 +520,7 @@ impl AtlassianMcpServer {
             }
             Err(AtlassianError::HttpStatus {
                 status, message, ..
-            }) if matches!(status, 401 | 403) => Ok(CallToolResult::structured(json!({
+            }) if matches!(status, 401 | 403) => Ok(CallToolResult::structured_error(json!({
                 "success": false,
                 "error": "Authentication failed. Please check your credentials.",
                 "status": status,
@@ -530,10 +530,10 @@ impl AtlassianMcpServer {
         }
     }
 
-    #[tool(description = "Get a historical version of a Confluence page")]
-    pub(super) async fn confluence_get_page_history(
+    #[tool(name = "confluence_get_page_version")]
+    pub(super) async fn get_page_version(
         &self,
-        Parameters(args): Parameters<confluence_tools::ConfluenceGetPageHistoryArgs>,
+        Parameters(args): Parameters<confluence_tools::ConfluenceGetPageVersionArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let page_id = required_non_empty_arg(args.page_id, "page_id")?;
         let version = confluence_positive_version_arg(args.version, "version")?;
@@ -549,8 +549,8 @@ impl AtlassianMcpServer {
         ))
     }
 
-    #[tool(description = "Get a diff between two Confluence page versions")]
-    pub(super) async fn confluence_get_page_diff(
+    #[tool(name = "confluence_get_page_diff")]
+    pub(super) async fn get_page_diff(
         &self,
         Parameters(args): Parameters<confluence_tools::ConfluenceGetPageDiffArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -589,10 +589,10 @@ impl AtlassianMcpServer {
         })))
     }
 
-    #[tool(description = "Get Confluence Cloud page view analytics")]
-    pub(super) async fn confluence_get_page_views(
+    #[tool(name = "confluence_get_page_view_analytics")]
+    pub(super) async fn get_page_view_analytics(
         &self,
-        Parameters(args): Parameters<confluence_tools::ConfluenceGetPageViewsArgs>,
+        Parameters(args): Parameters<confluence_tools::ConfluenceGetPageViewAnalyticsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let page_id = required_non_empty_arg(args.page_id, "page_id")?;
         let include_title = args.include_title.unwrap_or(true);
@@ -612,7 +612,7 @@ impl AtlassianMcpServer {
             ))),
             Err(AtlassianError::HttpStatus {
                 status, message, ..
-            }) if matches!(status, 401 | 403) => Ok(CallToolResult::structured(json!({
+            }) if matches!(status, 401 | 403) => Ok(CallToolResult::structured_error(json!({
                 "success": false,
                 "error": "Authentication failed. Please check your credentials.",
                 "status": status,
@@ -622,10 +622,10 @@ impl AtlassianMcpServer {
         }
     }
 
-    #[tool(description = "Upload an attachment to Confluence content")]
-    pub(super) async fn confluence_upload_attachment(
+    #[tool(name = "confluence_upload_content_attachment")]
+    pub(super) async fn upload_content_attachment(
         &self,
-        Parameters(args): Parameters<confluence_tools::ConfluenceUploadAttachmentArgs>,
+        Parameters(args): Parameters<confluence_tools::ConfluenceUploadContentAttachmentArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let content_id = required_non_empty_arg(args.content_id, "content_id")?;
         let file_path = required_non_empty_arg(args.file_path, "file_path")?;
@@ -645,7 +645,7 @@ impl AtlassianMcpServer {
                 "minor_edit": minor_edit,
                 "attachment": attachment.to_simplified_value(),
             }))),
-            Err(error) => Ok(CallToolResult::structured(json!({
+            Err(error) => Ok(CallToolResult::structured_error(json!({
                 "success": false,
                 "content_id": content_id,
                 "filename": filename,
@@ -655,10 +655,10 @@ impl AtlassianMcpServer {
         }
     }
 
-    #[tool(description = "Upload multiple attachments to Confluence content")]
-    pub(super) async fn confluence_upload_attachments(
+    #[tool(name = "confluence_upload_content_attachments")]
+    pub(super) async fn upload_content_attachments(
         &self,
-        Parameters(args): Parameters<confluence_tools::ConfluenceUploadAttachmentsArgs>,
+        Parameters(args): Parameters<confluence_tools::ConfluenceUploadContentAttachmentsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let content_id = required_non_empty_arg(args.content_id, "content_id")?;
         let file_paths = confluence_split_file_paths(&args.file_paths)?;
@@ -702,10 +702,10 @@ impl AtlassianMcpServer {
         })))
     }
 
-    #[tool(description = "List attachments for Confluence content")]
-    pub(super) async fn confluence_get_attachments(
+    #[tool(name = "confluence_list_content_attachments")]
+    pub(super) async fn list_content_attachments(
         &self,
-        Parameters(args): Parameters<confluence_tools::ConfluenceGetAttachmentsArgs>,
+        Parameters(args): Parameters<confluence_tools::ConfluenceListContentAttachmentsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let content_id = required_non_empty_arg(args.content_id, "content_id")?;
         let start = args.start.unwrap_or(0);
@@ -750,8 +750,8 @@ impl AtlassianMcpServer {
         })))
     }
 
-    #[tool(description = "Download one Confluence attachment with bounded content output")]
-    pub(super) async fn confluence_download_attachment(
+    #[tool(name = "confluence_download_attachment")]
+    pub(super) async fn download_attachment(
         &self,
         Parameters(args): Parameters<confluence_tools::ConfluenceDownloadAttachmentArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -774,12 +774,14 @@ impl AtlassianMcpServer {
                 "success": true,
                 "attachment": attachment,
             }))),
-            Err(error) => Ok(CallToolResult::structured(crate::mcp::wrap_array(error))),
+            Err(error) => Ok(CallToolResult::structured_error(crate::mcp::wrap_array(
+                error,
+            ))),
         }
     }
 
-    #[tool(description = "Download all attachments for Confluence content with bounded output")]
-    pub(super) async fn confluence_download_content_attachments(
+    #[tool(name = "confluence_download_content_attachments")]
+    pub(super) async fn download_content_attachments(
         &self,
         Parameters(args): Parameters<confluence_tools::ConfluenceDownloadContentAttachmentsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -834,7 +836,7 @@ impl AtlassianMcpServer {
             if response.results.is_empty() || !response_has_more {
                 break (false, None, false);
             }
-            if pages_fetched >= CONFLUENCE_DOWNLOAD_ATTACHMENTS_MAX_PAGES {
+            if pages_fetched >= CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_MAX_PAGES {
                 break (response_has_more, response_next_start, response_has_more);
             }
             let Some(next) = response_next_start else {
@@ -855,7 +857,7 @@ impl AtlassianMcpServer {
                 "failed": failed.len(),
                 "pages_fetched": pages_fetched,
                 "page_limit": crate::confluence::client::MAX_ATTACHMENT_LIST_LIMIT,
-                "max_pages": CONFLUENCE_DOWNLOAD_ATTACHMENTS_MAX_PAGES,
+                "max_pages": CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_MAX_PAGES,
                 "has_more": has_more,
                 "next_start": next_start,
                 "limit_applied": limit_applied,
@@ -866,8 +868,8 @@ impl AtlassianMcpServer {
         })))
     }
 
-    #[tool(description = "Delete a Confluence attachment")]
-    pub(super) async fn confluence_delete_attachment(
+    #[tool(name = "confluence_delete_attachment")]
+    pub(super) async fn delete_attachment(
         &self,
         Parameters(args): Parameters<confluence_tools::ConfluenceDeleteAttachmentArgs>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -882,7 +884,7 @@ impl AtlassianMcpServer {
                 "attachment_id": attachment_id,
                 "result": value,
             }))),
-            Err(error) => Ok(CallToolResult::structured(json!({
+            Err(error) => Ok(CallToolResult::structured_error(json!({
                 "success": false,
                 "attachment_id": attachment_id,
                 "error": error.to_string(),
@@ -890,10 +892,10 @@ impl AtlassianMcpServer {
         }
     }
 
-    #[tool(description = "Get image attachments for Confluence content")]
-    pub(super) async fn confluence_get_page_images(
+    #[tool(name = "confluence_get_content_image_attachments")]
+    pub(super) async fn get_content_image_attachments(
         &self,
-        Parameters(args): Parameters<confluence_tools::ConfluenceGetPageImagesArgs>,
+        Parameters(args): Parameters<confluence_tools::ConfluenceGetContentImageAttachmentsArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let content_id = required_non_empty_arg(args.content_id, "content_id")?;
         let client = self.confluence_client()?;

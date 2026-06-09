@@ -20,7 +20,9 @@ const SYNTHETIC_JIRA_READ: ToolMetadata = ToolMetadata {
     name: "synthetic_jira_read",
     service: ToolService::Jira,
     access: ToolAccess::Read,
-    toolset: Some("jira_issue_read"),
+    toolset: Some("jira_issues_read"),
+    annotations: ToolAnnotationMetadata::read_only(),
+    output_schema: None,
     title: "Synthetic Jira read",
     description: "Test-only Jira read metadata.",
 };
@@ -29,7 +31,9 @@ const SYNTHETIC_JIRA_WRITE: ToolMetadata = ToolMetadata {
     name: "synthetic_jira_write",
     service: ToolService::Jira,
     access: ToolAccess::Write,
-    toolset: Some("jira_issue_write"),
+    toolset: Some("jira_issues_write"),
+    annotations: ToolAnnotationMetadata::additive_write(),
+    output_schema: None,
     title: "Synthetic Jira write",
     description: "Test-only Jira write metadata.",
 };
@@ -39,6 +43,8 @@ const SYNTHETIC_CONFLUENCE_READ: ToolMetadata = ToolMetadata {
     service: ToolService::Confluence,
     access: ToolAccess::Read,
     toolset: Some("confluence_content_read"),
+    annotations: ToolAnnotationMetadata::read_only(),
+    output_schema: None,
     title: "Synthetic Confluence read",
     description: "Test-only Confluence read metadata.",
 };
@@ -113,14 +119,15 @@ fn toolsets_and_profiles_match_control_plane_contract() {
     let all = all_toolsets();
     let defaults = default_toolsets();
 
-    assert_eq!(all.len(), 37);
-    assert_eq!(defaults.len(), 10);
+    assert_eq!(all.len(), 47);
+    assert_eq!(defaults.len(), 9);
     assert!(defaults.is_subset(&all));
-    assert!(all.contains("jira_issue_read"));
-    assert!(all.contains("jira_issue_delete"));
-    assert!(all.contains("jira_sprint_manage"));
-    assert!(all.contains("jira_service_desk"));
+    assert!(all.contains("jira_issues_read"));
+    assert!(all.contains("jira_issues_delete"));
+    assert!(all.contains("jira_sprints_write"));
+    assert!(all.contains("jira_service_desks_read"));
     assert!(all.contains("confluence_content_read"));
+    assert!(all.contains("confluence_content_update"));
     assert!(all.contains("confluence_content_delete"));
     let basic_profile = toolsets_for_profile("basic")
         .unwrap()
@@ -131,16 +138,101 @@ fn toolsets_and_profiles_match_control_plane_contract() {
     assert!(
         toolsets_for_profile("developer")
             .unwrap()
-            .contains(&"jira_sprint_planning")
+            .contains(&"jira_sprint_membership_write")
     );
     assert!(
         toolsets_for_profile("manager")
             .unwrap()
-            .contains(&"jira_issue_delete")
+            .contains(&"jira_issues_delete")
     );
     assert_eq!(toolsets_for_profile("full").unwrap(), ALL_TOOLSETS);
     assert!(toolsets_for_profile("custom").unwrap().is_empty());
     assert!(toolsets_for_profile("unknown").is_none());
+}
+
+#[test]
+fn profile_tool_counts_match_registered_taxonomy() {
+    let count = |profile: &str| {
+        let toolsets = toolsets_for_profile(profile)
+            .unwrap()
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        registered_tools()
+            .filter(|metadata| {
+                metadata
+                    .toolset
+                    .is_some_and(|toolset| toolsets.contains(toolset))
+            })
+            .count()
+    };
+
+    assert_eq!(count("basic"), 15);
+    assert_eq!(count("developer"), 35);
+    assert_eq!(count("manager"), 70);
+    assert_eq!(count("full"), 73);
+    assert_eq!(count("custom"), 0);
+}
+
+#[test]
+fn registered_tool_metadata_is_complete_unique_and_uses_known_toolsets() {
+    let all_toolsets = all_toolsets();
+    let mut names = BTreeSet::new();
+    let mut used_toolsets = BTreeSet::new();
+    let tools = registered_tools().collect::<Vec<_>>();
+
+    assert_eq!(tools.len(), 73);
+    for metadata in tools {
+        assert!(
+            names.insert(metadata.name),
+            "{} should be registered once",
+            metadata.name
+        );
+        assert!(
+            !metadata.name.trim().is_empty(),
+            "tool name should not be empty"
+        );
+        assert!(
+            !metadata.title.trim().is_empty(),
+            "{} should have a title",
+            metadata.name
+        );
+        assert!(
+            !metadata.description.trim().is_empty(),
+            "{} should have a description",
+            metadata.name
+        );
+
+        let toolset = metadata
+            .toolset
+            .unwrap_or_else(|| panic!("{} should declare a toolset", metadata.name));
+        assert!(
+            all_toolsets.contains(toolset),
+            "{} references unknown toolset {toolset}",
+            metadata.name
+        );
+        used_toolsets.insert(toolset.to_string());
+
+        match metadata.service {
+            ToolService::Jira => assert!(metadata.name.starts_with("jira_")),
+            ToolService::Confluence => assert!(metadata.name.starts_with("confluence_")),
+        }
+        match metadata.access {
+            ToolAccess::Read => assert_eq!(
+                metadata.annotations,
+                ToolAnnotationMetadata::read_only(),
+                "{} read access should use read-only annotations",
+                metadata.name
+            ),
+            ToolAccess::Write => assert!(
+                !metadata.annotations.read_only && !metadata.annotations.idempotent,
+                "{} write access should not claim read-only or idempotent semantics",
+                metadata.name
+            ),
+        }
+    }
+
+    assert_eq!(used_toolsets, all_toolsets);
 }
 
 #[test]
@@ -157,31 +249,31 @@ fn jira_metadata_uses_capability_toolsets() {
         metadata_for(tools::JIRA_GET_ISSUE_TOOL_NAME)
             .unwrap()
             .toolset,
-        Some("jira_issue_read")
+        Some("jira_issues_read")
     );
     assert_eq!(
         metadata_for(tools::JIRA_CREATE_ISSUE_TOOL_NAME)
             .unwrap()
             .toolset,
-        Some("jira_issue_write")
+        Some("jira_issues_write")
     );
     assert_eq!(
         metadata_for(tools::JIRA_DELETE_ISSUE_TOOL_NAME)
             .unwrap()
             .toolset,
-        Some("jira_issue_delete")
+        Some("jira_issues_delete")
     );
     assert_eq!(
         metadata_for(tools::JIRA_ADD_ISSUES_TO_SPRINT_TOOL_NAME)
             .unwrap()
             .toolset,
-        Some("jira_sprint_planning")
+        Some("jira_sprint_membership_write")
     );
     assert_eq!(
         metadata_for(tools::JIRA_CREATE_SPRINT_TOOL_NAME)
             .unwrap()
             .toolset,
-        Some("jira_sprint_manage")
+        Some("jira_sprints_write")
     );
 }
 
@@ -208,10 +300,138 @@ fn confluence_metadata_uses_risk_split_toolsets() {
         Some("confluence_content_write")
     );
     assert_eq!(
+        metadata_for(confluence_tools::CONFLUENCE_UPDATE_PAGE_TOOL_NAME)
+            .unwrap()
+            .toolset,
+        Some("confluence_content_update")
+    );
+    assert_eq!(
         metadata_for(confluence_tools::CONFLUENCE_DELETE_PAGE_TOOL_NAME)
             .unwrap()
             .toolset,
         Some("confluence_content_delete")
+    );
+}
+
+#[test]
+fn metadata_declares_tool_annotations_without_name_heuristics() {
+    let read = metadata_for(tools::JIRA_GET_ISSUE_TOOL_NAME).unwrap();
+    let additive_write = metadata_for(tools::JIRA_CREATE_ISSUE_TOOL_NAME).unwrap();
+    let destructive_write = metadata_for(tools::JIRA_UPDATE_ISSUE_TOOL_NAME).unwrap();
+    let product_unavailable_read =
+        metadata_for(tools::JIRA_GET_ISSUE_DEVELOPMENT_TOOL_NAME).unwrap();
+
+    assert_eq!(read.access, ToolAccess::Read);
+    assert_eq!(read.annotations, ToolAnnotationMetadata::read_only());
+    assert_eq!(product_unavailable_read.access, ToolAccess::Read);
+    assert_eq!(
+        product_unavailable_read.annotations,
+        ToolAnnotationMetadata::read_only()
+    );
+
+    assert_eq!(additive_write.access, ToolAccess::Write);
+    assert_eq!(
+        additive_write.annotations,
+        ToolAnnotationMetadata::additive_write()
+    );
+    assert_eq!(destructive_write.access, ToolAccess::Write);
+    assert_eq!(
+        destructive_write.annotations,
+        ToolAnnotationMetadata::destructive_write()
+    );
+}
+
+#[test]
+fn destructive_annotation_set_matches_reviewed_write_tools() {
+    let destructive_tools = registered_tools()
+        .filter(|metadata| metadata.annotations.destructive)
+        .map(|metadata| metadata.name)
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(
+        destructive_tools,
+        BTreeSet::from([
+            tools::JIRA_EDIT_COMMENT_TOOL_NAME,
+            tools::JIRA_TRANSITION_ISSUE_TOOL_NAME,
+            tools::JIRA_UPDATE_ISSUE_TOOL_NAME,
+            tools::JIRA_DELETE_ISSUE_TOOL_NAME,
+            tools::JIRA_REMOVE_WATCHER_TOOL_NAME,
+            tools::JIRA_SET_ISSUE_PARENT_TOOL_NAME,
+            tools::JIRA_DELETE_ISSUE_LINK_TOOL_NAME,
+            tools::JIRA_UPDATE_SPRINT_TOOL_NAME,
+            tools::JIRA_ADD_ISSUES_TO_SPRINT_TOOL_NAME,
+            tools::JIRA_UPDATE_ISSUE_FORM_ANSWERS_TOOL_NAME,
+            confluence_tools::CONFLUENCE_UPDATE_PAGE_TOOL_NAME,
+            confluence_tools::CONFLUENCE_DELETE_PAGE_TOOL_NAME,
+            confluence_tools::CONFLUENCE_MOVE_PAGE_TOOL_NAME,
+            confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENT_TOOL_NAME,
+            confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
+            confluence_tools::CONFLUENCE_DELETE_ATTACHMENT_TOOL_NAME,
+        ])
+    );
+}
+
+#[test]
+fn annotations_are_consistent_with_registry_access() {
+    for metadata in registered_tools() {
+        assert_eq!(
+            metadata.annotations.read_only,
+            metadata.access == ToolAccess::Read,
+            "{} read_only annotation should match registry access",
+            metadata.name
+        );
+        assert!(
+            metadata.annotations.open_world,
+            "{} should declare that it reads or writes external Atlassian state",
+            metadata.name
+        );
+        if metadata.access == ToolAccess::Read {
+            assert!(
+                !metadata.annotations.destructive,
+                "{} read tool should not be destructive",
+                metadata.name
+            );
+        } else {
+            assert!(
+                !metadata.annotations.idempotent,
+                "{} write tool should not claim idempotence without a stronger API guarantee",
+                metadata.name
+            );
+        }
+    }
+}
+
+#[test]
+fn metadata_declares_output_schemas_for_high_risk_payloads() {
+    assert_eq!(
+        metadata_for(tools::JIRA_UPDATE_ISSUE_TOOL_NAME)
+            .unwrap()
+            .output_schema,
+        Some(ToolOutputSchema::JiraMutationResult)
+    );
+    assert_eq!(
+        metadata_for(tools::JIRA_CREATE_ISSUES_TOOL_NAME)
+            .unwrap()
+            .output_schema,
+        Some(ToolOutputSchema::JiraCreateIssuesResult)
+    );
+    assert_eq!(
+        metadata_for(tools::JIRA_GET_ISSUE_ATTACHMENTS_TOOL_NAME)
+            .unwrap()
+            .output_schema,
+        Some(ToolOutputSchema::JiraIssueAttachmentsResult)
+    );
+    assert_eq!(
+        metadata_for(tools::JIRA_LIST_AGILE_BOARDS_TOOL_NAME)
+            .unwrap()
+            .output_schema,
+        Some(ToolOutputSchema::JiraProductDependencyResult)
+    );
+    assert_eq!(
+        metadata_for(confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENTS_TOOL_NAME)
+            .unwrap()
+            .output_schema,
+        Some(ToolOutputSchema::ConfluenceBatchAttachmentUploadResult)
     );
 }
 
@@ -228,7 +448,7 @@ fn default_profile_exposes_basic_tools_only() {
             tool(tools::JIRA_GET_ISSUE_TOOL_NAME),
             tool(tools::JIRA_CREATE_ISSUE_TOOL_NAME),
             tool(tools::JIRA_DELETE_ISSUE_TOOL_NAME),
-            tool(tools::JIRA_GET_AGILE_BOARDS_TOOL_NAME),
+            tool(tools::JIRA_LIST_AGILE_BOARDS_TOOL_NAME),
             tool(confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME),
             tool(confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME),
         ],
@@ -253,7 +473,7 @@ fn toolsets_are_additive_and_exact_tools_can_add_or_remove() {
             tools::JIRA_DELETE_ISSUE_TOOL_NAME.to_string()
         ])),
         disabled_tools: BTreeSet::from([tools::JIRA_CREATE_ISSUE_TOOL_NAME.to_string()]),
-        enabled_toolsets: BTreeSet::from(["jira_agile_read".to_string()]),
+        enabled_toolsets: BTreeSet::from(["jira_agile_boards_read".to_string()]),
         ..runtime_config()
     });
 
@@ -262,7 +482,7 @@ fn toolsets_are_additive_and_exact_tools_can_add_or_remove() {
             tool(tools::JIRA_GET_ISSUE_TOOL_NAME),
             tool(tools::JIRA_CREATE_ISSUE_TOOL_NAME),
             tool(tools::JIRA_DELETE_ISSUE_TOOL_NAME),
-            tool(tools::JIRA_GET_AGILE_BOARDS_TOOL_NAME),
+            tool(tools::JIRA_LIST_AGILE_BOARDS_TOOL_NAME),
         ],
         &context,
     );
@@ -271,7 +491,7 @@ fn toolsets_are_additive_and_exact_tools_can_add_or_remove() {
         names(visible),
         vec![
             tools::JIRA_DELETE_ISSUE_TOOL_NAME.to_string(),
-            tools::JIRA_GET_AGILE_BOARDS_TOOL_NAME.to_string(),
+            tools::JIRA_LIST_AGILE_BOARDS_TOOL_NAME.to_string(),
         ]
     );
     assert!(guard_tool_call(tools::JIRA_DELETE_ISSUE_TOOL_NAME, &context).is_ok());

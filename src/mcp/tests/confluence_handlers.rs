@@ -2,14 +2,14 @@ use super::support::*;
 use super::*;
 
 #[tokio::test]
-async fn confluence_search_handler_returns_structured_content_from_mock_rest() {
+async fn confluence_search_content_handler_returns_structured_content_from_mock_rest() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let result = server
-        .confluence_search(Parameters(confluence_tools::ConfluenceSearchArgs {
+        .search_content(Parameters(confluence_tools::ConfluenceSearchArgs {
             query: "project docs".to_string(),
             limit: Some(10),
             spaces_filter: Some("ENG".to_string()),
@@ -36,14 +36,14 @@ async fn confluence_search_handler_returns_structured_content_from_mock_rest() {
 }
 
 #[tokio::test]
-async fn confluence_search_handler_rejects_invalid_limit_before_http_request() {
+async fn confluence_search_content_handler_rejects_invalid_limit_before_http_request() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let error = server
-        .confluence_search(Parameters(confluence_tools::ConfluenceSearchArgs {
+        .search_content(Parameters(confluence_tools::ConfluenceSearchArgs {
             query: "project docs".to_string(),
             limit: Some(51),
             spaces_filter: None,
@@ -67,7 +67,7 @@ async fn confluence_get_page_handler_can_lookup_by_title_and_return_raw_content_
         ..runtime_config()
     });
     let result = server
-        .confluence_get_page(Parameters(confluence_tools::ConfluenceGetPageArgs {
+        .get_page(Parameters(confluence_tools::ConfluenceGetPageArgs {
             page_id: None,
             title: Some("Roadmap".to_string()),
             space_key: Some("ENG".to_string()),
@@ -100,7 +100,7 @@ async fn confluence_get_page_handler_requires_page_id_or_title_and_space_key() {
         ..runtime_config()
     });
     let error = server
-        .confluence_get_page(Parameters(confluence_tools::ConfluenceGetPageArgs {
+        .get_page(Parameters(confluence_tools::ConfluenceGetPageArgs {
             page_id: None,
             title: Some("Roadmap".to_string()),
             space_key: None,
@@ -126,7 +126,7 @@ async fn confluence_get_page_handler_returns_structured_error_for_missing_page()
         ..runtime_config()
     });
     let by_id = server
-        .confluence_get_page(Parameters(confluence_tools::ConfluenceGetPageArgs {
+        .get_page(Parameters(confluence_tools::ConfluenceGetPageArgs {
             page_id: Some("missing".to_string()),
             title: None,
             space_key: None,
@@ -136,7 +136,7 @@ async fn confluence_get_page_handler_returns_structured_error_for_missing_page()
         .await
         .unwrap();
     let by_title = server
-        .confluence_get_page(Parameters(confluence_tools::ConfluenceGetPageArgs {
+        .get_page(Parameters(confluence_tools::ConfluenceGetPageArgs {
             page_id: None,
             title: Some("Missing".to_string()),
             space_key: Some("ENG".to_string()),
@@ -158,18 +158,20 @@ async fn confluence_get_page_handler_returns_structured_error_for_missing_page()
             .unwrap()
             .contains("Page with title 'Missing' not found")
     );
+    assert_eq!(by_id.is_error, Some(true));
+    assert_eq!(by_title.is_error, Some(true));
 }
 
 #[tokio::test]
-async fn confluence_get_page_children_handler_returns_pages_and_folders() {
+async fn confluence_list_page_children_handler_returns_pages_and_folders() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let result = server
-        .confluence_get_page_children(Parameters(
-            confluence_tools::ConfluenceGetPageChildrenArgs {
+        .list_page_children(Parameters(
+            confluence_tools::ConfluenceListPageChildrenArgs {
                 parent_id: "123".to_string(),
                 expand: Some("version".to_string()),
                 limit: Some(2),
@@ -216,15 +218,15 @@ async fn confluence_get_page_children_handler_returns_pages_and_folders() {
 }
 
 #[tokio::test]
-async fn confluence_get_page_children_handler_rejects_invalid_limit_before_http_request() {
+async fn confluence_list_page_children_handler_rejects_invalid_limit_before_http_request() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let error = server
-        .confluence_get_page_children(Parameters(
-            confluence_tools::ConfluenceGetPageChildrenArgs {
+        .list_page_children(Parameters(
+            confluence_tools::ConfluenceListPageChildrenArgs {
                 parent_id: "123".to_string(),
                 expand: None,
                 limit: Some(51),
@@ -253,7 +255,7 @@ async fn confluence_get_space_page_tree_handler_returns_sorted_flat_tree() {
         ..runtime_config()
     });
     let result = server
-        .confluence_get_space_page_tree(Parameters(
+        .get_space_page_tree(Parameters(
             confluence_tools::ConfluenceGetSpacePageTreeArgs {
                 space_key: "ENG".to_string(),
                 limit: Some(2),
@@ -287,7 +289,7 @@ async fn confluence_get_space_page_tree_handler_reports_truncation_hint() {
         ..runtime_config()
     });
     let result = server
-        .confluence_get_space_page_tree(Parameters(
+        .get_space_page_tree(Parameters(
             confluence_tools::ConfluenceGetSpacePageTreeArgs {
                 space_key: "ENG".to_string(),
                 limit: Some(1),
@@ -310,7 +312,7 @@ async fn confluence_get_space_page_tree_handler_rejects_invalid_limit_before_htt
         ..runtime_config()
     });
     let error = server
-        .confluence_get_space_page_tree(Parameters(
+        .get_space_page_tree(Parameters(
             confluence_tools::ConfluenceGetSpacePageTreeArgs {
                 space_key: "ENG".to_string(),
                 limit: Some(1001),
@@ -335,7 +337,7 @@ async fn confluence_create_page_handler_posts_storage_payload() {
         ..runtime_config()
     });
     let result = server
-        .confluence_create_page(Parameters(confluence_tools::ConfluenceCreatePageArgs {
+        .create_page(Parameters(confluence_tools::ConfluenceCreatePageArgs {
             space_key: "ENG".to_string(),
             title: "New page".to_string(),
             content: "# Heading".to_string(),
@@ -381,7 +383,7 @@ async fn confluence_update_page_handler_increments_version_and_preserves_write_o
         ..runtime_config()
     });
     let result = server
-        .confluence_update_page(Parameters(confluence_tools::ConfluenceUpdatePageArgs {
+        .update_page(Parameters(confluence_tools::ConfluenceUpdatePageArgs {
             page_id: "123".to_string(),
             title: "Updated".to_string(),
             content: "<p>Storage</p>".to_string(),
@@ -424,7 +426,7 @@ async fn confluence_update_page_handler_reports_emoji_failure_without_failing_pa
         ..runtime_config()
     });
     let result = server
-        .confluence_update_page(Parameters(confluence_tools::ConfluenceUpdatePageArgs {
+        .update_page(Parameters(confluence_tools::ConfluenceUpdatePageArgs {
             page_id: "123".to_string(),
             title: "Updated".to_string(),
             content: "<p>Storage</p>".to_string(),
@@ -464,7 +466,7 @@ async fn confluence_write_handlers_reject_invalid_content_format_before_http_req
         ..runtime_config()
     });
     let error = server
-        .confluence_create_page(Parameters(confluence_tools::ConfluenceCreatePageArgs {
+        .create_page(Parameters(confluence_tools::ConfluenceCreatePageArgs {
             space_key: "ENG".to_string(),
             title: "New page".to_string(),
             content: "body".to_string(),
@@ -492,13 +494,13 @@ async fn confluence_delete_page_handler_returns_success_and_structured_failure()
         ..runtime_config()
     });
     let success = server
-        .confluence_delete_page(Parameters(confluence_tools::ConfluenceDeletePageArgs {
+        .delete_page(Parameters(confluence_tools::ConfluenceDeletePageArgs {
             page_id: "123".to_string(),
         }))
         .await
         .unwrap();
     let failure = server
-        .confluence_delete_page(Parameters(confluence_tools::ConfluenceDeletePageArgs {
+        .delete_page(Parameters(confluence_tools::ConfluenceDeletePageArgs {
             page_id: "delete-error".to_string(),
         }))
         .await
@@ -512,6 +514,8 @@ async fn confluence_delete_page_handler_returns_success_and_structured_failure()
         failure.structured_content.as_ref().unwrap()["success"],
         json!(false)
     );
+    assert_eq!(success.is_error, Some(false));
+    assert_eq!(failure.is_error, Some(true));
     assert!(
         failure.structured_content.as_ref().unwrap()["error"]
             .as_str()
@@ -528,7 +532,7 @@ async fn confluence_move_page_handler_updates_parent_or_calls_position_endpoint(
         ..runtime_config()
     });
     let appended = server
-        .confluence_move_page(Parameters(confluence_tools::ConfluenceMovePageArgs {
+        .move_page(Parameters(confluence_tools::ConfluenceMovePageArgs {
             page_id: "123".to_string(),
             target_parent_id: Some("100".to_string()),
             target_space_key: None,
@@ -537,7 +541,7 @@ async fn confluence_move_page_handler_updates_parent_or_calls_position_endpoint(
         .await
         .unwrap();
     let positioned = server
-        .confluence_move_page(Parameters(confluence_tools::ConfluenceMovePageArgs {
+        .move_page(Parameters(confluence_tools::ConfluenceMovePageArgs {
             page_id: "123".to_string(),
             target_parent_id: Some("999".to_string()),
             target_space_key: None,
@@ -572,7 +576,7 @@ async fn confluence_move_page_handler_rejects_invalid_position_before_http_reque
         ..runtime_config()
     });
     let error = server
-        .confluence_move_page(Parameters(confluence_tools::ConfluenceMovePageArgs {
+        .move_page(Parameters(confluence_tools::ConfluenceMovePageArgs {
             page_id: "123".to_string(),
             target_parent_id: Some("100".to_string()),
             target_space_key: None,
@@ -590,22 +594,26 @@ async fn confluence_move_page_handler_rejects_invalid_position_before_http_reque
 }
 
 #[tokio::test]
-async fn confluence_get_comments_handler_returns_comment_list_and_empty_list() {
+async fn confluence_list_page_comments_handler_returns_comment_list_and_empty_list() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
         ..runtime_config()
     });
     let result = server
-        .confluence_get_comments(Parameters(confluence_tools::ConfluenceGetCommentsArgs {
-            page_id: "123".to_string(),
-        }))
+        .list_page_comments(Parameters(
+            confluence_tools::ConfluenceListPageCommentsArgs {
+                page_id: "123".to_string(),
+            },
+        ))
         .await
         .unwrap();
     let empty = server
-        .confluence_get_comments(Parameters(confluence_tools::ConfluenceGetCommentsArgs {
-            page_id: "empty".to_string(),
-        }))
+        .list_page_comments(Parameters(
+            confluence_tools::ConfluenceListPageCommentsArgs {
+                page_id: "empty".to_string(),
+            },
+        ))
         .await
         .unwrap();
 
@@ -648,14 +656,14 @@ async fn confluence_add_and_reply_comment_handlers_post_storage_payloads() {
         ..runtime_config()
     });
     let added = server
-        .confluence_add_comment(Parameters(confluence_tools::ConfluenceAddCommentArgs {
+        .add_page_comment(Parameters(confluence_tools::ConfluenceAddCommentArgs {
             page_id: "123".to_string(),
             body: "# Comment".to_string(),
         }))
         .await
         .unwrap();
     let replied = server
-        .confluence_reply_to_comment(Parameters(confluence_tools::ConfluenceReplyToCommentArgs {
+        .reply_to_comment(Parameters(confluence_tools::ConfluenceReplyToCommentArgs {
             comment_id: "c-1".to_string(),
             body: "Reply body".to_string(),
         }))
@@ -701,14 +709,14 @@ async fn confluence_comment_write_handlers_return_structured_failure() {
         ..runtime_config()
     });
     let add_failure = server
-        .confluence_add_comment(Parameters(confluence_tools::ConfluenceAddCommentArgs {
+        .add_page_comment(Parameters(confluence_tools::ConfluenceAddCommentArgs {
             page_id: "comment-error".to_string(),
             body: "Comment".to_string(),
         }))
         .await
         .unwrap();
     let reply_failure = server
-        .confluence_reply_to_comment(Parameters(confluence_tools::ConfluenceReplyToCommentArgs {
+        .reply_to_comment(Parameters(confluence_tools::ConfluenceReplyToCommentArgs {
             comment_id: "reply-error".to_string(),
             body: "Reply".to_string(),
         }))
@@ -718,6 +726,7 @@ async fn confluence_comment_write_handlers_return_structured_failure() {
     for result in [add_failure, reply_failure] {
         let structured = result.structured_content.as_ref().unwrap();
         assert_eq!(structured["success"], json!(false));
+        assert_eq!(result.is_error, Some(true));
         assert!(
             structured["error"]
                 .as_str()
@@ -728,7 +737,7 @@ async fn confluence_comment_write_handlers_return_structured_failure() {
 }
 
 #[tokio::test]
-async fn confluence_get_labels_handler_returns_label_list_and_empty_list() {
+async fn confluence_list_content_labels_handler_returns_label_list_and_empty_list() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -736,15 +745,19 @@ async fn confluence_get_labels_handler_returns_label_list_and_empty_list() {
         ..runtime_config()
     });
     let result = server
-        .confluence_get_labels(Parameters(confluence_tools::ConfluenceGetLabelsArgs {
-            page_id: "123".to_string(),
-        }))
+        .list_content_labels(Parameters(
+            confluence_tools::ConfluenceListContentLabelsArgs {
+                page_id: "123".to_string(),
+            },
+        ))
         .await
         .unwrap();
     let empty = server
-        .confluence_get_labels(Parameters(confluence_tools::ConfluenceGetLabelsArgs {
-            page_id: "empty-labels".to_string(),
-        }))
+        .list_content_labels(Parameters(
+            confluence_tools::ConfluenceListContentLabelsArgs {
+                page_id: "empty-labels".to_string(),
+            },
+        ))
         .await
         .unwrap();
 
@@ -765,7 +778,7 @@ async fn confluence_get_labels_handler_returns_label_list_and_empty_list() {
 }
 
 #[tokio::test]
-async fn confluence_add_label_handler_posts_label_and_refreshes_list() {
+async fn confluence_add_content_label_handler_posts_label_and_refreshes_list() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -773,7 +786,7 @@ async fn confluence_add_label_handler_posts_label_and_refreshes_list() {
         ..runtime_config()
     });
     let result = server
-        .confluence_add_label(Parameters(confluence_tools::ConfluenceAddLabelArgs {
+        .add_content_label(Parameters(confluence_tools::ConfluenceAddLabelArgs {
             page_id: "123".to_string(),
             name: "draft".to_string(),
         }))
@@ -796,7 +809,7 @@ async fn confluence_add_label_handler_posts_label_and_refreshes_list() {
 }
 
 #[tokio::test]
-async fn confluence_add_label_handler_returns_error_on_api_failure() {
+async fn confluence_add_content_label_handler_returns_error_on_api_failure() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -804,7 +817,7 @@ async fn confluence_add_label_handler_returns_error_on_api_failure() {
         ..runtime_config()
     });
     let error = server
-        .confluence_add_label(Parameters(confluence_tools::ConfluenceAddLabelArgs {
+        .add_content_label(Parameters(confluence_tools::ConfluenceAddLabelArgs {
             page_id: "label-error".to_string(),
             name: "draft".to_string(),
         }))
@@ -818,7 +831,7 @@ async fn confluence_add_label_handler_returns_error_on_api_failure() {
 }
 
 #[tokio::test]
-async fn confluence_search_user_handler_wraps_simple_query_for_cloud() {
+async fn confluence_search_users_handler_wraps_simple_query_for_cloud() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_cloud_config_with_base_url(base_url)),
@@ -826,7 +839,7 @@ async fn confluence_search_user_handler_wraps_simple_query_for_cloud() {
         ..runtime_config()
     });
     let result = server
-        .confluence_search_user(Parameters(confluence_tools::ConfluenceSearchUserArgs {
+        .search_users(Parameters(confluence_tools::ConfluenceSearchUserArgs {
             query: "Ada".to_string(),
             limit: Some(5),
             group_name: None,
@@ -853,7 +866,7 @@ async fn confluence_search_user_handler_wraps_simple_query_for_cloud() {
 }
 
 #[tokio::test]
-async fn confluence_search_user_handler_uses_group_member_fallback_on_server() {
+async fn confluence_search_users_handler_uses_group_member_fallback_on_server() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -861,7 +874,7 @@ async fn confluence_search_user_handler_uses_group_member_fallback_on_server() {
         ..runtime_config()
     });
     let result = server
-        .confluence_search_user(Parameters(confluence_tools::ConfluenceSearchUserArgs {
+        .search_users(Parameters(confluence_tools::ConfluenceSearchUserArgs {
             query: "Ada".to_string(),
             limit: Some(10),
             group_name: None,
@@ -869,7 +882,7 @@ async fn confluence_search_user_handler_uses_group_member_fallback_on_server() {
         .await
         .unwrap();
     let empty = server
-        .confluence_search_user(Parameters(confluence_tools::ConfluenceSearchUserArgs {
+        .search_users(Parameters(confluence_tools::ConfluenceSearchUserArgs {
             query: "Nobody".to_string(),
             limit: Some(10),
             group_name: None,
@@ -899,7 +912,7 @@ async fn confluence_search_user_handler_uses_group_member_fallback_on_server() {
 }
 
 #[tokio::test]
-async fn confluence_search_user_handler_returns_structured_auth_error() {
+async fn confluence_search_users_handler_returns_structured_auth_error() {
     let (base_url, _requests) = mock_confluence_server().await;
     let mut config = confluence_config_with_base_url(base_url);
     config.auth = AtlassianAuth::Pat {
@@ -911,7 +924,7 @@ async fn confluence_search_user_handler_returns_structured_auth_error() {
         ..runtime_config()
     });
     let result = server
-        .confluence_search_user(Parameters(confluence_tools::ConfluenceSearchUserArgs {
+        .search_users(Parameters(confluence_tools::ConfluenceSearchUserArgs {
             query: "Ada".to_string(),
             limit: Some(10),
             group_name: None,
@@ -922,6 +935,7 @@ async fn confluence_search_user_handler_returns_structured_auth_error() {
     let structured = result.structured_content.as_ref().unwrap();
     assert_eq!(structured["success"], json!(false));
     assert_eq!(structured["status"], json!(401));
+    assert_eq!(result.is_error, Some(true));
     assert!(
         structured["error"]
             .as_str()
@@ -931,7 +945,7 @@ async fn confluence_search_user_handler_returns_structured_auth_error() {
 }
 
 #[tokio::test]
-async fn confluence_search_user_handler_rejects_invalid_limit_before_http_request() {
+async fn confluence_search_users_handler_rejects_invalid_limit_before_http_request() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -939,7 +953,7 @@ async fn confluence_search_user_handler_rejects_invalid_limit_before_http_reques
         ..runtime_config()
     });
     let error = server
-        .confluence_search_user(Parameters(confluence_tools::ConfluenceSearchUserArgs {
+        .search_users(Parameters(confluence_tools::ConfluenceSearchUserArgs {
             query: "Ada".to_string(),
             limit: Some(51),
             group_name: None,
@@ -956,7 +970,7 @@ async fn confluence_search_user_handler_rejects_invalid_limit_before_http_reques
 }
 
 #[tokio::test]
-async fn confluence_get_page_history_handler_returns_specific_version() {
+async fn confluence_get_page_version_handler_returns_specific_version() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -964,7 +978,7 @@ async fn confluence_get_page_history_handler_returns_specific_version() {
         ..runtime_config()
     });
     let result = server
-        .confluence_get_page_history(Parameters(confluence_tools::ConfluenceGetPageHistoryArgs {
+        .get_page_version(Parameters(confluence_tools::ConfluenceGetPageVersionArgs {
             page_id: "123".to_string(),
             version: 1,
             convert_to_markdown: Some(false),
@@ -994,7 +1008,7 @@ async fn confluence_get_page_history_handler_returns_specific_version() {
 }
 
 #[tokio::test]
-async fn confluence_get_page_history_handler_rejects_zero_version_before_http_request() {
+async fn confluence_get_page_version_handler_rejects_zero_version_before_http_request() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -1002,7 +1016,7 @@ async fn confluence_get_page_history_handler_rejects_zero_version_before_http_re
         ..runtime_config()
     });
     let error = server
-        .confluence_get_page_history(Parameters(confluence_tools::ConfluenceGetPageHistoryArgs {
+        .get_page_version(Parameters(confluence_tools::ConfluenceGetPageVersionArgs {
             page_id: "123".to_string(),
             version: 0,
             convert_to_markdown: None,
@@ -1015,7 +1029,7 @@ async fn confluence_get_page_history_handler_rejects_zero_version_before_http_re
 }
 
 #[tokio::test]
-async fn confluence_get_page_history_handler_surfaces_missing_version_error() {
+async fn confluence_get_page_version_handler_surfaces_missing_version_error() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -1023,7 +1037,7 @@ async fn confluence_get_page_history_handler_surfaces_missing_version_error() {
         ..runtime_config()
     });
     let error = server
-        .confluence_get_page_history(Parameters(confluence_tools::ConfluenceGetPageHistoryArgs {
+        .get_page_version(Parameters(confluence_tools::ConfluenceGetPageVersionArgs {
             page_id: "123".to_string(),
             version: 99,
             convert_to_markdown: None,
@@ -1049,7 +1063,7 @@ async fn confluence_get_page_diff_handler_returns_deterministic_diff() {
         ..runtime_config()
     });
     let result = server
-        .confluence_get_page_diff(Parameters(confluence_tools::ConfluenceGetPageDiffArgs {
+        .get_page_diff(Parameters(confluence_tools::ConfluenceGetPageDiffArgs {
             page_id: "123".to_string(),
             from_version: 1,
             to_version: 2,
@@ -1086,7 +1100,7 @@ async fn confluence_get_page_diff_handler_returns_empty_diff_for_same_version() 
         ..runtime_config()
     });
     let result = server
-        .confluence_get_page_diff(Parameters(confluence_tools::ConfluenceGetPageDiffArgs {
+        .get_page_diff(Parameters(confluence_tools::ConfluenceGetPageDiffArgs {
             page_id: "123".to_string(),
             from_version: 2,
             to_version: 2,
@@ -1111,7 +1125,7 @@ async fn confluence_get_page_diff_handler_rejects_invalid_order_before_http_requ
         ..runtime_config()
     });
     let error = server
-        .confluence_get_page_diff(Parameters(confluence_tools::ConfluenceGetPageDiffArgs {
+        .get_page_diff(Parameters(confluence_tools::ConfluenceGetPageDiffArgs {
             page_id: "123".to_string(),
             from_version: 3,
             to_version: 2,
@@ -1128,7 +1142,7 @@ async fn confluence_get_page_diff_handler_rejects_invalid_order_before_http_requ
 }
 
 #[tokio::test]
-async fn confluence_get_page_views_handler_returns_cloud_analytics_with_title() {
+async fn confluence_get_page_view_analytics_handler_returns_cloud_analytics_with_title() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_cloud_config_with_base_url(base_url)),
@@ -1136,10 +1150,12 @@ async fn confluence_get_page_views_handler_returns_cloud_analytics_with_title() 
         ..runtime_config()
     });
     let result = server
-        .confluence_get_page_views(Parameters(confluence_tools::ConfluenceGetPageViewsArgs {
-            page_id: "123".to_string(),
-            include_title: Some(true),
-        }))
+        .get_page_view_analytics(Parameters(
+            confluence_tools::ConfluenceGetPageViewAnalyticsArgs {
+                page_id: "123".to_string(),
+                include_title: Some(true),
+            },
+        ))
         .await
         .unwrap();
 
@@ -1156,7 +1172,7 @@ async fn confluence_get_page_views_handler_returns_cloud_analytics_with_title() 
 }
 
 #[tokio::test]
-async fn confluence_get_page_views_handler_skips_title_lookup_when_disabled() {
+async fn confluence_get_page_view_analytics_handler_skips_title_lookup_when_disabled() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_cloud_config_with_base_url(base_url)),
@@ -1164,10 +1180,12 @@ async fn confluence_get_page_views_handler_skips_title_lookup_when_disabled() {
         ..runtime_config()
     });
     let result = server
-        .confluence_get_page_views(Parameters(confluence_tools::ConfluenceGetPageViewsArgs {
-            page_id: "123".to_string(),
-            include_title: Some(false),
-        }))
+        .get_page_view_analytics(Parameters(
+            confluence_tools::ConfluenceGetPageViewAnalyticsArgs {
+                page_id: "123".to_string(),
+                include_title: Some(false),
+            },
+        ))
         .await
         .unwrap();
 
@@ -1180,7 +1198,7 @@ async fn confluence_get_page_views_handler_skips_title_lookup_when_disabled() {
 }
 
 #[tokio::test]
-async fn confluence_get_page_views_handler_returns_unavailable_on_server_without_http() {
+async fn confluence_get_page_view_analytics_handler_returns_unavailable_on_server_without_http() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -1188,16 +1206,23 @@ async fn confluence_get_page_views_handler_returns_unavailable_on_server_without
         ..runtime_config()
     });
     let result = server
-        .confluence_get_page_views(Parameters(confluence_tools::ConfluenceGetPageViewsArgs {
-            page_id: "123".to_string(),
-            include_title: Some(true),
-        }))
+        .get_page_view_analytics(Parameters(
+            confluence_tools::ConfluenceGetPageViewAnalyticsArgs {
+                page_id: "123".to_string(),
+                include_title: Some(true),
+            },
+        ))
         .await
         .unwrap();
 
     let structured = result.structured_content.as_ref().unwrap();
     assert_eq!(structured["success"], json!(false));
     assert_eq!(structured["available"], json!(false));
+    assert_eq!(result.is_error, Some(false));
+    assert_registered_output_schema_declares_properties(
+        confluence_tools::CONFLUENCE_GET_PAGE_VIEW_ANALYTICS_TOOL_NAME,
+        &["success", "available", "page_id", "total_views", "error"],
+    );
     assert!(
         structured["error"]
             .as_str()
@@ -1208,7 +1233,7 @@ async fn confluence_get_page_views_handler_returns_unavailable_on_server_without
 }
 
 #[tokio::test]
-async fn confluence_get_page_views_handler_returns_structured_auth_error() {
+async fn confluence_get_page_view_analytics_handler_returns_structured_auth_error() {
     let (base_url, _requests) = mock_confluence_server().await;
     let mut config = confluence_cloud_config_with_base_url(base_url);
     config.auth = AtlassianAuth::Pat {
@@ -1220,16 +1245,19 @@ async fn confluence_get_page_views_handler_returns_structured_auth_error() {
         ..runtime_config()
     });
     let result = server
-        .confluence_get_page_views(Parameters(confluence_tools::ConfluenceGetPageViewsArgs {
-            page_id: "123".to_string(),
-            include_title: Some(false),
-        }))
+        .get_page_view_analytics(Parameters(
+            confluence_tools::ConfluenceGetPageViewAnalyticsArgs {
+                page_id: "123".to_string(),
+                include_title: Some(false),
+            },
+        ))
         .await
         .unwrap();
 
     let structured = result.structured_content.as_ref().unwrap();
     assert_eq!(structured["success"], json!(false));
     assert_eq!(structured["status"], json!(401));
+    assert_eq!(result.is_error, Some(true));
     assert!(
         structured["error"]
             .as_str()
@@ -1239,7 +1267,7 @@ async fn confluence_get_page_views_handler_returns_structured_auth_error() {
 }
 
 #[tokio::test]
-async fn confluence_get_page_views_handler_rejects_empty_page_id_before_http() {
+async fn confluence_get_page_view_analytics_handler_rejects_empty_page_id_before_http() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_cloud_config_with_base_url(base_url)),
@@ -1247,10 +1275,12 @@ async fn confluence_get_page_views_handler_rejects_empty_page_id_before_http() {
         ..runtime_config()
     });
     let error = server
-        .confluence_get_page_views(Parameters(confluence_tools::ConfluenceGetPageViewsArgs {
-            page_id: " ".to_string(),
-            include_title: None,
-        }))
+        .get_page_view_analytics(Parameters(
+            confluence_tools::ConfluenceGetPageViewAnalyticsArgs {
+                page_id: " ".to_string(),
+                include_title: None,
+            },
+        ))
         .await
         .unwrap_err();
 
@@ -1259,7 +1289,7 @@ async fn confluence_get_page_views_handler_rejects_empty_page_id_before_http() {
 }
 
 #[tokio::test]
-async fn confluence_get_attachments_handler_handles_empty_and_missing_fields() {
+async fn confluence_list_content_attachments_handler_handles_empty_and_missing_fields() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -1267,23 +1297,27 @@ async fn confluence_get_attachments_handler_handles_empty_and_missing_fields() {
         ..runtime_config()
     });
     let empty = server
-        .confluence_get_attachments(Parameters(confluence_tools::ConfluenceGetAttachmentsArgs {
-            content_id: "empty-attachments".to_string(),
-            start: None,
-            limit: None,
-            filename: None,
-            media_type: None,
-        }))
+        .list_content_attachments(Parameters(
+            confluence_tools::ConfluenceListContentAttachmentsArgs {
+                content_id: "empty-attachments".to_string(),
+                start: None,
+                limit: None,
+                filename: None,
+                media_type: None,
+            },
+        ))
         .await
         .unwrap();
     let missing_fields = server
-        .confluence_get_attachments(Parameters(confluence_tools::ConfluenceGetAttachmentsArgs {
-            content_id: "missing-attachment-fields".to_string(),
-            start: None,
-            limit: None,
-            filename: None,
-            media_type: None,
-        }))
+        .list_content_attachments(Parameters(
+            confluence_tools::ConfluenceListContentAttachmentsArgs {
+                content_id: "missing-attachment-fields".to_string(),
+                start: None,
+                limit: None,
+                filename: None,
+                media_type: None,
+            },
+        ))
         .await
         .unwrap();
 
@@ -1300,7 +1334,7 @@ async fn confluence_get_attachments_handler_handles_empty_and_missing_fields() {
 }
 
 #[tokio::test]
-async fn confluence_get_attachments_handler_filters_filename_and_media_type() {
+async fn confluence_list_content_attachments_handler_filters_filename_and_media_type() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -1308,23 +1342,27 @@ async fn confluence_get_attachments_handler_filters_filename_and_media_type() {
         ..runtime_config()
     });
     let by_filename = server
-        .confluence_get_attachments(Parameters(confluence_tools::ConfluenceGetAttachmentsArgs {
-            content_id: "123".to_string(),
-            start: None,
-            limit: None,
-            filename: Some("file.png".to_string()),
-            media_type: None,
-        }))
+        .list_content_attachments(Parameters(
+            confluence_tools::ConfluenceListContentAttachmentsArgs {
+                content_id: "123".to_string(),
+                start: None,
+                limit: None,
+                filename: Some("file.png".to_string()),
+                media_type: None,
+            },
+        ))
         .await
         .unwrap();
     let by_media_type = server
-        .confluence_get_attachments(Parameters(confluence_tools::ConfluenceGetAttachmentsArgs {
-            content_id: "123".to_string(),
-            start: None,
-            limit: None,
-            filename: None,
-            media_type: Some("text/plain".to_string()),
-        }))
+        .list_content_attachments(Parameters(
+            confluence_tools::ConfluenceListContentAttachmentsArgs {
+                content_id: "123".to_string(),
+                start: None,
+                limit: None,
+                filename: None,
+                media_type: Some("text/plain".to_string()),
+            },
+        ))
         .await
         .unwrap();
 
@@ -1341,7 +1379,7 @@ async fn confluence_get_attachments_handler_filters_filename_and_media_type() {
 }
 
 #[tokio::test]
-async fn confluence_get_attachments_handler_rejects_invalid_limit_before_http() {
+async fn confluence_list_content_attachments_handler_rejects_invalid_limit_before_http() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -1349,13 +1387,15 @@ async fn confluence_get_attachments_handler_rejects_invalid_limit_before_http() 
         ..runtime_config()
     });
     let error = server
-        .confluence_get_attachments(Parameters(confluence_tools::ConfluenceGetAttachmentsArgs {
-            content_id: "123".to_string(),
-            start: None,
-            limit: Some(101),
-            filename: None,
-            media_type: None,
-        }))
+        .list_content_attachments(Parameters(
+            confluence_tools::ConfluenceListContentAttachmentsArgs {
+                content_id: "123".to_string(),
+                start: None,
+                limit: Some(101),
+                filename: None,
+                media_type: None,
+            },
+        ))
         .await
         .unwrap_err();
 
@@ -1376,7 +1416,7 @@ async fn confluence_download_attachment_handler_returns_bounded_base64_content()
         ..runtime_config()
     });
     let result = server
-        .confluence_download_attachment(Parameters(
+        .download_attachment(Parameters(
             confluence_tools::ConfluenceDownloadAttachmentArgs {
                 attachment_id: "att-1".to_string(),
             },
@@ -1387,6 +1427,10 @@ async fn confluence_download_attachment_handler_returns_bounded_base64_content()
     let structured = result.structured_content.as_ref().unwrap();
     assert_eq!(structured["success"], json!(true));
     assert_eq!(structured["attachment"]["id"], json!("att-1"));
+    assert_registered_output_schema_declares_properties(
+        confluence_tools::CONFLUENCE_DOWNLOAD_ATTACHMENT_TOOL_NAME,
+        &["success", "attachment", "error"],
+    );
     assert_eq!(
         structured["attachment"]["content"],
         json!({
@@ -1414,7 +1458,7 @@ async fn confluence_download_attachment_handler_rejects_stream_limit_and_cross_o
         ..runtime_config()
     });
     let stream_too_large = server
-        .confluence_download_attachment(Parameters(
+        .download_attachment(Parameters(
             confluence_tools::ConfluenceDownloadAttachmentArgs {
                 attachment_id: "att-stream-large".to_string(),
             },
@@ -1422,7 +1466,7 @@ async fn confluence_download_attachment_handler_rejects_stream_limit_and_cross_o
         .await
         .unwrap();
     let cross_origin = server
-        .confluence_download_attachment(Parameters(
+        .download_attachment(Parameters(
             confluence_tools::ConfluenceDownloadAttachmentArgs {
                 attachment_id: "att-cross".to_string(),
             },
@@ -1430,6 +1474,8 @@ async fn confluence_download_attachment_handler_rejects_stream_limit_and_cross_o
         .await
         .unwrap();
 
+    assert_eq!(stream_too_large.is_error, Some(true));
+    assert_eq!(cross_origin.is_error, Some(true));
     let stream_too_large = stream_too_large.structured_content.as_ref().unwrap();
     assert_eq!(stream_too_large["success"], json!(false));
     assert!(
@@ -1475,7 +1521,7 @@ async fn confluence_download_content_attachments_handler_returns_partial_failure
         ..runtime_config()
     });
     let result = server
-        .confluence_download_content_attachments(Parameters(
+        .download_content_attachments(Parameters(
             confluence_tools::ConfluenceDownloadContentAttachmentsArgs {
                 content_id: "download-batch".to_string(),
             },
@@ -1492,6 +1538,10 @@ async fn confluence_download_content_attachments_handler_returns_partial_failure
     assert_eq!(structured["summary"]["has_more"], json!(false));
     assert_eq!(structured["summary"]["limit_applied"], json!(false));
     assert_eq!(structured["attachments"][0]["id"], json!("att-1"));
+    assert_registered_output_schema_declares_properties(
+        confluence_tools::CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
+        &["success", "summary", "attachments", "failed"],
+    );
     assert_eq!(structured["failed"].as_array().unwrap().len(), 2);
     let requests = requests.lock().await;
     assert_eq!(requests.len(), 2);
@@ -1515,7 +1565,7 @@ async fn confluence_download_content_attachments_handler_paginates_until_no_next
         ..runtime_config()
     });
     let result = server
-        .confluence_download_content_attachments(Parameters(
+        .download_content_attachments(Parameters(
             confluence_tools::ConfluenceDownloadContentAttachmentsArgs {
                 content_id: "download-paged".to_string(),
             },
@@ -1560,7 +1610,7 @@ async fn confluence_download_content_attachments_handler_reports_page_protection
         ..runtime_config()
     });
     let result = server
-        .confluence_download_content_attachments(Parameters(
+        .download_content_attachments(Parameters(
             confluence_tools::ConfluenceDownloadContentAttachmentsArgs {
                 content_id: "download-capped".to_string(),
             },
@@ -1572,12 +1622,12 @@ async fn confluence_download_content_attachments_handler_reports_page_protection
     assert_eq!(structured["success"], json!(true));
     assert_eq!(
         structured["summary"]["pages_fetched"],
-        json!(CONFLUENCE_DOWNLOAD_ATTACHMENTS_MAX_PAGES)
+        json!(CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_MAX_PAGES)
     );
     assert_eq!(structured["summary"]["downloaded"], json!(0));
     assert_eq!(
         structured["summary"]["failed"],
-        json!(CONFLUENCE_DOWNLOAD_ATTACHMENTS_MAX_PAGES)
+        json!(CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_MAX_PAGES)
     );
     assert_eq!(structured["summary"]["has_more"], json!(true));
     assert_eq!(structured["summary"]["next_start"], json!(10));
@@ -1585,12 +1635,13 @@ async fn confluence_download_content_attachments_handler_reports_page_protection
     let requests = requests.lock().await;
     assert_eq!(
         requests.len() as u64,
-        CONFLUENCE_DOWNLOAD_ATTACHMENTS_MAX_PAGES
+        CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_MAX_PAGES
     );
 }
 
 #[tokio::test]
-async fn confluence_get_page_images_handler_filters_non_images_and_uses_extension_fallback() {
+async fn confluence_get_content_image_attachments_handler_filters_non_images_and_uses_extension_fallback()
+ {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -1598,9 +1649,11 @@ async fn confluence_get_page_images_handler_filters_non_images_and_uses_extensio
         ..runtime_config()
     });
     let result = server
-        .confluence_get_page_images(Parameters(confluence_tools::ConfluenceGetPageImagesArgs {
-            content_id: "images".to_string(),
-        }))
+        .get_content_image_attachments(Parameters(
+            confluence_tools::ConfluenceGetContentImageAttachmentsArgs {
+                content_id: "images".to_string(),
+            },
+        ))
         .await
         .unwrap();
 
@@ -1644,7 +1697,7 @@ async fn confluence_get_page_images_handler_filters_non_images_and_uses_extensio
 }
 
 #[tokio::test]
-async fn confluence_upload_attachment_handler_sends_local_file_as_multipart() {
+async fn confluence_upload_content_attachment_handler_sends_local_file_as_multipart() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -1653,8 +1706,8 @@ async fn confluence_upload_attachment_handler_sends_local_file_as_multipart() {
     });
     let file_path = temp_confluence_upload_file("upload.txt", b"hello");
     let result = server
-        .confluence_upload_attachment(Parameters(
-            confluence_tools::ConfluenceUploadAttachmentArgs {
+        .upload_content_attachment(Parameters(
+            confluence_tools::ConfluenceUploadContentAttachmentArgs {
                 content_id: "123".to_string(),
                 file_path: file_path.clone(),
                 comment: Some("Initial upload".to_string()),
@@ -1686,7 +1739,7 @@ async fn confluence_upload_attachment_handler_sends_local_file_as_multipart() {
 }
 
 #[tokio::test]
-async fn confluence_upload_attachment_handler_rejects_oversized_file_before_http_request() {
+async fn confluence_upload_content_attachment_handler_rejects_oversized_file_before_http_request() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -1695,8 +1748,8 @@ async fn confluence_upload_attachment_handler_rejects_oversized_file_before_http
     });
     let file_path = oversized_temp_confluence_upload_file("too-large.bin");
     let result = server
-        .confluence_upload_attachment(Parameters(
-            confluence_tools::ConfluenceUploadAttachmentArgs {
+        .upload_content_attachment(Parameters(
+            confluence_tools::ConfluenceUploadContentAttachmentArgs {
                 content_id: "123".to_string(),
                 file_path: file_path.clone(),
                 comment: None,
@@ -1709,6 +1762,7 @@ async fn confluence_upload_attachment_handler_rejects_oversized_file_before_http
 
     let structured = result.structured_content.as_ref().unwrap();
     assert_eq!(structured["success"], json!(false));
+    assert_eq!(result.is_error, Some(true));
     let error = structured["error"].as_str().unwrap();
     assert!(error.contains("exceeds configured upload limit"));
     assert!(error.contains("too-large.bin"));
@@ -1717,7 +1771,7 @@ async fn confluence_upload_attachment_handler_rejects_oversized_file_before_http
 }
 
 #[tokio::test]
-async fn confluence_upload_attachments_handler_returns_partial_success_summary() {
+async fn confluence_upload_content_attachments_handler_returns_partial_success_summary() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -1731,8 +1785,8 @@ async fn confluence_upload_attachments_handler_returns_partial_success_summary()
         .to_string_lossy()
         .into_owned();
     let result = server
-        .confluence_upload_attachments(Parameters(
-            confluence_tools::ConfluenceUploadAttachmentsArgs {
+        .upload_content_attachments(Parameters(
+            confluence_tools::ConfluenceUploadContentAttachmentsArgs {
                 content_id: "123".to_string(),
                 file_paths: format!("{ok_path}, {oversized_path}, {missing_path}"),
                 comment: Some("Batch upload".to_string()),
@@ -1747,9 +1801,20 @@ async fn confluence_upload_attachments_handler_returns_partial_success_summary()
     let structured = result.structured_content.as_ref().unwrap();
     assert_eq!(structured["success"], json!(false));
     assert_eq!(structured["partial_success"], json!(true));
+    assert_eq!(result.is_error, Some(false));
     assert_eq!(structured["summary"]["total"], json!(3));
     assert_eq!(structured["summary"]["uploaded"], json!(1));
     assert_eq!(structured["summary"]["failed"], json!(2));
+    assert_registered_output_schema_declares_properties(
+        confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
+        &[
+            "success",
+            "partial_success",
+            "summary",
+            "attachments",
+            "failed",
+        ],
+    );
     assert_eq!(
         structured["attachments"][0]["filename"],
         json!("batch-1.txt")
@@ -1788,7 +1853,7 @@ async fn confluence_delete_attachment_handler_returns_structured_success_and_fai
         ..runtime_config()
     });
     let success = server
-        .confluence_delete_attachment(Parameters(
+        .delete_attachment(Parameters(
             confluence_tools::ConfluenceDeleteAttachmentArgs {
                 attachment_id: "att-1".to_string(),
             },
@@ -1796,7 +1861,7 @@ async fn confluence_delete_attachment_handler_returns_structured_success_and_fai
         .await
         .unwrap();
     let failure = server
-        .confluence_delete_attachment(Parameters(
+        .delete_attachment(Parameters(
             confluence_tools::ConfluenceDeleteAttachmentArgs {
                 attachment_id: "att-delete-error".to_string(),
             },
@@ -1807,6 +1872,7 @@ async fn confluence_delete_attachment_handler_returns_structured_success_and_fai
     let success = success.structured_content.as_ref().unwrap();
     assert_eq!(success["success"], json!(true));
     assert_eq!(success["attachment_id"], json!("att-1"));
+    assert_eq!(failure.is_error, Some(true));
     let failure = failure.structured_content.as_ref().unwrap();
     assert_eq!(failure["success"], json!(false));
     assert_eq!(failure["attachment_id"], json!("att-delete-error"));
@@ -1832,7 +1898,7 @@ async fn confluence_get_page_handler_returns_metadata_by_page_id() {
         ..runtime_config()
     });
     let result = server
-        .confluence_get_page(Parameters(confluence_tools::ConfluenceGetPageArgs {
+        .get_page(Parameters(confluence_tools::ConfluenceGetPageArgs {
             page_id: Some("123".to_string()),
             title: Some("Ignored".to_string()),
             space_key: Some("IGN".to_string()),
@@ -1861,7 +1927,7 @@ async fn confluence_get_page_handler_returns_metadata_by_page_id() {
 }
 
 #[tokio::test]
-async fn confluence_get_attachments_handler_returns_metadata_page() {
+async fn confluence_list_content_attachments_handler_returns_metadata_page() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
@@ -1869,13 +1935,15 @@ async fn confluence_get_attachments_handler_returns_metadata_page() {
         ..runtime_config()
     });
     let result = server
-        .confluence_get_attachments(Parameters(confluence_tools::ConfluenceGetAttachmentsArgs {
-            content_id: "123".to_string(),
-            start: Some(0),
-            limit: Some(2),
-            filename: None,
-            media_type: None,
-        }))
+        .list_content_attachments(Parameters(
+            confluence_tools::ConfluenceListContentAttachmentsArgs {
+                content_id: "123".to_string(),
+                start: Some(0),
+                limit: Some(2),
+                filename: None,
+                media_type: None,
+            },
+        ))
         .await
         .unwrap();
 
@@ -1923,7 +1991,7 @@ async fn confluence_download_attachment_handler_reports_metadata_errors_without_
         ..runtime_config()
     });
     let no_url = server
-        .confluence_download_attachment(Parameters(
+        .download_attachment(Parameters(
             confluence_tools::ConfluenceDownloadAttachmentArgs {
                 attachment_id: "att-no-url".to_string(),
             },
@@ -1931,7 +1999,7 @@ async fn confluence_download_attachment_handler_reports_metadata_errors_without_
         .await
         .unwrap();
     let too_large = server
-        .confluence_download_attachment(Parameters(
+        .download_attachment(Parameters(
             confluence_tools::ConfluenceDownloadAttachmentArgs {
                 attachment_id: "att-large".to_string(),
             },

@@ -10,7 +10,7 @@ use crate::{
     context::AppContext,
     jira::config::{JiraConfig, JiraDeployment},
     jira::tools,
-    tool_registry::{ToolAccess, ToolMetadata, ToolService},
+    tool_registry::{ToolAccess, ToolAnnotationMetadata, ToolMetadata, ToolService},
 };
 use axum::{
     Json, Router,
@@ -25,7 +25,7 @@ use rmcp::{ServerHandler, handler::server::wrapper::Parameters};
 use serde_json::{Value, json};
 use tokio::sync::Mutex;
 
-use super::confluence_handlers::CONFLUENCE_DOWNLOAD_ATTACHMENTS_MAX_PAGES;
+use super::confluence_handlers::CONFLUENCE_DOWNLOAD_CONTENT_ATTACHMENTS_MAX_PAGES;
 use super::jira_payloads::{
     parse_required_object_arg, parse_required_object_list_arg, parse_required_string_list_arg,
 };
