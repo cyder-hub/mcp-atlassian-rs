@@ -319,6 +319,8 @@ The Rust server also exposes these Stage 3 Jira extension tools when Jira is con
 | `jira_get_issue_development_info` | read | `jira_development` |
 | `jira_get_issues_development_info` | read | `jira_development` |
 
+`jira_get_issue_sla` parses SLA values from Jira/JSM issue fields and returns `parsing_limitations`; it does not apply a local working-hours calendar or recompute SLA timers.
+
 The Rust server also exposes these Stage 4 Confluence tools when Confluence is configured. These are locally validated with mock Confluence. Stage 5 real acceptance passed representative pages, comments, labels, analytics, and attachments paths on test objects; `confluence_search_user` remains local-validated only.
 
 | Tool | Access | Toolset |
@@ -348,7 +350,7 @@ The Rust server also exposes these Stage 4 Confluence tools when Confluence is c
 | `confluence_delete_attachment` | write | `confluence_attachments` |
 | `confluence_get_page_images` | read | `confluence_attachments` |
 
-`confluence_get_page_views` is Cloud-only. Attachment download/image tools return bounded structured content; the current inline content limit is 1 MiB per attachment. Attachment upload tools accept explicit local file paths readable by the server process and do not implement directory allowlists or remote URL upload in Stage 4.
+`confluence_get_page_children` applies the requested limit to the combined page/folder result set and returns page/folder query statistics. `confluence_create_page` and `confluence_update_page` return `emoji_status` for the optional emoji sub-operation. `confluence_get_page_views` is Cloud-only. Attachment download/image tools return bounded structured content; the current inline content limit is 1 MiB per attachment. `confluence_download_content_attachments` paginates attachment listings up to 10 pages and returns `has_more`, `next_start`, `pages_fetched`, and `limit_applied` in the summary. Attachment upload tools accept explicit local file paths readable by the server process, reject files larger than 10 MiB before reading them, and do not implement directory allowlists or remote URL upload in Stage 4.
 
 ## Commands
 

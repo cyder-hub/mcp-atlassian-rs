@@ -75,7 +75,7 @@ All Jira rows below are implemented in Rust and are registry-managed business to
 | `jira_get_proforma_form_details` | read | `jira_forms` | Local mock REST coverage for form details. | Product blocked; no valid real form ID/interface was available. |
 | `jira_update_proforma_form_answers` | write | `jira_forms` | Local mock REST, schema, and read-only guard covered. | Product blocked; real answer update was not executed. |
 | `jira_get_issue_dates` | read | `jira_metrics` | Local mock REST coverage for issue date/status timing. | Local only. |
-| `jira_get_issue_sla` | read | `jira_metrics` | Local mock REST coverage for SLA extraction. | Real accepted for issue SLA read. |
+| `jira_get_issue_sla` | read | `jira_metrics` | Local mock REST coverage for SLA extraction and parsing limitation output; no local working-hours filtering. | Real accepted for issue SLA read. |
 | `jira_get_issue_development_info` | read | `jira_development` | Local mock REST coverage for single issue development info. | Real accepted for single development-info read. |
 | `jira_get_issues_development_info` | read | `jira_development` | Local mock REST coverage for batch development info. | Real accepted for batch development-info read. |
 
@@ -87,10 +87,10 @@ All Confluence rows below are implemented in Rust and are registry-managed busin
 | --- | --- | --- | --- | --- |
 | `confluence_search` | read | `confluence_pages` | Local mock REST and MCP smoke covered. | Real accepted for search. |
 | `confluence_get_page` | read | `confluence_pages` | Local mock REST and MCP smoke covered. | Real accepted for page read. |
-| `confluence_get_page_children` | read | `confluence_pages` | Local mock REST coverage for children and folders. | Real accepted for children listing. |
+| `confluence_get_page_children` | read | `confluence_pages` | Local mock REST coverage for combined page/folder limit handling and query statistics. | Real accepted for children listing. |
 | `confluence_get_space_page_tree` | read | `confluence_pages` | Local mock REST coverage for page tree. | Real accepted for space tree. |
-| `confluence_create_page` | write | `confluence_pages` | Local mock REST, schema, and read-only guard covered. | Real accepted on Stage 5 test object. |
-| `confluence_update_page` | write | `confluence_pages` | Local mock REST, schema, and read-only guard covered. | Real accepted on Stage 5 test object. |
+| `confluence_create_page` | write | `confluence_pages` | Local mock REST, schema, read-only guard, and `emoji_status` success output covered. | Real accepted on Stage 5 test object. |
+| `confluence_update_page` | write | `confluence_pages` | Local mock REST, schema, read-only guard, and `emoji_status` success/failure output covered. | Real accepted on Stage 5 test object. |
 | `confluence_delete_page` | write | `confluence_pages` | Local mock REST, schema, and read-only guard covered. | Read-only guard only; real delete was not executed. |
 | `confluence_move_page` | write | `confluence_pages` | Local mock REST, schema, and read-only guard covered. | Read-only guard only; real move was not executed. |
 | `confluence_get_comments` | read | `confluence_comments` | Local mock REST coverage for page comments. | Real accepted for comment read. |
@@ -102,11 +102,11 @@ All Confluence rows below are implemented in Rust and are registry-managed busin
 | `confluence_get_page_history` | read | `confluence_pages` | Local mock REST coverage for page history. | Local only. |
 | `confluence_get_page_diff` | read | `confluence_pages` | Local mock REST coverage for page version diff. | Local only. |
 | `confluence_get_page_views` | read | `confluence_analytics` | Local mock REST coverage for Cloud success and Server/Data Center unavailable behavior. | Real accepted for Cloud page views; Server/Data Center is unavailable by design. |
-| `confluence_upload_attachment` | write | `confluence_attachments` | Local mock REST, schema, and read-only guard covered. | Real accepted on Stage 5 test object. |
-| `confluence_upload_attachments` | write | `confluence_attachments` | Local mock REST coverage for batch partial success/failure summaries. | Real accepted for Stage 5 batch upload. |
+| `confluence_upload_attachment` | write | `confluence_attachments` | Local mock REST, schema, read-only guard, and 10 MiB pre-read size limit covered. | Real accepted on Stage 5 test object. |
+| `confluence_upload_attachments` | write | `confluence_attachments` | Local mock REST coverage for batch partial success/failure summaries, including oversized file failures. | Real accepted for Stage 5 batch upload. |
 | `confluence_get_attachments` | read | `confluence_attachments` | Local mock REST coverage for attachment listing. | Real accepted for attachment listing. |
 | `confluence_download_attachment` | read | `confluence_attachments` | Local mock REST coverage for same-origin bounded attachment download. | Real accepted for single attachment download. |
-| `confluence_download_content_attachments` | read | `confluence_attachments` | Local mock REST coverage for bounded multi-attachment download. | Real accepted for content attachment download. |
+| `confluence_download_content_attachments` | read | `confluence_attachments` | Local mock REST coverage for paginated bounded multi-attachment download, partial failures, and page protection summaries. | Real accepted for content attachment download. |
 | `confluence_delete_attachment` | write | `confluence_attachments` | Local mock REST, schema, and read-only guard covered. | Read-only guard only; real attachment delete was not executed. |
 | `confluence_get_page_images` | read | `confluence_attachments` | Local mock REST coverage for page image extraction. | Real accepted for page images. |
 

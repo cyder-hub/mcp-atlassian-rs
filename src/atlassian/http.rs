@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use reqwest::{
     Client, ClientBuilder, Method, NoProxy, Proxy, RequestBuilder, Url, header::CONTENT_TYPE,
-    redirect::Policy,
+    multipart::Form, redirect::Policy,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -169,6 +169,19 @@ impl AtlassianHttpClient {
             .request(Method::PUT, path)?
             .header(CONTENT_TYPE, content_type)
             .body(body);
+        for (name, value) in headers {
+            builder = builder.header(*name, *value);
+        }
+        Ok(builder)
+    }
+
+    pub fn put_multipart_with_headers(
+        &self,
+        path: &str,
+        form: Form,
+        headers: &[(&'static str, &'static str)],
+    ) -> Result<RequestBuilder, AtlassianError> {
+        let mut builder = self.request(Method::PUT, path)?.multipart(form);
         for (name, value) in headers {
             builder = builder.header(*name, *value);
         }

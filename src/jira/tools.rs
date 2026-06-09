@@ -181,8 +181,6 @@ pub struct JiraSearchFieldsArgs {
     pub keyword: Option<String>,
     #[serde(default)]
     pub limit: Option<u64>,
-    #[serde(default)]
-    pub refresh: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -582,8 +580,6 @@ pub struct JiraGetIssueSlaArgs {
     #[serde(default)]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub metrics: Option<Value>,
-    #[serde(default)]
-    pub working_hours_only: Option<bool>,
     #[serde(default)]
     pub include_raw_dates: Option<bool>,
 }

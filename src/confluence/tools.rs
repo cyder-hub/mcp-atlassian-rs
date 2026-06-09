@@ -137,8 +137,6 @@ pub struct ConfluenceCreatePageArgs {
     #[serde(default)]
     pub content_format: Option<String>,
     #[serde(default)]
-    pub enable_heading_anchors: Option<bool>,
-    #[serde(default)]
     pub include_content: Option<bool>,
     #[serde(default)]
     pub emoji: Option<String>,
@@ -158,8 +156,6 @@ pub struct ConfluenceUpdatePageArgs {
     pub parent_id: Option<String>,
     #[serde(default)]
     pub content_format: Option<String>,
-    #[serde(default)]
-    pub enable_heading_anchors: Option<bool>,
     #[serde(default)]
     pub include_content: Option<bool>,
     #[serde(default)]
@@ -386,7 +382,6 @@ mod tests {
             "content": "# Roadmap",
             "parent_id": 123,
             "content_format": "markdown",
-            "enable_heading_anchors": true,
             "include_content": false,
             "emoji": "docs"
         }))
@@ -403,7 +398,6 @@ mod tests {
         .unwrap();
 
         assert_eq!(create.parent_id.as_deref(), Some("123"));
-        assert_eq!(create.enable_heading_anchors, Some(true));
         assert_eq!(update.page_id, "456");
         assert_eq!(update.is_minor_edit, Some(true));
         assert_eq!(update.parent_id, None);

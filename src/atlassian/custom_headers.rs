@@ -24,11 +24,6 @@ impl CustomHeaders {
         parse_custom_headers(variable, &value)
     }
 
-    #[cfg(test)]
-    pub fn is_empty(&self) -> bool {
-        self.headers.is_empty()
-    }
-
     pub fn iter(&self) -> impl Iterator<Item = (&HeaderName, &HeaderValue)> {
         self.headers.iter().map(|(name, value)| (name, value))
     }
@@ -39,7 +34,7 @@ impl CustomHeaders {
         self.headers
             .iter()
             .rev()
-            .find(|(header_name, _)| header_name == &name)
+            .find(|(header_name, _)| header_name == name)
             .and_then(|(_, value)| value.to_str().ok())
     }
 }

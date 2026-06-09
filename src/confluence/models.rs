@@ -109,6 +109,16 @@ pub struct ConfluencePageListResponse {
     pub extra: Value,
 }
 
+impl ConfluencePageListResponse {
+    pub fn has_next_link(&self) -> bool {
+        has_next_link(&self.links)
+    }
+
+    pub fn next_start(&self) -> Option<u64> {
+        next_start_from_links(&self.links)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfluenceSpace {
@@ -529,6 +539,34 @@ pub struct ConfluenceAttachmentListResponse {
     pub links: Value,
     #[serde(flatten)]
     pub extra: Value,
+}
+
+impl ConfluenceAttachmentListResponse {
+    pub fn has_next_link(&self) -> bool {
+        has_next_link(&self.links)
+    }
+
+    pub fn next_start(&self) -> Option<u64> {
+        next_start_from_links(&self.links)
+    }
+}
+
+pub fn has_next_link(links: &Value) -> bool {
+    links
+        .get("next")
+        .and_then(Value::as_str)
+        .is_some_and(|link| !link.trim().is_empty())
+}
+
+pub fn next_start_from_links(links: &Value) -> Option<u64> {
+    let next = links.get("next").and_then(Value::as_str)?;
+    let query = next.split_once('?')?.1;
+    query.split('&').find_map(|pair| {
+        let (name, value) = pair.split_once('=')?;
+        (name == "start")
+            .then(|| value.parse::<u64>().ok())
+            .flatten()
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
