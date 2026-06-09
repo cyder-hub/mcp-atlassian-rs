@@ -79,7 +79,7 @@ impl JiraClient {
             "product_dependency": {
                 "product": "Jira Service Management SLA",
                 "available": true,
-                "message": "SLA fields were parsed from Jira issue fields; real Jira schema validation remains deferred to Stage 4."
+                "message": "SLA fields were parsed from Jira issue fields; real Jira schema validation is not available in this release."
             },
         }))
     }

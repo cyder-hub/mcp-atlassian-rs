@@ -244,7 +244,7 @@ mod tests {
     }
 
     #[test]
-    fn markdown_to_storage_snapshot_covers_stage4_boundary() {
+    fn markdown_to_storage_snapshot_covers_current_boundary() {
         let markdown = "# Roadmap\n\nHello <team> & \"docs\"\n\n- first item\n- [second](https://example.invalid?q=1&x=<tag>)\n\n```text\n<raw & value>\n```";
 
         assert_eq!(

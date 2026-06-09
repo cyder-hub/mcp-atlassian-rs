@@ -65,8 +65,8 @@ async fn project_filter_rejects_issue_without_http_request() {
 }
 
 #[tokio::test]
-async fn stage_three_issue_helpers_use_expected_endpoints() {
-    let (base_url, requests) = stage_three_mock_server().await;
+async fn jira_extension_issue_helpers_use_expected_endpoints() {
+    let (base_url, requests) = jira_extension_mock_server().await;
     let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
 
     let created = client
@@ -170,8 +170,8 @@ async fn cloud_issue_create_and_update_use_v3_for_adf_fields() {
 }
 
 #[tokio::test]
-async fn stage_three_changelog_and_product_dependency_helpers_are_safe() {
-    let (cloud_url, cloud_requests) = stage_three_mock_server().await;
+async fn jira_extension_changelog_and_product_dependency_helpers_are_safe() {
+    let (cloud_url, cloud_requests) = jira_extension_mock_server().await;
     let cloud = JiraClient::new(config(cloud_url, JiraDeployment::Cloud)).unwrap();
     let changelog = cloud
         .batch_get_changelogs(
@@ -189,7 +189,7 @@ async fn stage_three_changelog_and_product_dependency_helpers_are_safe() {
     assert_eq!(cloud_requests[0].body["fieldIds"][0], "status");
     assert_eq!(cloud_requests[0].body["maxResults"], 50);
 
-    let (server_url, server_requests) = stage_three_mock_server().await;
+    let (server_url, server_requests) = jira_extension_mock_server().await;
     let server = JiraClient::new(config(server_url, JiraDeployment::ServerDataCenter)).unwrap();
     let unsupported = server
         .batch_get_changelogs(vec!["ABC-1".to_string()], None, None)
@@ -218,8 +218,8 @@ async fn stage_three_changelog_and_product_dependency_helpers_are_safe() {
 }
 
 #[tokio::test]
-async fn stage_three_common_extension_helpers_use_expected_endpoints() {
-    let (base_url, requests) = stage_three_mock_server().await;
+async fn jira_common_extension_helpers_use_expected_endpoints() {
+    let (base_url, requests) = jira_extension_mock_server().await;
     let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
 
     client.get_all_projects(false).await.unwrap();
@@ -308,7 +308,7 @@ async fn stage_three_common_extension_helpers_use_expected_endpoints() {
 
 #[tokio::test]
 async fn cloud_remove_watcher_uses_account_id_query_parameter() {
-    let (base_url, requests) = stage_three_mock_server().await;
+    let (base_url, requests) = jira_extension_mock_server().await;
     let client = JiraClient::new(config(base_url, JiraDeployment::Cloud)).unwrap();
 
     client

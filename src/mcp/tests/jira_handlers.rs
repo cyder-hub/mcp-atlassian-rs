@@ -1688,7 +1688,7 @@ async fn jira_tool_handler_rejects_invalid_json_object_input_before_http() {
 }
 
 #[test]
-fn stage_three_handler_arg_helpers_validate_json_shapes() {
+fn jira_extension_handler_arg_helpers_validate_json_shapes() {
     assert!(
         parse_required_object_arg(json!("[]"), "fields")
             .unwrap_err()

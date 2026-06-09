@@ -15,17 +15,10 @@ impl ClientTlsIdentityConfig {
         get_var: &mut F,
         cert_variable: &'static str,
         key_variable: &'static str,
-        key_password_variable: &'static str,
     ) -> Result<Option<Self>, ConfigError>
     where
         F: FnMut(&str) -> Result<String, E>,
     {
-        if optional_var(get_var, key_password_variable).is_some() {
-            return Err(ConfigError::UnsupportedClientKeyPassword {
-                variable: key_password_variable,
-            });
-        }
-
         let cert_path = optional_var(get_var, cert_variable);
         let key_path = optional_var(get_var, key_variable);
         match (cert_path, key_path) {
@@ -77,9 +70,7 @@ fn non_empty_trimmed(value: String) -> Option<String> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use crate::atlassian::compat::{
-        ENV_JIRA_CLIENT_CERT, ENV_JIRA_CLIENT_KEY, ENV_JIRA_CLIENT_KEY_PASSWORD,
-    };
+    use crate::atlassian::compat::{ENV_JIRA_CLIENT_CERT, ENV_JIRA_CLIENT_KEY};
 
     use super::*;
 
@@ -95,7 +86,6 @@ mod tests {
             &mut |key| vars.get(key).cloned().ok_or(()),
             ENV_JIRA_CLIENT_CERT,
             ENV_JIRA_CLIENT_KEY,
-            ENV_JIRA_CLIENT_KEY_PASSWORD,
         )
     }
 
@@ -133,19 +123,5 @@ mod tests {
                 key_variable: ENV_JIRA_CLIENT_KEY,
             }
         );
-    }
-
-    #[test]
-    fn mtls_config_rejects_key_password_without_leaking_value() {
-        let error =
-            mtls_from_pairs(&[(ENV_JIRA_CLIENT_KEY_PASSWORD, "secret-password")]).unwrap_err();
-
-        assert_eq!(
-            error,
-            ConfigError::UnsupportedClientKeyPassword {
-                variable: ENV_JIRA_CLIENT_KEY_PASSWORD,
-            }
-        );
-        assert!(!error.to_string().contains("secret-password"));
     }
 }

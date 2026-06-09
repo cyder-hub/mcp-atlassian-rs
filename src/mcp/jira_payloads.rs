@@ -188,7 +188,7 @@ pub(super) fn reject_unsupported_attachments(
         .is_some_and(|object| object.contains_key("attachments"))
     {
         Err(atlassian_error(AtlassianError::invalid_input(format!(
-            "{field_name}.attachments is not supported by jira_update_issue in Stage 3"
+            "{field_name}.attachments is not supported by jira_update_issue"
         ))))
     } else {
         Ok(())

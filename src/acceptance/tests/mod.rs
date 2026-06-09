@@ -33,16 +33,6 @@ fn parses_dotenv_values() {
 }
 
 #[test]
-fn stage_specific_object_env_names_are_legacy_aliases() {
-    let mut env = EnvMap::new();
-    env.insert("STAGE5_JIRA_READ_ISSUE".to_string(), "TEST-1".to_string());
-    assert_eq!(env_value(&env, "JIRA_READ_ISSUE"), "TEST-1");
-
-    env.insert("JIRA_READ_ISSUE".to_string(), "TEST-2".to_string());
-    assert_eq!(env_value(&env, "JIRA_READ_ISSUE"), "TEST-2");
-}
-
-#[test]
 fn preflight_reports_missing_base_env() {
     let env = EnvMap::new();
     assert_eq!(

@@ -50,12 +50,12 @@ Usage:
   mcp-atlassian-rs [stdio]
   mcp-atlassian-rs streamhttp [--host <host>] [--port <port>] [--path <path>] [--env-file <path>]
   mcp-atlassian-rs acceptance <jira|confluence|mcp> (--preflight | --run <binary>) [--env-file <path>]
-  mcp-atlassian-rs smoke <jira|confluence> [all|stdio|http|read-only] [--port <port>] [--path <path>]
+  mcp-atlassian-rs smoke <jira|confluence> [all|stdio|http|restricted] [--port <port>] [--path <path>]
 
 Commands:
   stdio       Run the MCP server over standard input/output.
   streamhttp  Run the MCP server over streamable HTTP.
-  acceptance  Run Stage 5 acceptance checks from the Rust binary.
+  acceptance  Run real acceptance checks from the Rust binary.
   smoke       Run local smoke checks against Rust mock Atlassian services.
 
 Options:
@@ -159,8 +159,8 @@ fn log_runtime_context(context: &AppContext) {
     let availability = context.service_availability();
 
     tracing::info!(
-        read_only = context.read_only(),
         enabled_tools,
+        disabled_tools = context.disabled_tools().len(),
         enabled_toolsets = context.enabled_toolsets().len(),
         jira_configured = availability.jira,
         confluence_configured = availability.confluence,

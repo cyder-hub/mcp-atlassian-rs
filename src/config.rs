@@ -1,7 +1,9 @@
 use std::{collections::BTreeSet, net::IpAddr};
 
 use crate::atlassian::security::BLOCKED_HOSTNAMES;
-use crate::tool_registry::{all_toolsets, default_toolsets};
+use crate::tool_registry::{
+    DEFAULT_TOOL_PROFILE, all_toolsets, default_toolsets, toolsets_for_profile,
+};
 use crate::{
     atlassian::compat::ENV_ATLASSIAN_OAUTH_ENABLE, confluence::config::ConfluenceConfig,
     error::ConfigError, jira::config::JiraConfig,
@@ -14,8 +16,9 @@ pub const DEFAULT_HTTP_HOST: &str = "127.0.0.1";
 pub const DEFAULT_HTTP_PORT: u16 = 8000;
 pub const DEFAULT_HTTP_PATH: &str = "/mcp";
 
-pub const ENV_READ_ONLY_MODE: &str = "READ_ONLY_MODE";
+pub const ENV_TOOL_PROFILE: &str = "TOOL_PROFILE";
 pub const ENV_ENABLED_TOOLS: &str = "ENABLED_TOOLS";
+pub const ENV_DISABLED_TOOLS: &str = "DISABLED_TOOLS";
 pub const ENV_TOOLSETS: &str = "TOOLSETS";
 pub const ENV_ATLASSIAN_OAUTH_CLOUD_ID: &str = "ATLASSIAN_OAUTH_CLOUD_ID";
 pub const ENV_HTTP_HOST: &str = "MCP_HTTP_HOST";
@@ -26,8 +29,8 @@ pub use crate::atlassian::security::ENV_ALLOWED_URL_DOMAINS;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeConfig {
-    pub read_only: bool,
     pub enabled_tools: Option<BTreeSet<String>>,
+    pub disabled_tools: BTreeSet<String>,
     pub enabled_toolsets: BTreeSet<String>,
     pub jira: Option<JiraConfig>,
     pub confluence: Option<ConfluenceConfig>,
@@ -56,9 +59,10 @@ impl RuntimeConfig {
     where
         F: FnMut(&str) -> Result<String, E>,
     {
-        let read_only = parse_extended_truthy(get_var(ENV_READ_ONLY_MODE).ok().as_deref());
+        let tool_profile = parse_tool_profile(get_var(ENV_TOOL_PROFILE).ok().as_deref());
         let enabled_tools = parse_enabled_tools(get_var(ENV_ENABLED_TOOLS).ok().as_deref());
-        let enabled_toolsets = parse_toolsets(get_var(ENV_TOOLSETS).ok().as_deref());
+        let disabled_tools = parse_csv_names(get_var(ENV_DISABLED_TOOLS).ok().as_deref());
+        let enabled_toolsets = parse_toolsets(&tool_profile, get_var(ENV_TOOLSETS).ok().as_deref());
         let jira = JiraConfig::from_var_provider(&mut get_var)?;
         let confluence = ConfluenceConfig::from_var_provider(&mut get_var)?;
         let atlassian_oauth_cloud_id =
@@ -71,8 +75,8 @@ impl RuntimeConfig {
         let http = HttpConfig::from_var_provider(&mut get_var, http_overrides)?;
 
         Ok(Self {
-            read_only,
             enabled_tools,
+            disabled_tools,
             enabled_toolsets,
             jira,
             confluence,
@@ -88,9 +92,9 @@ impl RuntimeConfig {
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            read_only: false,
             enabled_tools: None,
-            enabled_toolsets: all_toolsets(),
+            disabled_tools: BTreeSet::new(),
+            enabled_toolsets: default_toolsets(),
             jira: None,
             confluence: None,
             atlassian_oauth_cloud_id: None,
@@ -167,20 +171,28 @@ fn parse_enabled_tools(value: Option<&str>) -> Option<BTreeSet<String>> {
     if tools.is_empty() { None } else { Some(tools) }
 }
 
-fn parse_toolsets(value: Option<&str>) -> BTreeSet<String> {
-    let tokens = parse_csv_tokens(value);
-    if tokens.is_empty() {
-        return all_toolsets();
-    }
+fn parse_tool_profile(value: Option<&str>) -> String {
+    value
+        .and_then(|value| {
+            let value = value.trim();
+            if value.is_empty() {
+                None
+            } else {
+                Some(value.to_ascii_lowercase())
+            }
+        })
+        .unwrap_or_else(|| DEFAULT_TOOL_PROFILE.to_string())
+}
 
+fn parse_toolsets(profile: &str, value: Option<&str>) -> BTreeSet<String> {
+    let mut result = profile_toolsets(profile);
+    let tokens = parse_csv_tokens(value);
     let all = all_toolsets();
-    let defaults = default_toolsets();
-    let mut result = BTreeSet::new();
 
     for token in tokens {
-        match token.to_ascii_lowercase().as_str() {
+        let token = token.to_ascii_lowercase();
+        match token.as_str() {
             "all" => return all,
-            "default" => result.extend(defaults.iter().cloned()),
             _ if all.contains(&token) => {
                 result.insert(token);
             }
@@ -189,6 +201,14 @@ fn parse_toolsets(value: Option<&str>) -> BTreeSet<String> {
     }
 
     result
+}
+
+fn profile_toolsets(profile: &str) -> BTreeSet<String> {
+    toolsets_for_profile(profile)
+        .unwrap_or_default()
+        .iter()
+        .map(|toolset| (*toolset).to_string())
+        .collect()
 }
 
 fn parse_csv_names(value: Option<&str>) -> BTreeSet<String> {
@@ -328,9 +348,9 @@ mod tests {
     fn runtime_config_defaults_to_stage_one_control_plane_values() {
         let config = config_from_pairs(&[]).unwrap();
 
-        assert!(!config.read_only);
         assert_eq!(config.enabled_tools, None);
-        assert_eq!(config.enabled_toolsets, all_toolsets());
+        assert!(config.disabled_tools.is_empty());
+        assert_eq!(config.enabled_toolsets, default_toolsets());
         assert_eq!(config.jira, None);
         assert_eq!(config.confluence, None);
         assert_eq!(config.atlassian_oauth_cloud_id, None);
@@ -341,20 +361,7 @@ mod tests {
     }
 
     #[test]
-    fn read_only_mode_uses_extended_truthy_values() {
-        for value in ["true", "1", "yes", "y", "on", "TRUE", " On "] {
-            let config = config_from_pairs(&[(ENV_READ_ONLY_MODE, value)]).unwrap();
-            assert!(config.read_only, "value `{value}` should be truthy");
-        }
-
-        for value in ["false", "0", "no", "off", ""] {
-            let config = config_from_pairs(&[(ENV_READ_ONLY_MODE, value)]).unwrap();
-            assert!(!config.read_only, "value `{value}` should be false");
-        }
-    }
-
-    #[test]
-    fn enabled_tools_are_trimmed_and_empty_values_mean_all() {
+    fn enabled_and_disabled_tools_are_trimmed_and_empty_values_are_ignored() {
         let config =
             config_from_pairs(&[(ENV_ENABLED_TOOLS, " jira_search, , get_issue ")]).unwrap();
         let tools = config.enabled_tools.unwrap();
@@ -369,20 +376,51 @@ mod tests {
                 .enabled_tools,
             None
         );
+
+        let disabled = config_from_pairs(&[(ENV_DISABLED_TOOLS, " jira_delete_issue, , typo ")])
+            .unwrap()
+            .disabled_tools;
+        assert!(disabled.contains("jira_delete_issue"));
+        assert!(disabled.contains("typo"));
+        assert_eq!(disabled.len(), 2);
     }
 
     #[test]
-    fn toolsets_unset_empty_or_all_enable_all_baseline_toolsets() {
+    fn tool_profile_defaults_to_basic_and_can_select_higher_profiles() {
         assert_eq!(
             config_from_pairs(&[]).unwrap().enabled_toolsets,
-            all_toolsets()
+            default_toolsets()
         );
         assert_eq!(
-            config_from_pairs(&[(ENV_TOOLSETS, " , ")])
+            config_from_pairs(&[(ENV_TOOL_PROFILE, "developer")])
+                .unwrap()
+                .enabled_toolsets
+                .contains("jira_sprint_planning"),
+            true
+        );
+        assert_eq!(
+            config_from_pairs(&[(ENV_TOOL_PROFILE, "manager")])
+                .unwrap()
+                .enabled_toolsets
+                .contains("jira_issue_delete"),
+            true
+        );
+        assert_eq!(
+            config_from_pairs(&[(ENV_TOOL_PROFILE, "full")])
                 .unwrap()
                 .enabled_toolsets,
             all_toolsets()
         );
+    }
+
+    #[test]
+    fn toolsets_are_additive_to_profile_and_all_explicitly_enables_everything() {
+        let config = config_from_pairs(&[(ENV_TOOLSETS, "jira_sprint_manage")]).unwrap();
+        let mut expected = default_toolsets();
+        expected.insert("jira_sprint_manage".to_string());
+
+        assert_eq!(config.enabled_toolsets, expected);
+
         assert_eq!(
             config_from_pairs(&[(ENV_TOOLSETS, "all")])
                 .unwrap()
@@ -392,18 +430,13 @@ mod tests {
     }
 
     #[test]
-    fn toolsets_default_keyword_enables_python_default_toolsets() {
-        let config = config_from_pairs(&[(ENV_TOOLSETS, "default,jira_agile")]).unwrap();
-        let mut expected = default_toolsets();
-        expected.insert("jira_agile".to_string());
+    fn custom_profile_starts_empty_and_unknown_toolsets_are_ignored() {
+        let config = config_from_pairs(&[(ENV_TOOL_PROFILE, "custom")]).unwrap();
+        assert!(config.enabled_toolsets.is_empty());
 
-        assert_eq!(config.enabled_toolsets, expected);
-    }
-
-    #[test]
-    fn toolsets_unknown_only_fails_closed() {
-        let config = config_from_pairs(&[(ENV_TOOLSETS, "typo_name")]).unwrap();
-
+        let config =
+            config_from_pairs(&[(ENV_TOOL_PROFILE, "custom"), (ENV_TOOLSETS, "typo_name")])
+                .unwrap();
         assert!(config.enabled_toolsets.is_empty());
     }
 

@@ -87,10 +87,12 @@ fn default_jira_tool_schemas_are_client_compatible() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
         enabled_toolsets: BTreeSet::from([
-            "jira_issues".to_string(),
-            "jira_fields".to_string(),
-            "jira_comments".to_string(),
-            "jira_transitions".to_string(),
+            "jira_issue_read".to_string(),
+            "jira_issue_write".to_string(),
+            "jira_fields_read".to_string(),
+            "jira_comments_write".to_string(),
+            "jira_workflow_read".to_string(),
+            "jira_workflow_write".to_string(),
         ]),
         ..runtime_config()
     });
@@ -106,6 +108,7 @@ fn default_jira_tool_schemas_are_client_compatible() {
 fn all_jira_tool_schemas_are_client_compatible() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
+        enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
     let tools = server.current_tools_result().tools;
@@ -123,27 +126,19 @@ fn all_jira_tool_schemas_are_client_compatible() {
 }
 
 #[test]
-fn confluence_default_toolsets_obey_read_only_and_have_client_compatible_schemas() {
+fn confluence_content_toolsets_have_client_compatible_schemas() {
     let read_write = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config()),
         enabled_toolsets: BTreeSet::from([
-            "confluence_pages".to_string(),
-            "confluence_comments".to_string(),
-        ]),
-        ..runtime_config()
-    });
-    let read_only = server_with_config(RuntimeConfig {
-        read_only: true,
-        confluence: Some(confluence_config()),
-        enabled_toolsets: BTreeSet::from([
-            "confluence_pages".to_string(),
-            "confluence_comments".to_string(),
+            "confluence_content_read".to_string(),
+            "confluence_content_write".to_string(),
+            "confluence_comments_read".to_string(),
+            "confluence_comments_write".to_string(),
         ]),
         ..runtime_config()
     });
     let read_write_tools = read_write.current_tools_result().tools;
     let read_write_names = tool_names(read_write_tools.clone());
-    let read_only_names = current_tool_names(&read_only);
 
     assert!(read_write_names.contains(&confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME.to_string()));
     assert!(
@@ -151,13 +146,6 @@ fn confluence_default_toolsets_obey_read_only_and_have_client_compatible_schemas
     );
     assert!(
         read_write_names.contains(&confluence_tools::CONFLUENCE_ADD_COMMENT_TOOL_NAME.to_string())
-    );
-    assert!(read_only_names.contains(&confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME.to_string()));
-    assert!(
-        !read_only_names.contains(&confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME.to_string())
-    );
-    assert!(
-        !read_only_names.contains(&confluence_tools::CONFLUENCE_ADD_COMMENT_TOOL_NAME.to_string())
     );
     assert_client_compatible_tool_schemas(&read_write_tools);
     assert_tool_schema_lacks_property(

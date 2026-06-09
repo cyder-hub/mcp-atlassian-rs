@@ -9,27 +9,20 @@ pub const ENV_CONFLUENCE_OAUTH_ACCESS_TOKEN: &str = "CONFLUENCE_OAUTH_ACCESS_TOK
 pub const ENV_HTTP_PROXY: &str = "HTTP_PROXY";
 pub const ENV_HTTPS_PROXY: &str = "HTTPS_PROXY";
 pub const ENV_NO_PROXY: &str = "NO_PROXY";
-pub const ENV_SOCKS_PROXY: &str = "SOCKS_PROXY";
 
 pub const ENV_JIRA_HTTP_PROXY: &str = "JIRA_HTTP_PROXY";
 pub const ENV_JIRA_HTTPS_PROXY: &str = "JIRA_HTTPS_PROXY";
 pub const ENV_JIRA_NO_PROXY: &str = "JIRA_NO_PROXY";
-pub const ENV_JIRA_SOCKS_PROXY: &str = "JIRA_SOCKS_PROXY";
 pub const ENV_JIRA_CUSTOM_HEADERS: &str = "JIRA_CUSTOM_HEADERS";
 pub const ENV_JIRA_CLIENT_CERT: &str = "JIRA_CLIENT_CERT";
 pub const ENV_JIRA_CLIENT_KEY: &str = "JIRA_CLIENT_KEY";
-pub const ENV_JIRA_CLIENT_KEY_PASSWORD: &str = "JIRA_CLIENT_KEY_PASSWORD";
 
 pub const ENV_CONFLUENCE_HTTP_PROXY: &str = "CONFLUENCE_HTTP_PROXY";
 pub const ENV_CONFLUENCE_HTTPS_PROXY: &str = "CONFLUENCE_HTTPS_PROXY";
 pub const ENV_CONFLUENCE_NO_PROXY: &str = "CONFLUENCE_NO_PROXY";
-pub const ENV_CONFLUENCE_SOCKS_PROXY: &str = "CONFLUENCE_SOCKS_PROXY";
 pub const ENV_CONFLUENCE_CUSTOM_HEADERS: &str = "CONFLUENCE_CUSTOM_HEADERS";
 pub const ENV_CONFLUENCE_CLIENT_CERT: &str = "CONFLUENCE_CLIENT_CERT";
 pub const ENV_CONFLUENCE_CLIENT_KEY: &str = "CONFLUENCE_CLIENT_KEY";
-pub const ENV_CONFLUENCE_CLIENT_KEY_PASSWORD: &str = "CONFLUENCE_CLIENT_KEY_PASSWORD";
-
-pub const ENV_MCP_ATLASSIAN_USE_SYSTEM_TRUSTSTORE: &str = "MCP_ATLASSIAN_USE_SYSTEM_TRUSTSTORE";
 
 pub const CUSTOM_HEADER_RESERVED_NAMES: &[&str] = &[
     "authorization",
@@ -49,10 +42,10 @@ pub const CUSTOM_HEADER_RESERVED_NAMES: &[&str] = &[
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StageSevenCapabilityStatus {
+pub enum CapabilityStatus {
     Included,
     Unsupported,
-    StageEightBacklog,
+    Backlog,
 }
 
 #[cfg(test)]
@@ -60,7 +53,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stage_seven_byot_contract_exposes_access_token_env_names() {
+    fn byot_contract_exposes_access_token_env_names() {
         assert_eq!(ENV_ATLASSIAN_OAUTH_ENABLE, "ATLASSIAN_OAUTH_ENABLE");
         assert_eq!(ENV_ATLASSIAN_OAUTH_CLOUD_ID, "ATLASSIAN_OAUTH_CLOUD_ID");
         assert_eq!(
@@ -72,14 +65,11 @@ mod tests {
             ENV_CONFLUENCE_OAUTH_ACCESS_TOKEN,
             "CONFLUENCE_OAUTH_ACCESS_TOKEN"
         );
-        assert_eq!(
-            StageSevenCapabilityStatus::Included,
-            StageSevenCapabilityStatus::Included
-        );
+        assert_eq!(CapabilityStatus::Included, CapabilityStatus::Included);
     }
 
     #[test]
-    fn stage_seven_proxy_contract_exposes_service_and_global_env_names() {
+    fn proxy_contract_exposes_service_and_global_env_names() {
         assert_eq!(ENV_HTTP_PROXY, "HTTP_PROXY");
         assert_eq!(ENV_HTTPS_PROXY, "HTTPS_PROXY");
         assert_eq!(ENV_NO_PROXY, "NO_PROXY");
@@ -92,7 +82,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_seven_custom_headers_contract_exposes_reserved_headers() {
+    fn custom_headers_contract_exposes_reserved_headers() {
         assert_eq!(ENV_JIRA_CUSTOM_HEADERS, "JIRA_CUSTOM_HEADERS");
         assert_eq!(ENV_CONFLUENCE_CUSTOM_HEADERS, "CONFLUENCE_CUSTOM_HEADERS");
         assert!(CUSTOM_HEADER_RESERVED_NAMES.contains(&"authorization"));
@@ -103,34 +93,16 @@ mod tests {
     }
 
     #[test]
-    fn stage_seven_mtls_contract_exposes_cert_key_env_names() {
+    fn mtls_contract_exposes_cert_key_env_names() {
         assert_eq!(ENV_JIRA_CLIENT_CERT, "JIRA_CLIENT_CERT");
         assert_eq!(ENV_JIRA_CLIENT_KEY, "JIRA_CLIENT_KEY");
-        assert_eq!(ENV_JIRA_CLIENT_KEY_PASSWORD, "JIRA_CLIENT_KEY_PASSWORD");
         assert_eq!(ENV_CONFLUENCE_CLIENT_CERT, "CONFLUENCE_CLIENT_CERT");
         assert_eq!(ENV_CONFLUENCE_CLIENT_KEY, "CONFLUENCE_CLIENT_KEY");
-        assert_eq!(
-            ENV_CONFLUENCE_CLIENT_KEY_PASSWORD,
-            "CONFLUENCE_CLIENT_KEY_PASSWORD"
-        );
     }
 
     #[test]
-    fn stage_seven_sse_unsupported_contract_is_explicit() {
-        assert_eq!(ENV_SOCKS_PROXY, "SOCKS_PROXY");
-        assert_eq!(ENV_JIRA_SOCKS_PROXY, "JIRA_SOCKS_PROXY");
-        assert_eq!(ENV_CONFLUENCE_SOCKS_PROXY, "CONFLUENCE_SOCKS_PROXY");
-        assert_eq!(
-            ENV_MCP_ATLASSIAN_USE_SYSTEM_TRUSTSTORE,
-            "MCP_ATLASSIAN_USE_SYSTEM_TRUSTSTORE"
-        );
-        assert_eq!(
-            StageSevenCapabilityStatus::Unsupported,
-            StageSevenCapabilityStatus::Unsupported
-        );
-        assert_eq!(
-            StageSevenCapabilityStatus::StageEightBacklog,
-            StageSevenCapabilityStatus::StageEightBacklog
-        );
+    fn sse_unsupported_contract_is_explicit() {
+        assert_eq!(CapabilityStatus::Unsupported, CapabilityStatus::Unsupported);
+        assert_eq!(CapabilityStatus::Backlog, CapabilityStatus::Backlog);
     }
 }

@@ -85,7 +85,7 @@ pub const JIRA_GET_ISSUE_DEVELOPMENT_INFO_TOOL_NAME: &str = "jira_get_issue_deve
 pub const JIRA_GET_ISSUES_DEVELOPMENT_INFO_TOOL_NAME: &str = "jira_get_issues_development_info";
 
 #[cfg(test)]
-pub const STAGE3_JIRA_TOOL_NAMES: &[&str] = &[
+pub const JIRA_EXTENSION_TOOL_NAMES: &[&str] = &[
     JIRA_CREATE_ISSUE_TOOL_NAME,
     JIRA_BATCH_CREATE_ISSUES_TOOL_NAME,
     JIRA_BATCH_GET_CHANGELOGS_TOOL_NAME,
@@ -610,17 +610,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stage_three_tool_names_are_complete_and_unique() {
-        let unique = STAGE3_JIRA_TOOL_NAMES.iter().collect::<BTreeSet<_>>();
+    fn jira_extension_tool_names_are_complete_and_unique() {
+        let unique = JIRA_EXTENSION_TOOL_NAMES.iter().collect::<BTreeSet<_>>();
 
-        assert_eq!(STAGE3_JIRA_TOOL_NAMES.len(), 40);
+        assert_eq!(JIRA_EXTENSION_TOOL_NAMES.len(), 40);
         assert_eq!(unique.len(), 40);
         assert!(unique.contains(&&JIRA_CREATE_ISSUE_TOOL_NAME));
         assert!(unique.contains(&&JIRA_GET_ISSUES_DEVELOPMENT_INFO_TOOL_NAME));
     }
 
     #[test]
-    fn stage_two_tool_names_remain_unchanged() {
+    fn jira_core_tool_names_remain_unchanged() {
         assert_eq!(JIRA_GET_ISSUE_TOOL_NAME, "jira_get_issue");
         assert_eq!(JIRA_SEARCH_TOOL_NAME, "jira_search");
         assert_eq!(JIRA_GET_PROJECT_ISSUES_TOOL_NAME, "jira_get_project_issues");
@@ -645,7 +645,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_three_args_accept_python_style_json_inputs() {
+    fn jira_extension_args_accept_python_style_json_inputs() {
         let args: JiraBatchCreateIssuesArgs = serde_json::from_value(serde_json::json!({
             "issues": "[{\"project_key\":\"ABC\",\"summary\":\"Demo\",\"issue_type\":\"Task\"}]",
             "validate_only": true

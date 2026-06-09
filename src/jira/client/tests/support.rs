@@ -234,7 +234,7 @@ pub(super) async fn cloud_field_options_context_handler(
     }
 }
 
-pub(super) async fn stage_three_handler(
+pub(super) async fn jira_extension_handler(
     State(requests): State<Arc<Mutex<Vec<RecordedRequest>>>>,
     method: Method,
     headers: HeaderMap,
@@ -537,10 +537,10 @@ pub(super) async fn cloud_field_options_context_mock_server()
     (format!("http://{address}"), requests)
 }
 
-pub(super) async fn stage_three_mock_server() -> (String, Arc<Mutex<Vec<RecordedRequest>>>) {
+pub(super) async fn jira_extension_mock_server() -> (String, Arc<Mutex<Vec<RecordedRequest>>>) {
     let requests = Arc::new(Mutex::new(Vec::new()));
     let app = Router::new()
-        .fallback(any(stage_three_handler))
+        .fallback(any(jira_extension_handler))
         .with_state(requests.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address: SocketAddr = listener.local_addr().unwrap();

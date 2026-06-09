@@ -3,7 +3,7 @@ use super::*;
 
 #[tokio::test]
 async fn development_info_resolves_issue_key_to_numeric_id() {
-    let (base_url, requests) = stage_three_mock_server().await;
+    let (base_url, requests) = jira_extension_mock_server().await;
     let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
 
     client
@@ -24,8 +24,8 @@ async fn development_info_resolves_issue_key_to_numeric_id() {
 }
 
 #[tokio::test]
-async fn stage_three_product_extension_helpers_use_expected_endpoints() {
-    let (base_url, requests) = stage_three_mock_server().await;
+async fn jira_product_extension_helpers_use_expected_endpoints() {
+    let (base_url, requests) = jira_extension_mock_server().await;
     let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
 
     client
@@ -135,7 +135,7 @@ async fn stage_three_product_extension_helpers_use_expected_endpoints() {
 
 #[tokio::test]
 async fn agile_helpers_return_product_unavailable_when_software_rest_is_missing() {
-    let (base_url, requests) = stage_three_mock_server().await;
+    let (base_url, requests) = jira_extension_mock_server().await;
     let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
 
     let value = client
@@ -164,7 +164,7 @@ async fn agile_helpers_return_product_unavailable_when_software_rest_is_missing(
 
 #[tokio::test]
 async fn service_desk_helpers_return_product_unavailable_when_jsm_rest_is_missing() {
-    let (base_url, requests) = stage_three_mock_server().await;
+    let (base_url, requests) = jira_extension_mock_server().await;
     let client = JiraClient::new(config(
         format!("{base_url}/jsm-down"),
         JiraDeployment::ServerDataCenter,
@@ -197,7 +197,7 @@ async fn service_desk_helpers_return_product_unavailable_when_jsm_rest_is_missin
 
 #[tokio::test]
 async fn development_helper_returns_product_unavailable_when_dev_status_is_missing() {
-    let (base_url, requests) = stage_three_mock_server().await;
+    let (base_url, requests) = jira_extension_mock_server().await;
     let client = JiraClient::new(config(
         format!("{base_url}/dev-down"),
         JiraDeployment::ServerDataCenter,
@@ -230,7 +230,7 @@ async fn development_helper_returns_product_unavailable_when_dev_status_is_missi
 
 #[tokio::test]
 async fn forms_helpers_use_cloud_id_paths_and_config_auth_without_override() {
-    let (base_url, requests) = stage_three_mock_server().await;
+    let (base_url, requests) = jira_extension_mock_server().await;
     let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
 
     let forms = client
@@ -289,7 +289,7 @@ async fn forms_helpers_use_cloud_id_paths_and_config_auth_without_override() {
 
 #[tokio::test]
 async fn forms_helpers_return_product_unavailable_when_cloud_id_missing_without_http() {
-    let (base_url, requests) = stage_three_mock_server().await;
+    let (base_url, requests) = jira_extension_mock_server().await;
     let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
 
     let missing = client
@@ -314,7 +314,7 @@ async fn forms_helpers_return_product_unavailable_when_cloud_id_missing_without_
 
 #[tokio::test]
 async fn forms_helpers_return_product_unavailable_when_forms_api_is_missing() {
-    let (base_url, requests) = stage_three_mock_server().await;
+    let (base_url, requests) = jira_extension_mock_server().await;
     let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
 
     let value = client
@@ -342,8 +342,8 @@ async fn forms_helpers_return_product_unavailable_when_forms_api_is_missing() {
 }
 
 #[tokio::test]
-async fn stage_three_attachment_helpers_use_bounded_content_fetch() {
-    let (base_url, requests) = stage_three_mock_server().await;
+async fn jira_attachment_helpers_use_bounded_content_fetch() {
+    let (base_url, requests) = jira_extension_mock_server().await;
     let client =
         JiraClient::new(config(base_url.clone(), JiraDeployment::ServerDataCenter)).unwrap();
 
@@ -398,7 +398,7 @@ async fn stage_three_attachment_helpers_use_bounded_content_fetch() {
 
 #[tokio::test]
 async fn safe_attachment_helper_filters_images_and_redacts_content_errors() {
-    let (base_url, requests) = stage_three_mock_server().await;
+    let (base_url, requests) = jira_extension_mock_server().await;
     let client = JiraClient::new(config(base_url, JiraDeployment::ServerDataCenter)).unwrap();
 
     let with_content = client

@@ -7,9 +7,8 @@ use crate::{
         auth::AtlassianAuth,
         compat::{
             ENV_ATLASSIAN_OAUTH_ACCESS_TOKEN, ENV_ATLASSIAN_OAUTH_CLOUD_ID, ENV_JIRA_CLIENT_CERT,
-            ENV_JIRA_CLIENT_KEY, ENV_JIRA_CLIENT_KEY_PASSWORD, ENV_JIRA_CUSTOM_HEADERS,
-            ENV_JIRA_HTTP_PROXY, ENV_JIRA_HTTPS_PROXY, ENV_JIRA_NO_PROXY,
-            ENV_JIRA_OAUTH_ACCESS_TOKEN, ENV_JIRA_SOCKS_PROXY,
+            ENV_JIRA_CLIENT_KEY, ENV_JIRA_CUSTOM_HEADERS, ENV_JIRA_HTTP_PROXY,
+            ENV_JIRA_HTTPS_PROXY, ENV_JIRA_NO_PROXY, ENV_JIRA_OAUTH_ACCESS_TOKEN,
         },
         custom_headers::CustomHeaders,
         mtls::ClientTlsIdentityConfig,
@@ -154,14 +153,12 @@ impl JiraConfig {
             ENV_JIRA_HTTP_PROXY,
             ENV_JIRA_HTTPS_PROXY,
             ENV_JIRA_NO_PROXY,
-            ENV_JIRA_SOCKS_PROXY,
         )?;
         let custom_headers = CustomHeaders::from_var_provider(get_var, ENV_JIRA_CUSTOM_HEADERS)?;
         let mtls = ClientTlsIdentityConfig::from_var_provider(
             get_var,
             ENV_JIRA_CLIENT_CERT,
             ENV_JIRA_CLIENT_KEY,
-            ENV_JIRA_CLIENT_KEY_PASSWORD,
         )?;
 
         Ok(Some(Self {
@@ -505,25 +502,6 @@ mod tests {
         );
         assert!(!error.to_string().contains("secret"));
         assert!(!format!("{error:?}").contains("secret"));
-    }
-
-    #[test]
-    fn socks_proxy_is_rejected_without_leaking_credentials() {
-        let error = config_from_pairs(&[
-            (ENV_JIRA_URL, "https://jira.example"),
-            (ENV_JIRA_PERSONAL_TOKEN, "test-pat-value"),
-            (ENV_JIRA_SOCKS_PROXY, "socks5://user:secret@proxy.example"),
-        ])
-        .unwrap_err();
-
-        assert_eq!(
-            error,
-            ConfigError::UnsupportedSocksProxy {
-                variable: ENV_JIRA_SOCKS_PROXY,
-            }
-        );
-        assert!(!error.to_string().contains("secret"));
-        assert!(!error.to_string().contains("proxy.example"));
     }
 
     #[test]

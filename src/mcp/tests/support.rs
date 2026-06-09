@@ -5,37 +5,37 @@ pub(super) fn server_with_config(config: RuntimeConfig) -> AtlassianMcpServer {
 }
 
 pub(super) const SYNTHETIC_JIRA_READ: ToolMetadata = ToolMetadata {
-    name: "stage1_synthetic_jira_read",
+    name: "synthetic_jira_read",
     service: ToolService::Jira,
     access: ToolAccess::Read,
-    toolset: Some("jira_issues"),
+    toolset: Some("jira_issue_read"),
     title: "Synthetic Jira read",
     description: "Test-only Jira read metadata.",
 };
 
 pub(super) const SYNTHETIC_JIRA_WRITE: ToolMetadata = ToolMetadata {
-    name: "stage1_synthetic_jira_write",
+    name: "synthetic_jira_write",
     service: ToolService::Jira,
     access: ToolAccess::Write,
-    toolset: Some("jira_issues"),
+    toolset: Some("jira_issue_write"),
     title: "Synthetic Jira write",
     description: "Test-only Jira write metadata.",
 };
 
 pub(super) const SYNTHETIC_CONFLUENCE_READ: ToolMetadata = ToolMetadata {
-    name: "stage1_synthetic_confluence_read",
+    name: "synthetic_confluence_read",
     service: ToolService::Confluence,
     access: ToolAccess::Read,
-    toolset: Some("confluence_pages"),
+    toolset: Some("confluence_content_read"),
     title: "Synthetic Confluence read",
     description: "Test-only Confluence read metadata.",
 };
 
 pub(super) fn metadata_for_test_tool(name: &str) -> Option<ToolMetadata> {
     match name {
-        "stage1_synthetic_jira_read" => Some(SYNTHETIC_JIRA_READ),
-        "stage1_synthetic_jira_write" => Some(SYNTHETIC_JIRA_WRITE),
-        "stage1_synthetic_confluence_read" => Some(SYNTHETIC_CONFLUENCE_READ),
+        "synthetic_jira_read" => Some(SYNTHETIC_JIRA_READ),
+        "synthetic_jira_write" => Some(SYNTHETIC_JIRA_WRITE),
+        "synthetic_confluence_read" => Some(SYNTHETIC_CONFLUENCE_READ),
         _ => tool_registry::metadata_for(name),
     }
 }
@@ -251,15 +251,15 @@ pub(super) fn assert_explicit_property_schemas(value: &Value, path: &str) {
     }
 }
 
-pub(super) fn stage_three_candidate_tools() -> Vec<Tool> {
-    tools::STAGE3_JIRA_TOOL_NAMES
+pub(super) fn jira_extension_candidate_tools() -> Vec<Tool> {
+    tools::JIRA_EXTENSION_TOOL_NAMES
         .iter()
         .map(|&name| tool(name))
         .collect()
 }
 
-pub(super) fn stage_three_write_tool_names() -> Vec<&'static str> {
-    tools::STAGE3_JIRA_TOOL_NAMES
+pub(super) fn jira_extension_write_tool_names() -> Vec<&'static str> {
+    tools::JIRA_EXTENSION_TOOL_NAMES
         .iter()
         .copied()
         .filter(|name| {
@@ -269,7 +269,7 @@ pub(super) fn stage_three_write_tool_names() -> Vec<&'static str> {
         .collect()
 }
 
-pub(super) fn stage_three_c3_tool_names() -> Vec<&'static str> {
+pub(super) fn jira_general_extension_tool_names() -> Vec<&'static str> {
     vec![
         tools::JIRA_GET_ALL_PROJECTS_TOOL_NAME,
         tools::JIRA_GET_PROJECT_VERSIONS_TOOL_NAME,
@@ -292,8 +292,8 @@ pub(super) fn stage_three_c3_tool_names() -> Vec<&'static str> {
     ]
 }
 
-pub(super) fn stage_three_c3_write_tool_names() -> Vec<&'static str> {
-    stage_three_c3_tool_names()
+pub(super) fn jira_general_extension_write_tool_names() -> Vec<&'static str> {
+    jira_general_extension_tool_names()
         .into_iter()
         .filter(|name| {
             tool_registry::metadata_for(name)
@@ -302,7 +302,7 @@ pub(super) fn stage_three_c3_write_tool_names() -> Vec<&'static str> {
         .collect()
 }
 
-pub(super) fn stage_three_c4_tool_names() -> Vec<&'static str> {
+pub(super) fn jira_product_extension_tool_names() -> Vec<&'static str> {
     vec![
         tools::JIRA_GET_AGILE_BOARDS_TOOL_NAME,
         tools::JIRA_GET_BOARD_ISSUES_TOOL_NAME,
@@ -324,8 +324,8 @@ pub(super) fn stage_three_c4_tool_names() -> Vec<&'static str> {
     ]
 }
 
-pub(super) fn stage_three_c4_write_tool_names() -> Vec<&'static str> {
-    stage_three_c4_tool_names()
+pub(super) fn jira_product_extension_write_tool_names() -> Vec<&'static str> {
+    jira_product_extension_tool_names()
         .into_iter()
         .filter(|name| {
             tool_registry::metadata_for(name)
@@ -334,7 +334,7 @@ pub(super) fn stage_three_c4_write_tool_names() -> Vec<&'static str> {
         .collect()
 }
 
-pub(super) fn expected_stage_two_default_tools() -> Vec<String> {
+pub(super) fn expected_jira_core_default_tools() -> Vec<String> {
     vec![
         tools::JIRA_ADD_COMMENT_TOOL_NAME.to_string(),
         tools::JIRA_EDIT_COMMENT_TOOL_NAME.to_string(),
@@ -349,9 +349,9 @@ pub(super) fn expected_stage_two_default_tools() -> Vec<String> {
 }
 
 pub(super) fn all_jira_tool_names() -> Vec<String> {
-    let mut names = expected_stage_two_default_tools();
+    let mut names = expected_jira_core_default_tools();
     names.extend(
-        tools::STAGE3_JIRA_TOOL_NAMES
+        tools::JIRA_EXTENSION_TOOL_NAMES
             .iter()
             .map(|name| (*name).to_string()),
     );
@@ -359,7 +359,7 @@ pub(super) fn all_jira_tool_names() -> Vec<String> {
 }
 
 pub(super) fn all_confluence_tool_names() -> Vec<String> {
-    confluence_tools::STAGE4_CONFLUENCE_TOOL_NAMES
+    confluence_tools::CONFLUENCE_TOOL_NAMES
         .iter()
         .map(|name| (*name).to_string())
         .collect()
