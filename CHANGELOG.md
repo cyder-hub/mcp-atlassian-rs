@@ -2,8 +2,19 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-06-10
+
 ### Added
+- feat(gitlab): Added GitLab merge request tool support.
+- feat(toolsets): Added profile-based access controls for tool exposure.
 - feat(auth): Added Jira and Confluence Server/Data Center username/password Basic Auth via `JIRA_PASSWORD`, `CONFLUENCE_PASSWORD`, and shared `ATLASSIAN_PASSWORD` fallbacks.
+
+### Fixed
+- fix(mcp): Corrected advertised output schemas.
+
+### Changed
+- refactor: Split Atlassian modules for clearer shared HTTP, auth, security, and service-specific boundaries.
+- chore: Migrated validation tooling to `xtask`.
 
 ## 0.1.2 - 2026-06-08
 
