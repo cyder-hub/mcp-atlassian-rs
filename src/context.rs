@@ -1,13 +1,14 @@
 use std::collections::BTreeSet;
 
 #[cfg(test)]
-use crate::atlassian::{custom_headers::CustomHeaders, proxy::ProxyConfig};
+use crate::upstream::{custom_headers::CustomHeaders, proxy::ProxyConfig};
 use crate::{
     atlassian::request_auth::RequestAuthContext,
     config::RuntimeConfig,
     confluence::config::{
         ConfluenceConfig, ConfluenceDeployment, DEFAULT_CONFLUENCE_TIMEOUT_SECONDS,
     },
+    gitlab::config::GitlabConfig,
     jira::config::{DEFAULT_JIRA_TIMEOUT_SECONDS, JiraConfig, JiraDeployment},
 };
 
@@ -18,6 +19,7 @@ pub struct AppContext {
     enabled_toolsets: BTreeSet<String>,
     jira: Option<JiraConfig>,
     confluence: Option<ConfluenceConfig>,
+    gitlab: Option<GitlabConfig>,
     atlassian_oauth_cloud_id: Option<String>,
     atlassian_oauth_enabled: bool,
     allowed_url_domains: Option<Vec<String>>,
@@ -33,6 +35,7 @@ impl AppContext {
             enabled_toolsets: config.enabled_toolsets.clone(),
             jira: config.jira.clone(),
             confluence: config.confluence.clone(),
+            gitlab: config.gitlab.clone(),
             atlassian_oauth_cloud_id: config.atlassian_oauth_cloud_id.clone(),
             atlassian_oauth_enabled: config.atlassian_oauth_enabled,
             allowed_url_domains: config.allowed_url_domains.clone(),
@@ -70,8 +73,11 @@ impl AppContext {
             context.atlassian_oauth_cloud_id = Some(cloud_id.clone());
         }
 
-        context.service_availability =
-            ServiceAvailability::from_service_configs(&context.jira, &context.confluence);
+        context.service_availability = ServiceAvailability::from_service_configs(
+            &context.jira,
+            &context.confluence,
+            &context.gitlab,
+        );
         context
     }
 
@@ -116,6 +122,11 @@ impl AppContext {
     pub fn confluence_config(&self) -> Option<&ConfluenceConfig> {
         self.confluence.as_ref()
     }
+
+    #[allow(dead_code)]
+    pub fn gitlab_config(&self) -> Option<&GitlabConfig> {
+        self.gitlab.as_ref()
+    }
 }
 
 impl Default for AppContext {
@@ -128,22 +139,27 @@ impl Default for AppContext {
 pub struct ServiceAvailability {
     pub jira: bool,
     pub confluence: bool,
+    pub gitlab: bool,
 }
 
 impl ServiceAvailability {
     pub fn from_config(config: &RuntimeConfig) -> Self {
-        Self::from_service_configs(&config.jira, &config.confluence)
+        Self::from_service_configs(&config.jira, &config.confluence, &config.gitlab)
     }
 
     fn from_service_configs(
         jira: &Option<JiraConfig>,
         confluence: &Option<ConfluenceConfig>,
+        gitlab: &Option<GitlabConfig>,
     ) -> Self {
         Self {
             jira: jira.as_ref().is_some_and(JiraConfig::is_auth_configured),
             confluence: confluence
                 .as_ref()
                 .is_some_and(ConfluenceConfig::is_auth_configured),
+            gitlab: gitlab
+                .as_ref()
+                .is_some_and(GitlabConfig::is_auth_configured),
         }
     }
 }
@@ -231,7 +247,6 @@ mod tests {
     use std::collections::BTreeSet;
 
     use crate::{
-        atlassian::auth::AtlassianAuth,
         config::{HttpConfig, RuntimeConfig},
         confluence::config::{ConfluenceConfig, ConfluenceDeployment},
         jira::{
@@ -239,6 +254,7 @@ mod tests {
             tools,
         },
         tool_registry::default_toolsets,
+        upstream::auth::UpstreamAuth,
     };
 
     use super::*;
@@ -251,11 +267,13 @@ mod tests {
         assert!(context.disabled_tools().is_empty());
         assert_eq!(context.jira_config(), None);
         assert_eq!(context.confluence_config(), None);
+        assert_eq!(context.gitlab_config(), None);
         assert_eq!(
             context.service_availability(),
             &ServiceAvailability {
                 jira: false,
                 confluence: false,
+                gitlab: false,
             }
         );
     }
@@ -273,6 +291,7 @@ mod tests {
             enabled_toolsets: enabled_toolsets.clone(),
             jira: Some(jira.clone()),
             confluence: Some(confluence.clone()),
+            gitlab: None,
             atlassian_oauth_cloud_id: Some("cloud-123".to_string()),
             atlassian_oauth_enabled: true,
             allowed_url_domains: Some(vec!["atlassian.net".to_string()]),
@@ -287,6 +306,7 @@ mod tests {
         assert_eq!(context.enabled_toolsets(), &enabled_toolsets);
         assert_eq!(context.jira_config(), Some(&jira));
         assert_eq!(context.confluence_config(), Some(&confluence));
+        assert_eq!(context.gitlab_config(), None);
         assert_eq!(context.atlassian_oauth_cloud_id(), Some("cloud-123"));
         assert!(context.atlassian_oauth_enabled());
         assert_eq!(
@@ -299,6 +319,7 @@ mod tests {
             &ServiceAvailability {
                 jira: true,
                 confluence: true,
+                gitlab: false,
             }
         );
     }
@@ -315,6 +336,7 @@ mod tests {
             ServiceAvailability {
                 jira: false,
                 confluence: true,
+                gitlab: false,
             }
         );
     }
@@ -343,15 +365,15 @@ mod tests {
 
         assert!(matches!(
             scoped.jira_config().unwrap().auth,
-            AtlassianAuth::Pat { ref personal_token } if personal_token == "request-token"
+            UpstreamAuth::Pat { ref personal_token } if personal_token == "request-token"
         ));
         assert!(matches!(
             scoped.confluence_config().unwrap().auth,
-            AtlassianAuth::Pat { ref personal_token } if personal_token == "request-token"
+            UpstreamAuth::Pat { ref personal_token } if personal_token == "request-token"
         ));
         assert!(matches!(
             context.jira_config().unwrap().auth,
-            AtlassianAuth::Pat { ref personal_token } if personal_token == "test-pat-value"
+            UpstreamAuth::Pat { ref personal_token } if personal_token == "test-pat-value"
         ));
     }
 
@@ -365,7 +387,7 @@ mod tests {
         let jira = JiraConfig {
             base_url: "https://example.atlassian.net".to_string(),
             deployment: JiraDeployment::Cloud,
-            auth: AtlassianAuth::Basic {
+            auth: UpstreamAuth::Basic {
                 username: "user@example.com".to_string(),
                 api_token: "jira-api-token".to_string(),
             },
@@ -380,7 +402,7 @@ mod tests {
         let confluence = ConfluenceConfig {
             base_url: "https://example.atlassian.net/wiki".to_string(),
             deployment: ConfluenceDeployment::Cloud,
-            auth: AtlassianAuth::Basic {
+            auth: UpstreamAuth::Basic {
                 username: "user@example.com".to_string(),
                 api_token: "confluence-api-token".to_string(),
             },
@@ -415,7 +437,7 @@ mod tests {
 
         assert_eq!(
             scoped.jira_config().unwrap().auth,
-            AtlassianAuth::OAuthAccessToken {
+            UpstreamAuth::OAuthAccessToken {
                 access_token: "request-access-token".to_string(),
             }
         );
@@ -499,6 +521,7 @@ mod tests {
             &ServiceAvailability {
                 jira: true,
                 confluence: true,
+                gitlab: false,
             }
         );
     }
@@ -507,7 +530,7 @@ mod tests {
         JiraConfig {
             base_url: "https://jira.example".to_string(),
             deployment: JiraDeployment::ServerDataCenter,
-            auth: AtlassianAuth::Pat {
+            auth: UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             },
             oauth_cloud_id: None,
@@ -524,7 +547,7 @@ mod tests {
         ConfluenceConfig {
             base_url: "https://confluence.example".to_string(),
             deployment: ConfluenceDeployment::ServerDataCenter,
-            auth: AtlassianAuth::Pat {
+            auth: UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             },
             oauth_cloud_id: None,

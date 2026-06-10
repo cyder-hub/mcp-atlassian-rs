@@ -5,7 +5,7 @@ impl JiraClient {
         &self,
         issue_key: String,
         cloud_id: Option<&str>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let Some(cloud_id) = forms_cloud_id_or_unavailable(cloud_id)? else {
             return Ok(forms_cloud_id_missing_result());
         };
@@ -22,7 +22,7 @@ impl JiraClient {
         issue_key: String,
         form_id: String,
         cloud_id: Option<&str>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let Some(cloud_id) = forms_cloud_id_or_unavailable(cloud_id)? else {
             return Ok(forms_cloud_id_missing_result());
         };
@@ -41,7 +41,7 @@ impl JiraClient {
         form_id: String,
         answers: Vec<Value>,
         cloud_id: Option<&str>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let Some(cloud_id) = forms_cloud_id_or_unavailable(cloud_id)? else {
             return Ok(forms_cloud_id_missing_result());
         };

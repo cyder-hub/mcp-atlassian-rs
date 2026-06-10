@@ -915,7 +915,7 @@ async fn confluence_search_users_handler_uses_group_member_fallback_on_server() 
 async fn confluence_search_users_handler_returns_structured_auth_error() {
     let (base_url, _requests) = mock_confluence_server().await;
     let mut config = confluence_config_with_base_url(base_url);
-    config.auth = AtlassianAuth::Pat {
+    config.auth = UpstreamAuth::Pat {
         personal_token: "wrong-token".to_string(),
     };
     let server = server_with_config(RuntimeConfig {
@@ -1236,7 +1236,7 @@ async fn confluence_get_page_view_analytics_handler_returns_unavailable_on_serve
 async fn confluence_get_page_view_analytics_handler_returns_structured_auth_error() {
     let (base_url, _requests) = mock_confluence_server().await;
     let mut config = confluence_cloud_config_with_base_url(base_url);
-    config.auth = AtlassianAuth::Pat {
+    config.auth = UpstreamAuth::Pat {
         personal_token: "wrong-token".to_string(),
     };
     let server = server_with_config(RuntimeConfig {
@@ -1490,7 +1490,7 @@ async fn confluence_download_attachment_handler_rejects_stream_limit_and_cross_o
         cross_origin["error"]
             .as_str()
             .unwrap()
-            .contains("configured Atlassian base origin")
+            .contains("configured upstream base origin")
     );
     assert!(
         !cross_origin["error"]

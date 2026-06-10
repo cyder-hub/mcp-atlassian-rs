@@ -1,16 +1,17 @@
 use std::{collections::BTreeSet, net::SocketAddr, sync::Arc};
 
 use crate::{
-    atlassian::{auth::AtlassianAuth, custom_headers::CustomHeaders, proxy::ProxyConfig},
     config::{HttpConfig, RuntimeConfig},
     confluence::{
         config::{ConfluenceConfig, ConfluenceDeployment},
         tools as confluence_tools,
     },
     context::AppContext,
+    gitlab::{config::GitlabConfig, tools as gitlab_tools},
     jira::config::{JiraConfig, JiraDeployment},
     jira::tools,
     tool_registry::{ToolAccess, ToolAnnotationMetadata, ToolMetadata, ToolService},
+    upstream::{auth::UpstreamAuth, custom_headers::CustomHeaders, proxy::ProxyConfig},
 };
 use axum::{
     Json, Router,
@@ -33,6 +34,7 @@ use super::*;
 
 mod confluence_handlers;
 mod discovery;
+mod gitlab_handlers;
 mod jira_handlers;
 mod request_auth;
 mod schema_logging;

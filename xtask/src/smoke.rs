@@ -32,6 +32,7 @@ type EnvMap = BTreeMap<String, String>;
 
 const JIRA_TOKEN: &str = "test-smoke-token";
 const CONFLUENCE_TOKEN: &str = "test-confluence-smoke-token";
+const GITLAB_TOKEN: &str = "test-gitlab-smoke-token";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SmokeCommand {
@@ -66,6 +67,7 @@ impl SmokeArgs {
 pub enum SmokeService {
     Jira,
     Confluence,
+    GitLab,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -126,6 +128,12 @@ pub async fn run_all() -> XtaskResult<i32> {
         },
         SmokeCommand {
             service: SmokeService::Confluence,
+            mode: SmokeMode::All,
+            port: None,
+            path: None,
+        },
+        SmokeCommand {
+            service: SmokeService::GitLab,
             mode: SmokeMode::All,
             port: None,
             path: None,
@@ -275,18 +283,33 @@ async fn mock_handler(
     match state.service {
         SmokeService::Jira => mock_jira_response(method, uri.path(), body),
         SmokeService::Confluence => mock_confluence_response(method, uri.path(), body),
+        SmokeService::GitLab => mock_gitlab_response(method, uri.path(), body),
     }
 }
 
 fn authorized(service: SmokeService, headers: &HeaderMap) -> bool {
-    let expected = match service {
-        SmokeService::Jira => format!("Bearer {JIRA_TOKEN}"),
-        SmokeService::Confluence => format!("Bearer {CONFLUENCE_TOKEN}"),
-    };
-    headers
-        .get(AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        == Some(expected.as_str())
+    match service {
+        SmokeService::Jira => {
+            let expected = format!("Bearer {JIRA_TOKEN}");
+            headers
+                .get(AUTHORIZATION)
+                .and_then(|value| value.to_str().ok())
+                == Some(expected.as_str())
+        }
+        SmokeService::Confluence => {
+            let expected = format!("Bearer {CONFLUENCE_TOKEN}");
+            headers
+                .get(AUTHORIZATION)
+                .and_then(|value| value.to_str().ok())
+                == Some(expected.as_str())
+        }
+        SmokeService::GitLab => {
+            headers
+                .get("private-token")
+                .and_then(|value| value.to_str().ok())
+                == Some(GITLAB_TOKEN)
+        }
+    }
 }
 
 async fn read_body(body: Body) -> Result<Option<Value>, String> {
@@ -480,6 +503,50 @@ fn mock_confluence_response(method: Method, path: &str, _body: Option<Value>) ->
     }
 }
 
+fn mock_gitlab_response(method: Method, path: &str, body: Option<Value>) -> Response {
+    match (method, path) {
+        (Method::GET, "/api/v4/user") => json_response(
+            StatusCode::OK,
+            json!({
+                "id": 42,
+                "username": "smoke-bot",
+                "name": "Smoke Bot"
+            }),
+        ),
+        (Method::GET, "/api/v4/projects/group%2Fproject") => json_response(
+            StatusCode::OK,
+            json!({
+                "id": 123,
+                "path_with_namespace": "group/project",
+                "name": "project"
+            }),
+        ),
+        (Method::GET, "/api/v4/projects/group%2Fproject/merge_requests") => json_response(
+            StatusCode::OK,
+            json!([{
+                "iid": 7,
+                "title": "Smoke MR",
+                "state": "opened",
+                "source_branch": "feature/smoke",
+                "target_branch": "main"
+            }]),
+        ),
+        (Method::POST, "/api/v4/projects/group%2Fproject/merge_requests") => json_response(
+            StatusCode::OK,
+            json!({
+                "iid": 8,
+                "title": body
+                    .and_then(|body| body.get("title").cloned())
+                    .unwrap_or(Value::Null)
+            }),
+        ),
+        _ => json_response(
+            StatusCode::NOT_FOUND,
+            json!({"message": "mock path not found"}),
+        ),
+    }
+}
+
 fn json_response(status: StatusCode, payload: Value) -> Response {
     (status, Json(payload)).into_response()
 }
@@ -538,6 +605,26 @@ async fn run_stdio(service: SmokeService, binary: &PathBuf, url: &str) -> Result
             )?)?;
             println!(
                 "Confluence stdio smoke passed: search and get_page work with mock Confluence"
+            );
+        }
+        SmokeService::GitLab => {
+            assert_gitlab_user_result(&session.call_tool(
+                3,
+                "gitlab_get_current_user",
+                json!({}),
+            )?)?;
+            assert_gitlab_project_result(&session.call_tool(
+                4,
+                "gitlab_get_project",
+                json!({"project": "group/project"}),
+            )?)?;
+            assert_gitlab_merge_requests_result(&session.call_tool(
+                5,
+                "gitlab_list_merge_requests",
+                json!({"project": "group/project", "state": "opened", "per_page": 1}),
+            )?)?;
+            println!(
+                "GitLab stdio smoke passed: current user, project, and merge request reads work with mock GitLab"
             );
         }
     }
@@ -726,6 +813,47 @@ async fn run_http_inner(service: SmokeService, port: u16, path: &str) -> Result<
                 "Confluence HTTP smoke passed: /healthz ok and search/get_page work with mock Confluence"
             );
         }
+        SmokeService::GitLab => {
+            assert_gitlab_user_result(
+                &http_call(
+                    &client,
+                    port,
+                    path,
+                    &session_id,
+                    3,
+                    "gitlab_get_current_user",
+                    json!({}),
+                )
+                .await?,
+            )?;
+            assert_gitlab_project_result(
+                &http_call(
+                    &client,
+                    port,
+                    path,
+                    &session_id,
+                    4,
+                    "gitlab_get_project",
+                    json!({"project": "group/project"}),
+                )
+                .await?,
+            )?;
+            assert_gitlab_merge_requests_result(
+                &http_call(
+                    &client,
+                    port,
+                    path,
+                    &session_id,
+                    5,
+                    "gitlab_list_merge_requests",
+                    json!({"project": "group/project", "state": "opened", "per_page": 1}),
+                )
+                .await?,
+            )?;
+            println!(
+                "GitLab HTTP smoke passed: /healthz ok and current user/project/MR reads work with mock GitLab"
+            );
+        }
     }
 
     Ok(())
@@ -776,6 +904,28 @@ async fn run_restricted(
                 "Confluence restricted smoke passed: reads stay visible and confluence_create_page is blocked before HTTP"
             );
         }
+        SmokeService::GitLab => {
+            let response = session.call_tool(
+                3,
+                "gitlab_create_merge_request",
+                json!({
+                    "project": "group/project",
+                    "source_branch": "feature/smoke",
+                    "target_branch": "main",
+                    "title": "blocked by restricted smoke"
+                }),
+            )?;
+            assert_restricted_error(&response, "gitlab_create_merge_request")?;
+            assert_no_request(
+                server,
+                Method::POST,
+                "/api/v4/projects/group%2Fproject/merge_requests",
+            )
+            .await?;
+            println!(
+                "GitLab restricted smoke passed: reads stay visible and gitlab_create_merge_request is blocked before HTTP"
+            );
+        }
     }
 
     Ok(())
@@ -790,7 +940,7 @@ fn smoke_env(service: SmokeService, url: &str, restricted: bool) -> EnvMap {
             env.insert("JIRA_SSL_VERIFY".to_string(), "false".to_string());
             env.insert(
                 "TOOLSETS".to_string(),
-                "jira_issue_worklogs_read,jira_agile_boards_read,jira_sprints_read,jira_issue_metrics_read".to_string(),
+                "jira_issue_worklogs_read,jira_agile_boards_read,jira_sprints_read,jira_issue_metrics_read,jira_issue_sla_read".to_string(),
             );
             if restricted {
                 env.insert(
@@ -821,6 +971,25 @@ fn smoke_env(service: SmokeService, url: &str, restricted: bool) -> EnvMap {
                 );
             }
         }
+        SmokeService::GitLab => {
+            env.insert("GITLAB_URL".to_string(), url.to_string());
+            env.insert("GITLAB_TOKEN".to_string(), GITLAB_TOKEN.to_string());
+            env.insert("GITLAB_SSL_VERIFY".to_string(), "false".to_string());
+            env.insert(
+                "GITLAB_PROJECTS_FILTER".to_string(),
+                "group/project".to_string(),
+            );
+            env.insert(
+                "TOOLSETS".to_string(),
+                "gitlab_merge_requests_write,gitlab_merge_requests_merge".to_string(),
+            );
+            if restricted {
+                env.insert(
+                    "DISABLED_TOOLS".to_string(),
+                    "gitlab_create_merge_request".to_string(),
+                );
+            }
+        }
     }
     env
 }
@@ -840,6 +1009,11 @@ fn assert_required_tools(
             "jira_get_issue_sla_metrics",
         ],
         SmokeService::Confluence => vec!["confluence_search_content", "confluence_get_page"],
+        SmokeService::GitLab => vec![
+            "gitlab_get_current_user",
+            "gitlab_get_project",
+            "gitlab_list_merge_requests",
+        ],
     };
     let missing = required
         .into_iter()
@@ -854,6 +1028,7 @@ fn assert_required_tools(
     let write_tool = match service {
         SmokeService::Jira => "jira_create_issue",
         SmokeService::Confluence => "confluence_create_page",
+        SmokeService::GitLab => "gitlab_create_merge_request",
     };
     let has_write_tool = names.iter().any(|name| name == write_tool);
     if restricted && has_write_tool {
@@ -1005,6 +1180,49 @@ fn assert_page_result(response: &Value) -> Result<(), String> {
     } else {
         Err(format!(
             "confluence_get_page did not return mock page: {response}"
+        ))
+    }
+}
+
+fn assert_gitlab_user_result(response: &Value) -> Result<(), String> {
+    let structured = structured(response, "gitlab_get_current_user")?;
+    if structured.get("username").and_then(Value::as_str) == Some("smoke-bot") {
+        Ok(())
+    } else {
+        Err(format!(
+            "gitlab_get_current_user did not return mock user: {response}"
+        ))
+    }
+}
+
+fn assert_gitlab_project_result(response: &Value) -> Result<(), String> {
+    let structured = structured(response, "gitlab_get_project")?;
+    if structured
+        .get("path_with_namespace")
+        .and_then(Value::as_str)
+        == Some("group/project")
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "gitlab_get_project did not return mock project: {response}"
+        ))
+    }
+}
+
+fn assert_gitlab_merge_requests_result(response: &Value) -> Result<(), String> {
+    let structured = structured(response, "gitlab_list_merge_requests")?;
+    let title = structured
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("title"))
+        .and_then(Value::as_str);
+    if title == Some("Smoke MR") {
+        Ok(())
+    } else {
+        Err(format!(
+            "gitlab_list_merge_requests did not return mock MR: {response}"
         ))
     }
 }
@@ -1328,6 +1546,7 @@ impl SmokeService {
         match self {
             Self::Jira => "jira-stdio-smoke",
             Self::Confluence => "confluence-stdio-smoke",
+            Self::GitLab => "gitlab-stdio-smoke",
         }
     }
 
@@ -1335,6 +1554,7 @@ impl SmokeService {
         match self {
             Self::Jira => "jira-http-smoke",
             Self::Confluence => "confluence-http-smoke",
+            Self::GitLab => "gitlab-http-smoke",
         }
     }
 
@@ -1342,6 +1562,7 @@ impl SmokeService {
         match self {
             Self::Jira => "jira-restricted-smoke",
             Self::Confluence => "confluence-restricted-smoke",
+            Self::GitLab => "gitlab-restricted-smoke",
         }
     }
 }

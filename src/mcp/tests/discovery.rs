@@ -22,7 +22,7 @@ fn server_info_uses_app_context() {
     let instructions = info.instructions.unwrap_or_default();
 
     assert!(instructions.contains("TOOL_PROFILE"));
-    assert!(instructions.contains("73 Jira and Confluence business tools"));
+    assert!(instructions.contains("88 Jira, Confluence, and GitLab business tools"));
     assert!(instructions.contains("docs/support-matrix.md"));
 }
 
@@ -39,6 +39,7 @@ fn tool_discovery_uses_public_names_not_handler_method_names() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
         confluence: Some(confluence_config()),
+        gitlab: Some(gitlab_config()),
         enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
@@ -49,8 +50,81 @@ fn tool_discovery_uses_public_names_not_handler_method_names() {
             .get_tool(confluence_tools::CONFLUENCE_LIST_PAGE_COMMENTS_TOOL_NAME)
             .is_some()
     );
+    assert!(
+        server
+            .get_tool(gitlab_tools::GITLAB_GET_MERGE_REQUEST_TOOL_NAME)
+            .is_some()
+    );
     assert!(server.get_tool("search_issues").is_none());
     assert!(server.get_tool("list_page_comments").is_none());
+    assert!(server.get_tool("gitlab_get_merge_request").is_some());
+}
+
+#[test]
+fn tool_discovery_applies_gitlab_service_profile_and_disabled_filters() {
+    let unavailable = server_with_config(RuntimeConfig {
+        enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config()
+    });
+    assert!(
+        unavailable
+            .get_tool(gitlab_tools::GITLAB_GET_PROJECT_TOOL_NAME)
+            .is_none()
+    );
+    assert!(
+        unavailable
+            .guard_registered_tool_call(gitlab_tools::GITLAB_GET_PROJECT_TOOL_NAME)
+            .is_err()
+    );
+
+    let basic = server_with_config(RuntimeConfig {
+        gitlab: Some(gitlab_config()),
+        disabled_tools: BTreeSet::from([
+            gitlab_tools::GITLAB_GET_MERGE_REQUEST_TOOL_NAME.to_string()
+        ]),
+        ..runtime_config()
+    });
+    let basic_names = current_tool_names(&basic);
+
+    assert!(basic_names.contains(&gitlab_tools::GITLAB_GET_PROJECT_TOOL_NAME.to_string()));
+    assert!(!basic_names.contains(&gitlab_tools::GITLAB_GET_MERGE_REQUEST_TOOL_NAME.to_string()));
+    assert!(
+        !basic_names.contains(&gitlab_tools::GITLAB_CREATE_MERGE_REQUEST_TOOL_NAME.to_string())
+    );
+    assert!(
+        !basic_names.contains(&gitlab_tools::GITLAB_ACCEPT_MERGE_REQUEST_TOOL_NAME.to_string())
+    );
+    assert_eq!(
+        basic
+            .guard_registered_tool_call(gitlab_tools::GITLAB_GET_MERGE_REQUEST_TOOL_NAME)
+            .unwrap_err()
+            .message,
+        "tool not available"
+    );
+
+    let developer = server_with_config(RuntimeConfig {
+        gitlab: Some(gitlab_config()),
+        enabled_toolsets: tool_registry::toolsets_for_profile("developer")
+            .unwrap()
+            .iter()
+            .map(|toolset| (*toolset).to_string())
+            .collect(),
+        ..runtime_config()
+    });
+    let developer_names = current_tool_names(&developer);
+
+    assert!(
+        developer_names.contains(&gitlab_tools::GITLAB_CREATE_MERGE_REQUEST_TOOL_NAME.to_string())
+    );
+    assert!(
+        developer_names.contains(&gitlab_tools::GITLAB_ACCEPT_MERGE_REQUEST_TOOL_NAME.to_string())
+    );
+    developer
+        .guard_registered_tool_call(gitlab_tools::GITLAB_CREATE_MERGE_REQUEST_TOOL_NAME)
+        .unwrap();
+    developer
+        .guard_registered_tool_call(gitlab_tools::GITLAB_ACCEPT_MERGE_REQUEST_TOOL_NAME)
+        .unwrap();
 }
 
 #[test]
@@ -204,10 +278,11 @@ fn jira_product_dependent_toolsets_filter_to_expected_tools() {
         ),
         (
             "jira_issue_metrics_read",
-            vec![
-                tools::JIRA_GET_ISSUE_TIMELINE_TOOL_NAME,
-                tools::JIRA_GET_ISSUE_SLA_METRICS_TOOL_NAME,
-            ],
+            vec![tools::JIRA_GET_ISSUE_TIMELINE_TOOL_NAME],
+        ),
+        (
+            "jira_issue_sla_read",
+            vec![tools::JIRA_GET_ISSUE_SLA_METRICS_TOOL_NAME],
         ),
         (
             "jira_issue_development_read",
@@ -251,14 +326,17 @@ fn jira_product_dependent_toolsets_filter_to_expected_tools() {
 fn all_business_tools_have_metadata_routes_docs_and_control_plane_policy() {
     let jira_names = all_jira_tool_names();
     let confluence_names = all_confluence_tool_names();
+    let gitlab_names = all_gitlab_tool_names();
     let mut all_names = jira_names.clone();
     all_names.extend(confluence_names.clone());
+    all_names.extend(gitlab_names.clone());
     let unique_names = all_names.iter().collect::<BTreeSet<_>>();
     let support_matrix_rows = support_matrix_tool_rows();
     let support_matrix_names = support_matrix_tool_names();
     let read_write = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
         confluence: Some(confluence_config()),
+        gitlab: Some(gitlab_config()),
         enabled_toolsets: tool_registry::all_toolsets(),
         atlassian_oauth_cloud_id: Some("cloud-123".to_string()),
         ..runtime_config()
@@ -267,9 +345,10 @@ fn all_business_tools_have_metadata_routes_docs_and_control_plane_policy() {
 
     assert_eq!(jira_names.len(), 49);
     assert_eq!(confluence_names.len(), 24);
-    assert_eq!(all_names.len(), 73);
+    assert_eq!(gitlab_names.len(), 15);
+    assert_eq!(all_names.len(), 88);
     assert_eq!(unique_names.len(), all_names.len());
-    assert_eq!(support_matrix_rows.len(), 73);
+    assert_eq!(support_matrix_rows.len(), 88);
     assert_eq!(support_matrix_names.len(), support_matrix_rows.len());
     assert_eq!(
         support_matrix_names
@@ -284,6 +363,13 @@ fn all_business_tools_have_metadata_routes_docs_and_control_plane_policy() {
             .filter(|name| name.starts_with("confluence_"))
             .count(),
         24
+    );
+    assert_eq!(
+        support_matrix_names
+            .iter()
+            .filter(|name| name.starts_with("gitlab_"))
+            .count(),
+        15
     );
 
     for name in all_names {

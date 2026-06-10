@@ -380,9 +380,7 @@ async fn jira_attachment_helpers_use_bounded_content_fetch() {
     assert_eq!(content.bytes, b"image-bytes");
     assert_eq!(absolute.bytes, b"image-bytes");
     assert!(oversized.contains("exceeds configured limit"));
-    assert!(
-        blocked_external.contains("absolute URL must use the configured Atlassian base origin")
-    );
+    assert!(blocked_external.contains("absolute URL must use the configured upstream base origin"));
     assert!(!blocked_external.contains("token=secret"));
     assert_eq!(
         requests[0].path,

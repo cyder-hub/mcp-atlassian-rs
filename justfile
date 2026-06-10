@@ -32,8 +32,12 @@ smoke-jira:
 smoke-confluence:
 	cd '{{justfile_directory()}}' && cargo xtask smoke confluence all
 
+# Run the GitLab MCP smoke check against a local mock GitLab.
+smoke-gitlab:
+	cd '{{justfile_directory()}}' && cargo xtask smoke gitlab all
+
 # Run all local MCP smoke checks.
-smoke: smoke-stdio smoke-http smoke-jira smoke-confluence
+smoke: smoke-stdio smoke-http smoke-jira smoke-confluence smoke-gitlab
 
 # Run real Jira acceptance checks.
 acceptance-jira:

@@ -12,8 +12,8 @@ use serde_json::json;
 use tokio::sync::Mutex;
 
 use crate::{
-    atlassian::auth::AtlassianAuth,
     jira::config::{DEFAULT_JIRA_TIMEOUT_SECONDS, JiraDeployment},
+    upstream::auth::UpstreamAuth,
 };
 
 use super::*;

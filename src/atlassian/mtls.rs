@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use reqwest::Identity;
 
-use crate::{atlassian::error::AtlassianError, error::ConfigError};
+use crate::{upstream::error::UpstreamError, error::ConfigError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientTlsIdentityConfig {
@@ -64,19 +64,19 @@ impl ClientTlsIdentityConfig {
         )
     }
 
-    pub fn load_identity(&self) -> Result<Identity, AtlassianError> {
+    pub fn load_identity(&self) -> Result<Identity, UpstreamError> {
         let cert = fs::read(&self.cert_path).map_err(|_| {
-            AtlassianError::invalid_input("failed to read mTLS client certificate file")
+            UpstreamError::invalid_input("failed to read mTLS client certificate file")
         })?;
         let key = fs::read(&self.key_path)
-            .map_err(|_| AtlassianError::invalid_input("failed to read mTLS client key file"))?;
+            .map_err(|_| UpstreamError::invalid_input("failed to read mTLS client key file"))?;
         let mut pem = cert;
         if !pem.ends_with(b"\n") {
             pem.push(b'\n');
         }
         pem.extend_from_slice(&key);
 
-        Identity::from_pem(&pem).map_err(AtlassianError::transport)
+        Identity::from_pem(&pem).map_err(UpstreamError::transport)
     }
 }
 

@@ -18,7 +18,16 @@ just smoke-stdio       # Jira stdio MCP smoke with a local mock Jira
 just smoke-http        # Jira streamable HTTP MCP smoke with a local mock Jira
 just smoke-jira        # Jira restricted-profile guard smoke
 just smoke-confluence  # Confluence stdio, HTTP, and restricted smoke with a local mock Confluence
+just smoke-gitlab      # GitLab stdio, HTTP, and restricted smoke with a local mock GitLab
 just smoke             # all local smoke checks
+```
+
+GitLab also has local Rust mock tests for client, handler, and discovery coverage. No real GitLab acceptance shortcut is currently provided:
+
+```bash
+cargo test gitlab
+cargo test mcp::tests::gitlab_handlers
+cargo test mcp::tests::discovery
 ```
 
 Real acceptance shortcuts build `target/debug/mcp-atlassian-rs`, run preflight, then run the selected acceptance suite against that binary:
@@ -45,6 +54,10 @@ cargo xtask smoke confluence all
 cargo xtask smoke confluence stdio
 cargo xtask smoke confluence http
 cargo xtask smoke confluence restricted
+cargo xtask smoke gitlab all
+cargo xtask smoke gitlab stdio
+cargo xtask smoke gitlab http
+cargo xtask smoke gitlab restricted
 ```
 
 Smoke options:
@@ -84,6 +97,7 @@ The common service configuration variables are the same as production developmen
 - Jira Server/Data Center: `JIRA_URL`, `JIRA_PERSONAL_TOKEN`, or `JIRA_URL`, `JIRA_USERNAME`, `JIRA_PASSWORD`.
 - Confluence Cloud: `CONFLUENCE_URL`, `CONFLUENCE_USERNAME`, `CONFLUENCE_API_TOKEN`.
 - Confluence Server/Data Center: `CONFLUENCE_URL`, `CONFLUENCE_PERSONAL_TOKEN`, or `CONFLUENCE_URL`, `CONFLUENCE_USERNAME`, `CONFLUENCE_PASSWORD`.
+- GitLab local smoke/mock tests: `GITLAB_URL`, `GITLAB_TOKEN` or `GITLAB_PERSONAL_TOKEN`, `GITLAB_OAUTH_ACCESS_TOKEN`, and `GITLAB_PROJECTS_FILTER` mirror production config, but no real GitLab acceptance suite is currently provided.
 
 Common Jira test-object variables:
 

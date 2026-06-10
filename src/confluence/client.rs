@@ -5,13 +5,8 @@ use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
 #[cfg(test)]
-use crate::atlassian::{custom_headers::CustomHeaders, proxy::ProxyConfig};
+use crate::upstream::{custom_headers::CustomHeaders, proxy::ProxyConfig};
 use crate::{
-    atlassian::{
-        error::AtlassianError,
-        http::{AtlassianHttpClient, DownloadedContent},
-        redaction::redact_text,
-    },
     confluence::{
         config::{ConfluenceConfig, ConfluenceDeployment},
         formatting::{body_value_as_storage, safe_path_segment},
@@ -21,6 +16,11 @@ use crate::{
             ConfluencePageListResponse, ConfluencePageViews, ConfluenceSearchResponse,
             ConfluenceUserListResponse, ConfluenceUserSearchResponse, ConfluenceUserSearchResult,
         },
+    },
+    upstream::{
+        error::UpstreamError,
+        http::{DownloadedContent, UpstreamHttpClient},
+        redaction::redact_text,
     },
 };
 
@@ -109,7 +109,7 @@ struct ConfluenceUpdatePageWithSpaceRequest<'a> {
 #[derive(Clone, Debug)]
 pub struct ConfluenceClient {
     config: ConfluenceConfig,
-    http: AtlassianHttpClient,
+    http: UpstreamHttpClient,
 }
 
 mod analytics;
@@ -120,8 +120,8 @@ mod pages;
 mod users;
 
 impl ConfluenceClient {
-    pub fn new(config: ConfluenceConfig) -> Result<Self, AtlassianError> {
-        let http = AtlassianHttpClient::new_with_proxy_headers_and_mtls(
+    pub fn new(config: ConfluenceConfig) -> Result<Self, UpstreamError> {
+        let http = UpstreamHttpClient::new_with_proxy_headers_and_mtls(
             &config.base_url,
             config.auth.clone(),
             config.timeout_seconds,
@@ -141,7 +141,7 @@ impl ConfluenceClient {
         &self,
         path: &str,
         query: Vec<(String, String)>,
-    ) -> Result<T, AtlassianError>
+    ) -> Result<T, UpstreamError>
     where
         T: DeserializeOwned,
     {
@@ -153,7 +153,7 @@ impl ConfluenceClient {
         &self,
         url: &str,
         max_bytes: u64,
-    ) -> Result<DownloadedContent, AtlassianError> {
+    ) -> Result<DownloadedContent, UpstreamError> {
         let builder = self
             .http
             .get_same_origin_or_relative_url(url, "download_url")?;
@@ -169,7 +169,7 @@ fn page_write_payload(
     parent_id: Option<&str>,
     version: Option<u64>,
     version_options: Option<(bool, Option<&str>)>,
-) -> Result<Value, AtlassianError> {
+) -> Result<Value, UpstreamError> {
     let mut payload = json!({
         "type": "page",
         "title": title,
@@ -206,7 +206,7 @@ fn comment_payload(
     container_id: &str,
     container_type: &'static str,
     storage_body: &str,
-) -> Result<Value, AtlassianError> {
+) -> Result<Value, UpstreamError> {
     let container_id = safe_path_segment(container_id, "container_id")?;
     Ok(json!({
         "type": "comment",
@@ -226,10 +226,10 @@ fn comment_payload(
 fn required_non_empty_input(
     value: &str,
     field_name: &'static str,
-) -> Result<String, AtlassianError> {
+) -> Result<String, UpstreamError> {
     let value = value.trim();
     if value.is_empty() {
-        Err(AtlassianError::invalid_input(format!(
+        Err(UpstreamError::invalid_input(format!(
             "{field_name} must not be empty"
         )))
     } else {
@@ -263,30 +263,30 @@ fn children_query_stats(
     }
 }
 
-fn search_limit(value: Option<u64>) -> Result<u64, AtlassianError> {
+fn search_limit(value: Option<u64>) -> Result<u64, UpstreamError> {
     match value.unwrap_or(DEFAULT_SEARCH_LIMIT) {
-        0 => Err(AtlassianError::invalid_input("limit must be positive")),
-        value if value > MAX_SEARCH_LIMIT => Err(AtlassianError::invalid_input(format!(
+        0 => Err(UpstreamError::invalid_input("limit must be positive")),
+        value if value > MAX_SEARCH_LIMIT => Err(UpstreamError::invalid_input(format!(
             "limit must be less than or equal to {MAX_SEARCH_LIMIT}"
         ))),
         value => Ok(value),
     }
 }
 
-fn user_search_limit(value: Option<u64>) -> Result<u64, AtlassianError> {
+fn user_search_limit(value: Option<u64>) -> Result<u64, UpstreamError> {
     match value.unwrap_or(DEFAULT_USER_SEARCH_LIMIT) {
-        0 => Err(AtlassianError::invalid_input("limit must be positive")),
-        value if value > MAX_USER_SEARCH_LIMIT => Err(AtlassianError::invalid_input(format!(
+        0 => Err(UpstreamError::invalid_input("limit must be positive")),
+        value if value > MAX_USER_SEARCH_LIMIT => Err(UpstreamError::invalid_input(format!(
             "limit must be less than or equal to {MAX_USER_SEARCH_LIMIT}"
         ))),
         value => Ok(value),
     }
 }
 
-fn attachment_list_limit(value: Option<u64>) -> Result<u64, AtlassianError> {
+fn attachment_list_limit(value: Option<u64>) -> Result<u64, UpstreamError> {
     match value.unwrap_or(DEFAULT_ATTACHMENT_LIST_LIMIT) {
-        0 => Err(AtlassianError::invalid_input("limit must be positive")),
-        value if value > MAX_ATTACHMENT_LIST_LIMIT => Err(AtlassianError::invalid_input(format!(
+        0 => Err(UpstreamError::invalid_input("limit must be positive")),
+        value if value > MAX_ATTACHMENT_LIST_LIMIT => Err(UpstreamError::invalid_input(format!(
             "limit must be less than or equal to {MAX_ATTACHMENT_LIST_LIMIT}"
         ))),
         value => Ok(value),
@@ -298,12 +298,12 @@ fn attachment_multipart_form(
     file_bytes: Vec<u8>,
     comment: Option<&str>,
     minor_edit: bool,
-) -> Result<multipart::Form, AtlassianError> {
+) -> Result<multipart::Form, UpstreamError> {
     let file_part = multipart::Part::bytes(file_bytes)
         .file_name(filename.to_string())
         .mime_str("application/octet-stream")
         .map_err(|error| {
-            AtlassianError::invalid_input(format!("failed to build multipart file part: {error}"))
+            UpstreamError::invalid_input(format!("failed to build multipart file part: {error}"))
         })?;
     let mut form = multipart::Form::new().part("file", file_part);
 
@@ -317,7 +317,7 @@ fn attachment_multipart_form(
 
 fn confluence_attachment_from_upload_response(
     value: Value,
-) -> Result<ConfluenceAttachment, AtlassianError> {
+) -> Result<ConfluenceAttachment, UpstreamError> {
     let attachment = value
         .get("results")
         .and_then(Value::as_array)
@@ -325,13 +325,13 @@ fn confluence_attachment_from_upload_response(
         .cloned()
         .unwrap_or(value);
     if attachment.is_null() {
-        return Err(AtlassianError::unexpected_shape(
+        return Err(UpstreamError::unexpected_shape(
             "attachment upload response is missing an attachment result",
         ));
     }
 
     serde_json::from_value(attachment).map_err(|error| {
-        AtlassianError::json_decode_body(error, Some("Confluence attachment upload response"))
+        UpstreamError::json_decode_body(error, Some("Confluence attachment upload response"))
     })
 }
 

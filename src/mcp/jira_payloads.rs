@@ -1,5 +1,4 @@
 use crate::{
-    atlassian::error::AtlassianError,
     jira::{
         config::JiraDeployment,
         formatting::{
@@ -13,7 +12,8 @@ use crate::{
             JiraUpdateIssueArgs, JiraUpdateSprintArgs,
         },
     },
-    mcp_errors::atlassian_error,
+    mcp_errors::upstream_error,
+    upstream::error::UpstreamError,
 };
 use rmcp::ErrorData;
 use serde_json::{Map, Value, json};
@@ -24,35 +24,35 @@ pub(super) fn parse_optional_string_list_arg(
     value: Option<Value>,
     field_name: &'static str,
 ) -> Result<Option<Vec<String>>, ErrorData> {
-    parse_optional_string_list(value, field_name).map_err(atlassian_error)
+    parse_optional_string_list(value, field_name).map_err(upstream_error)
 }
 
 pub(super) fn parse_required_string_list_arg(
     value: Value,
     field_name: &'static str,
 ) -> Result<Vec<String>, ErrorData> {
-    parse_required_string_list(value, field_name).map_err(atlassian_error)
+    parse_required_string_list(value, field_name).map_err(upstream_error)
 }
 
 pub(super) fn parse_optional_object_arg(
     value: Option<Value>,
     field_name: &'static str,
 ) -> Result<Option<Value>, ErrorData> {
-    parse_optional_object(value, field_name).map_err(atlassian_error)
+    parse_optional_object(value, field_name).map_err(upstream_error)
 }
 
 pub(super) fn parse_required_object_arg(
     value: Value,
     field_name: &'static str,
 ) -> Result<Value, ErrorData> {
-    parse_required_object(value, field_name).map_err(atlassian_error)
+    parse_required_object(value, field_name).map_err(upstream_error)
 }
 
 pub(super) fn parse_required_object_list_arg(
     value: Value,
     field_name: &'static str,
 ) -> Result<Vec<Value>, ErrorData> {
-    parse_required_object_list(value, field_name).map_err(atlassian_error)
+    parse_required_object_list(value, field_name).map_err(upstream_error)
 }
 
 pub(super) fn create_issue_fields_from_args(
@@ -90,7 +90,7 @@ pub(super) fn create_issue_fields_from_args(
         }
     }
 
-    merge_optional_objects(fields, additional_fields, "additional_fields").map_err(atlassian_error)
+    merge_optional_objects(fields, additional_fields, "additional_fields").map_err(upstream_error)
 }
 
 pub(super) struct UpdateIssueFields {
@@ -132,7 +132,7 @@ pub(super) fn update_issue_fields_from_args(
     }
 
     if fields.as_object().is_some_and(Map::is_empty) && additional_fields.is_none() {
-        return Err(atlassian_error(AtlassianError::invalid_input(
+        return Err(upstream_error(UpstreamError::invalid_input(
             "fields must contain at least one update",
         )));
     }
@@ -154,7 +154,7 @@ pub(super) fn normalize_issue_fields(
 ) -> Result<Value, ErrorData> {
     reject_unsupported_attachments(&fields, field_name)?;
     let object = fields.as_object_mut().ok_or_else(|| {
-        atlassian_error(AtlassianError::invalid_input(format!(
+        upstream_error(UpstreamError::invalid_input(format!(
             "{field_name} must be a JSON object"
         )))
     })?;
@@ -187,7 +187,7 @@ pub(super) fn reject_unsupported_attachments(
         .as_object()
         .is_some_and(|object| object.contains_key("attachments"))
     {
-        Err(atlassian_error(AtlassianError::invalid_input(format!(
+        Err(upstream_error(UpstreamError::invalid_input(format!(
             "{field_name}.attachments is not supported by jira_update_issue"
         ))))
     } else {
@@ -352,7 +352,7 @@ pub(super) fn update_sprint_payload_from_args(
     insert_optional_value(&mut payload, "goal", optional_non_empty_arg(args.goal));
 
     if payload.as_object().is_some_and(Map::is_empty) {
-        return Err(atlassian_error(AtlassianError::invalid_input(
+        return Err(upstream_error(UpstreamError::invalid_input(
             "sprint update must contain at least one field",
         )));
     }
@@ -465,10 +465,10 @@ pub(super) fn take_required_string_field(
 ) -> Result<String, ErrorData> {
     match object.remove(field_name) {
         Some(Value::String(value)) => required_non_empty_arg(value, field_name),
-        Some(_) => Err(atlassian_error(AtlassianError::invalid_input(format!(
+        Some(_) => Err(upstream_error(UpstreamError::invalid_input(format!(
             "{field_name} must be a string"
         )))),
-        None => Err(atlassian_error(AtlassianError::invalid_input(format!(
+        None => Err(upstream_error(UpstreamError::invalid_input(format!(
             "{field_name} is required"
         )))),
     }
@@ -481,7 +481,7 @@ pub(super) fn take_optional_string_field(
     match object.remove(field_name) {
         Some(Value::String(value)) => Ok(optional_non_empty_arg(Some(value))),
         Some(Value::Null) | None => Ok(None),
-        Some(_) => Err(atlassian_error(AtlassianError::invalid_input(format!(
+        Some(_) => Err(upstream_error(UpstreamError::invalid_input(format!(
             "{field_name} must be a string"
         )))),
     }

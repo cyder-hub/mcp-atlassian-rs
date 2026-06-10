@@ -155,14 +155,14 @@ fn request_auth_matrix_accepts_basic_token_and_bearer_at_mcp_boundary() {
         .unwrap();
     assert_eq!(
         basic.context.jira_config().unwrap().auth,
-        AtlassianAuth::Basic {
+        UpstreamAuth::Basic {
             username: "user@example.com".to_string(),
             api_token: "api-token".to_string(),
         }
     );
     assert_eq!(
         basic.context.confluence_config().unwrap().auth,
-        AtlassianAuth::Basic {
+        UpstreamAuth::Basic {
             username: "user@example.com".to_string(),
             api_token: "api-token".to_string(),
         }
@@ -177,7 +177,7 @@ fn request_auth_matrix_accepts_basic_token_and_bearer_at_mcp_boundary() {
             .unwrap();
         assert_eq!(
             scoped.context.jira_config().unwrap().auth,
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: token.to_string(),
             }
         );
@@ -271,7 +271,7 @@ fn request_auth_byot_matrix_preserves_profile_filters_and_service_availability()
 
     assert_eq!(
         basic.context.jira_config().unwrap().auth,
-        AtlassianAuth::OAuthAccessToken {
+        UpstreamAuth::OAuthAccessToken {
             access_token: "request-access-token".to_string(),
         }
     );
@@ -323,13 +323,13 @@ fn request_auth_byot_matrix_keeps_token_scheme_as_pat_when_oauth_enabled() {
 
     assert_eq!(
         scoped.context.jira_config().unwrap().auth,
-        AtlassianAuth::Pat {
+        UpstreamAuth::Pat {
             personal_token: "request-pat-token".to_string(),
         }
     );
     assert_eq!(
         scoped.context.confluence_config().unwrap().auth,
-        AtlassianAuth::Pat {
+        UpstreamAuth::Pat {
             personal_token: "request-pat-token".to_string(),
         }
     );

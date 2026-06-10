@@ -4,7 +4,7 @@ impl JiraClient {
     pub(super) async fn get_issue_model(
         &self,
         request: GetIssueRequest,
-    ) -> Result<JiraIssue, AtlassianError> {
+    ) -> Result<JiraIssue, UpstreamError> {
         ensure_issue_allowed(&request.issue_key, &self.config)?;
         let issue_key = safe_path_segment(&request.issue_key, "issue_key")?;
         let mut query = optional_query_params([
@@ -33,12 +33,12 @@ impl JiraClient {
             .await
     }
 
-    pub async fn get_issue(&self, request: GetIssueRequest) -> Result<Value, AtlassianError> {
+    pub async fn get_issue(&self, request: GetIssueRequest) -> Result<Value, UpstreamError> {
         let issue = self.get_issue_model(request).await?;
         Ok(issue.to_simplified_value())
     }
 
-    pub async fn create_issue(&self, fields: Value) -> Result<Value, AtlassianError> {
+    pub async fn create_issue(&self, fields: Value) -> Result<Value, UpstreamError> {
         let fields = parse_optional_object(Some(fields), "fields")?.unwrap_or_else(|| json!({}));
         let path = match self.config.deployment {
             JiraDeployment::Cloud => "/rest/api/3/issue",
@@ -58,7 +58,7 @@ impl JiraClient {
         &self,
         issues: Vec<Value>,
         validate_only: bool,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let body = json!({
             "issueUpdates": issues,
             "validateOnly": validate_only,
@@ -78,7 +78,7 @@ impl JiraClient {
         issue_ids_or_keys: Vec<String>,
         fields: Option<Vec<String>>,
         limit: Option<i64>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         if self.config.deployment != JiraDeployment::Cloud {
             return Ok(JiraOperationResult::product_unavailable(
                 "Jira Cloud changelog bulk endpoint",
@@ -108,7 +108,7 @@ impl JiraClient {
         fields: Value,
         additional_fields: Option<Value>,
         notify_users: Option<bool>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         ensure_issue_allowed(&issue_key, &self.config)?;
         let issue_key = safe_path_segment(&issue_key, "issue_key")?;
         let fields = merge_optional_objects(fields, additional_fields, "additional_fields")?;
@@ -138,7 +138,7 @@ impl JiraClient {
         &self,
         issue_key: String,
         delete_subtasks: bool,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         ensure_issue_allowed(&issue_key, &self.config)?;
         let issue_key = safe_path_segment(&issue_key, "issue_key")?;
         let query = vec![("deleteSubtasks".to_string(), delete_subtasks.to_string())];
@@ -157,7 +157,7 @@ impl JiraClient {
         }))
     }
 
-    pub async fn get_issue_watchers(&self, issue_key: String) -> Result<Value, AtlassianError> {
+    pub async fn get_issue_watchers(&self, issue_key: String) -> Result<Value, UpstreamError> {
         ensure_issue_allowed(&issue_key, &self.config)?;
         let issue_key = safe_path_segment(&issue_key, "issue_key")?;
         self.http
@@ -172,7 +172,7 @@ impl JiraClient {
         &self,
         issue_key: String,
         user_identifier: String,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         self.watcher_mutation(issue_key, user_identifier, true)
             .await
     }
@@ -181,7 +181,7 @@ impl JiraClient {
         &self,
         issue_key: String,
         user_identifier: String,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         self.watcher_mutation(issue_key, user_identifier, false)
             .await
     }
@@ -191,7 +191,7 @@ impl JiraClient {
         issue_key: String,
         start_at: Option<u64>,
         limit: Option<u64>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         ensure_issue_allowed(&issue_key, &self.config)?;
         let issue_key = safe_path_segment(&issue_key, "issue_key")?;
         let query = optional_query_params([
@@ -212,7 +212,7 @@ impl JiraClient {
         issue_key: String,
         payload: Value,
         query: Vec<(String, String)>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         ensure_issue_allowed(&issue_key, &self.config)?;
         let issue_key = safe_path_segment(&issue_key, "issue_key")?;
         self.http
@@ -224,7 +224,7 @@ impl JiraClient {
             .await
     }
 
-    pub async fn get_link_types(&self) -> Result<Value, AtlassianError> {
+    pub async fn get_link_types(&self) -> Result<Value, UpstreamError> {
         self.http
             .send_json(self.http.get("/rest/api/2/issueLinkType")?)
             .await
@@ -234,7 +234,7 @@ impl JiraClient {
         &self,
         issue_key: String,
         epic_key: String,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         self.update_issue(
             issue_key,
             json!({ "parent": { "key": epic_key } }),
@@ -244,7 +244,7 @@ impl JiraClient {
         .await
     }
 
-    pub async fn create_issue_link(&self, payload: Value) -> Result<Value, AtlassianError> {
+    pub async fn create_issue_link(&self, payload: Value) -> Result<Value, UpstreamError> {
         self.http
             .send_json_value_or_null(self.http.post_json("/rest/api/2/issueLink", &payload)?)
             .await
@@ -254,7 +254,7 @@ impl JiraClient {
         &self,
         issue_key: String,
         payload: Value,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         ensure_issue_allowed(&issue_key, &self.config)?;
         let issue_key = safe_path_segment(&issue_key, "issue_key")?;
         let path = match self.config.deployment {
@@ -268,7 +268,7 @@ impl JiraClient {
             .await
     }
 
-    pub async fn remove_issue_link(&self, link_id: String) -> Result<Value, AtlassianError> {
+    pub async fn remove_issue_link(&self, link_id: String) -> Result<Value, UpstreamError> {
         let link_id = safe_path_segment(&link_id, "link_id")?;
         let response = self
             .http
@@ -285,7 +285,7 @@ impl JiraClient {
         issue_key: String,
         user_identifier: String,
         add: bool,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         ensure_issue_allowed(&issue_key, &self.config)?;
         let issue_key = safe_path_segment(&issue_key, "issue_key")?;
         let path = format!("/rest/api/2/issue/{issue_key}/watchers");

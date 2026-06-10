@@ -6,7 +6,7 @@ impl JiraClient {
         issue_key: String,
         application_type: Option<String>,
         data_type: Option<String>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let issue_id = self.resolve_development_issue_id(&issue_key).await?;
         let query = optional_query_params([
             ("issueId", Some(issue_id)),
@@ -28,7 +28,7 @@ impl JiraClient {
         issue_keys: Vec<String>,
         application_type: Option<String>,
         data_type: Option<String>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let mut results = Vec::new();
         for issue_key in issue_keys {
             match self
@@ -51,7 +51,7 @@ impl JiraClient {
     async fn resolve_development_issue_id(
         &self,
         issue_key_or_id: &str,
-    ) -> Result<String, AtlassianError> {
+    ) -> Result<String, UpstreamError> {
         let issue_key_or_id = issue_key_or_id.trim();
         let is_numeric_id = !issue_key_or_id.is_empty()
             && issue_key_or_id.chars().all(|value| value.is_ascii_digit());
@@ -73,13 +73,13 @@ impl JiraClient {
             )
             .await?;
         let issue_key = issue.key.as_deref().ok_or_else(|| {
-            AtlassianError::invalid_input(format!(
+            UpstreamError::invalid_input(format!(
                 "issue `{issue_key_or_id}` response did not include a key"
             ))
         })?;
         ensure_issue_allowed(issue_key, &self.config)?;
         issue.id.ok_or_else(|| {
-            AtlassianError::invalid_input(format!(
+            UpstreamError::invalid_input(format!(
                 "issue `{issue_key_or_id}` response did not include a numeric id"
             ))
         })

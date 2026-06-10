@@ -36,22 +36,8 @@ pub const ENV_CONFLUENCE_CUSTOM_HEADERS: &str = "CONFLUENCE_CUSTOM_HEADERS";
 pub const ENV_CONFLUENCE_CLIENT_CERT: &str = "CONFLUENCE_CLIENT_CERT";
 pub const ENV_CONFLUENCE_CLIENT_KEY: &str = "CONFLUENCE_CLIENT_KEY";
 
-pub const CUSTOM_HEADER_RESERVED_NAMES: &[&str] = &[
-    "authorization",
-    "cookie",
-    "set-cookie",
-    "proxy-authorization",
-    "host",
-    "content-type",
-    "content-length",
-    "transfer-encoding",
-    "connection",
-    "x-atlassian-jira-personal-token",
-    "x-atlassian-confluence-personal-token",
-    "x-atlassian-jira-url",
-    "x-atlassian-confluence-url",
-    "x-atlassian-cloud-id",
-];
+pub const CUSTOM_HEADER_RESERVED_NAMES: &[&str] =
+    crate::upstream::custom_headers::CUSTOM_HEADER_RESERVED_NAMES;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CapabilityStatus {
@@ -111,6 +97,8 @@ mod tests {
         assert!(CUSTOM_HEADER_RESERVED_NAMES.contains(&"cookie"));
         assert!(CUSTOM_HEADER_RESERVED_NAMES.contains(&"host"));
         assert!(CUSTOM_HEADER_RESERVED_NAMES.contains(&"content-type"));
+        assert!(CUSTOM_HEADER_RESERVED_NAMES.contains(&"private-token"));
+        assert!(CUSTOM_HEADER_RESERVED_NAMES.contains(&"job-token"));
         assert!(CUSTOM_HEADER_RESERVED_NAMES.contains(&"x-atlassian-cloud-id"));
     }
 

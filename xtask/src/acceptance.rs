@@ -582,7 +582,7 @@ fn jira_rows(env: &EnvMap) -> Vec<Row> {
             false,
         ),
         row(
-            "jira_issue_metrics_read",
+            "jira_issue_sla_read",
             "jira_get_issue_sla_metrics",
             "jira/product/sla",
             &["JIRA_READ_ISSUE"],

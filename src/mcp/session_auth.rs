@@ -4,11 +4,11 @@ use std::{
 };
 
 use crate::{
-    atlassian::{
-        redaction::redact_text,
-        request_auth::{RequestAuthFingerprint, parse_request_auth_headers_with_oauth_bearer},
+    atlassian::request_auth::{
+        RequestAuthFingerprint, parse_request_auth_headers_with_oauth_bearer,
     },
     context::AppContext,
+    upstream::redaction::redact_text,
 };
 use axum::http::{HeaderMap, HeaderValue};
 use rmcp::ErrorData;

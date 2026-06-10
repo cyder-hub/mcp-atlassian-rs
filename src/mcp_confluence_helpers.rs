@@ -3,9 +3,9 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 use crate::{
-    atlassian::http::DownloadedContent,
     confluence::{client::ConfluenceClient, models::ConfluenceAttachment},
     jira::formatting::{base64_encode, redact_url_query},
+    upstream::http::DownloadedContent,
 };
 
 pub(crate) async fn confluence_attachment_with_content_value(

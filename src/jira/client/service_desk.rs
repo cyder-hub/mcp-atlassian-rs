@@ -4,7 +4,7 @@ impl JiraClient {
     pub async fn get_service_desk_for_project(
         &self,
         project_key: String,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let project_key = safe_path_segment(&project_key, "project_key")?;
         let desks: Value = match self
             .http
@@ -34,7 +34,7 @@ impl JiraClient {
         service_desk_id: String,
         start_at: Option<u64>,
         limit: Option<u64>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let service_desk_id = safe_path_segment(&service_desk_id, "service_desk_id")?;
         let query = optional_query_params([
             ("start", start_at.map(|value| value.to_string())),
@@ -58,7 +58,7 @@ impl JiraClient {
         queue_id: String,
         start_at: Option<u64>,
         limit: Option<u64>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let service_desk_id = safe_path_segment(&service_desk_id, "service_desk_id")?;
         let queue_id = safe_path_segment(&queue_id, "queue_id")?;
         let query = optional_query_params([

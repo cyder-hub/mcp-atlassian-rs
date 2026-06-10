@@ -8,7 +8,7 @@ impl ConfluenceClient {
         limit: Option<u64>,
         filename: Option<&str>,
         media_type: Option<&str>,
-    ) -> Result<ConfluenceAttachmentListResponse, AtlassianError> {
+    ) -> Result<ConfluenceAttachmentListResponse, UpstreamError> {
         let content_id = safe_path_segment(content_id, "content_id")?;
         let start = start.unwrap_or(0);
         let limit = attachment_list_limit(limit)?;
@@ -46,7 +46,7 @@ impl ConfluenceClient {
     pub async fn get_attachment_by_id(
         &self,
         attachment_id: &str,
-    ) -> Result<crate::confluence::models::ConfluenceAttachment, AtlassianError> {
+    ) -> Result<crate::confluence::models::ConfluenceAttachment, UpstreamError> {
         let attachment_id = safe_path_segment(attachment_id, "attachment_id")?;
         self.get_json(
             &format!("/rest/api/content/{attachment_id}"),
@@ -64,7 +64,7 @@ impl ConfluenceClient {
         file_path: &str,
         comment: Option<&str>,
         minor_edit: bool,
-    ) -> Result<ConfluenceAttachment, AtlassianError> {
+    ) -> Result<ConfluenceAttachment, UpstreamError> {
         let content_id = safe_path_segment(content_id, "content_id")?;
         let file_path = required_non_empty_input(file_path, "file_path")?;
         let path = Path::new(&file_path);
@@ -73,29 +73,27 @@ impl ConfluenceClient {
             .and_then(|value| value.to_str())
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .ok_or_else(|| AtlassianError::invalid_input("file_path must include a filename"))?
+            .ok_or_else(|| UpstreamError::invalid_input("file_path must include a filename"))?
             .to_string();
         let metadata = fs::metadata(path).map_err(|error| {
-            AtlassianError::invalid_input(format!(
+            UpstreamError::invalid_input(format!(
                 "failed to inspect local file `{filename}`: {error}"
             ))
         })?;
         if !metadata.is_file() {
-            return Err(AtlassianError::invalid_input(format!(
+            return Err(UpstreamError::invalid_input(format!(
                 "local upload target `{filename}` must be a file"
             )));
         }
         if metadata.len() > DEFAULT_UPLOAD_ATTACHMENT_MAX_BYTES {
-            return Err(AtlassianError::invalid_input(format!(
+            return Err(UpstreamError::invalid_input(format!(
                 "local file `{filename}` size {} bytes exceeds configured upload limit of {} bytes",
                 metadata.len(),
                 DEFAULT_UPLOAD_ATTACHMENT_MAX_BYTES
             )));
         }
         let bytes = fs::read(path).map_err(|error| {
-            AtlassianError::invalid_input(format!(
-                "failed to read local file `{filename}`: {error}"
-            ))
+            UpstreamError::invalid_input(format!("failed to read local file `{filename}`: {error}"))
         })?;
         let form = attachment_multipart_form(&filename, bytes, comment, minor_edit)?;
         let value = self
@@ -113,7 +111,7 @@ impl ConfluenceClient {
     pub async fn delete_attachment(
         &self,
         attachment_id: &str,
-    ) -> Result<serde_json::Value, AtlassianError> {
+    ) -> Result<serde_json::Value, UpstreamError> {
         let attachment_id = safe_path_segment(attachment_id, "attachment_id")?;
         self.http
             .send_json_value_or_null(

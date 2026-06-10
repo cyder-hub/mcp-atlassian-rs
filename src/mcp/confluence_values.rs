@@ -1,11 +1,11 @@
 use crate::{
-    atlassian::error::AtlassianError,
     confluence::{
         client::{ConfluenceEmojiStatus, MAX_SEARCH_LIMIT},
         formatting::ConfluenceContentFormat,
         models::ConfluencePage,
     },
-    mcp_errors::atlassian_error,
+    mcp_errors::upstream_error,
+    upstream::error::UpstreamError,
 };
 use rmcp::ErrorData;
 use serde_json::{Value, json};
@@ -16,11 +16,11 @@ pub(super) fn optional_confluence_search_limit_arg(
     value: Option<u64>,
 ) -> Result<Option<u64>, ErrorData> {
     match value {
-        Some(0) => Err(atlassian_error(AtlassianError::invalid_input(
+        Some(0) => Err(upstream_error(UpstreamError::invalid_input(
             "limit must be positive",
         ))),
         Some(value) if value > MAX_SEARCH_LIMIT => {
-            Err(atlassian_error(AtlassianError::invalid_input(format!(
+            Err(upstream_error(UpstreamError::invalid_input(format!(
                 "limit must be less than or equal to {}",
                 MAX_SEARCH_LIMIT
             ))))
@@ -36,10 +36,10 @@ pub(super) fn optional_u64_range_arg(
     field_name: &'static str,
 ) -> Result<u64, ErrorData> {
     match value.unwrap_or(default) {
-        0 => Err(atlassian_error(AtlassianError::invalid_input(format!(
+        0 => Err(upstream_error(UpstreamError::invalid_input(format!(
             "{field_name} must be positive"
         )))),
-        value if value > max => Err(atlassian_error(AtlassianError::invalid_input(format!(
+        value if value > max => Err(upstream_error(UpstreamError::invalid_input(format!(
             "{field_name} must be less than or equal to {max}"
         )))),
         value => Ok(value),
@@ -62,9 +62,9 @@ pub(super) fn confluence_page_tool_value(
 pub(super) fn parse_confluence_write_content_format(
     value: Option<&str>,
 ) -> Result<ConfluenceContentFormat, ErrorData> {
-    let format = ConfluenceContentFormat::parse(value).map_err(atlassian_error)?;
+    let format = ConfluenceContentFormat::parse(value).map_err(upstream_error)?;
     if format == ConfluenceContentFormat::Html {
-        return Err(atlassian_error(AtlassianError::invalid_input(
+        return Err(upstream_error(UpstreamError::invalid_input(
             "content_format must be markdown, wiki, or storage",
         )));
     }
@@ -73,10 +73,10 @@ pub(super) fn parse_confluence_write_content_format(
 
 pub(super) fn confluence_user_search_limit(value: Option<u64>) -> Result<u64, ErrorData> {
     match value.unwrap_or(10) {
-        0 => Err(atlassian_error(AtlassianError::invalid_input(
+        0 => Err(upstream_error(UpstreamError::invalid_input(
             "limit must be positive",
         ))),
-        value if value > 50 => Err(atlassian_error(AtlassianError::invalid_input(
+        value if value > 50 => Err(upstream_error(UpstreamError::invalid_input(
             "limit must be less than or equal to 50",
         ))),
         value => Ok(value),
@@ -88,7 +88,7 @@ pub(super) fn confluence_positive_version_arg(
     field_name: &'static str,
 ) -> Result<u64, ErrorData> {
     if value == 0 {
-        Err(atlassian_error(AtlassianError::invalid_input(format!(
+        Err(upstream_error(UpstreamError::invalid_input(format!(
             "{field_name} must be positive"
         ))))
     } else {
@@ -173,7 +173,7 @@ pub(super) fn confluence_split_file_paths(value: &str) -> Result<Vec<String>, Er
         .map(ToString::to_string)
         .collect::<Vec<_>>();
     if file_paths.is_empty() {
-        Err(atlassian_error(AtlassianError::invalid_input(
+        Err(upstream_error(UpstreamError::invalid_input(
             "file_paths must contain at least one local file path",
         )))
     } else {

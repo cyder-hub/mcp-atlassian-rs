@@ -1,7 +1,7 @@
 use super::*;
 
 impl JiraClient {
-    pub async fn search(&self, request: SearchRequest) -> Result<Value, AtlassianError> {
+    pub async fn search(&self, request: SearchRequest) -> Result<Value, UpstreamError> {
         let limit = request.limit.unwrap_or(DEFAULT_LIMIT);
         let projects = self.effective_projects(request.projects_filter.as_deref())?;
         let jql = inject_project_filter(&request.jql, &projects);
@@ -59,7 +59,7 @@ impl JiraClient {
         project_key: String,
         limit: Option<u64>,
         start_at: Option<u64>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let project_key = safe_path_segment(&project_key, "project_key")?;
         ensure_project_allowed(&project_key, &self.config)?;
         self.search(SearchRequest {
@@ -76,7 +76,7 @@ impl JiraClient {
         jql: &str,
         request: &SearchRequest,
         limit: u64,
-    ) -> Result<JiraSearchResult, AtlassianError> {
+    ) -> Result<JiraSearchResult, UpstreamError> {
         let mut body = json!({
             "jql": jql,
             "maxResults": limit,
@@ -106,7 +106,7 @@ impl JiraClient {
         jql: &str,
         request: &SearchRequest,
         limit: u64,
-    ) -> Result<JiraSearchResult, AtlassianError> {
+    ) -> Result<JiraSearchResult, UpstreamError> {
         let mut body = json!({
             "jql": jql,
             "startAt": request.start_at.unwrap_or(0),
@@ -123,7 +123,7 @@ impl JiraClient {
     fn effective_projects(
         &self,
         request_projects: Option<&[String]>,
-    ) -> Result<Vec<String>, AtlassianError> {
+    ) -> Result<Vec<String>, UpstreamError> {
         let config_projects = self
             .config
             .projects_filter
@@ -144,7 +144,7 @@ impl JiraClient {
             .filter(|project| request_set.contains(project))
             .collect::<Vec<_>>();
         if intersection.is_empty() {
-            Err(AtlassianError::invalid_input(
+            Err(UpstreamError::invalid_input(
                 "projects_filter does not overlap with configured Jira project filter",
             ))
         } else {

@@ -2,7 +2,7 @@ use reqwest::Url;
 
 use crate::{
     atlassian::{
-        auth::AtlassianAuth,
+        auth::UpstreamAuth,
         compat::{
             ENV_ATLASSIAN_API_TOKEN, ENV_ATLASSIAN_CLIENT_CERT, ENV_ATLASSIAN_CLIENT_KEY,
             ENV_ATLASSIAN_CUSTOM_HEADERS, ENV_ATLASSIAN_OAUTH_ACCESS_TOKEN,
@@ -17,10 +17,10 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParsedAtlassianServiceConfig<D> {
+pub struct ParsedUpstreamServiceConfig<D> {
     pub base_url: String,
     pub deployment: D,
-    pub auth: AtlassianAuth,
+    pub auth: UpstreamAuth,
     pub oauth_cloud_id: Option<String>,
     pub ssl_verify: bool,
     pub proxy: ProxyConfig,
@@ -29,7 +29,7 @@ pub struct ParsedAtlassianServiceConfig<D> {
     pub timeout_seconds: u64,
 }
 
-pub struct AtlassianServiceConfigSpec<D> {
+pub struct UpstreamServiceConfigSpec<D> {
     pub url_variable: &'static str,
     pub username_variable: &'static str,
     pub api_token_variable: &'static str,
@@ -56,10 +56,10 @@ pub struct AtlassianServiceConfigSpec<D> {
     pub invalid_timeout_error: fn(&'static str, String) -> ConfigError,
 }
 
-pub fn parse_atlassian_service_config<F, E, D>(
+pub fn parse_upstream_service_config<F, E, D>(
     get_var: &mut F,
-    spec: &AtlassianServiceConfigSpec<D>,
-) -> Result<Option<ParsedAtlassianServiceConfig<D>>, ConfigError>
+    spec: &UpstreamServiceConfigSpec<D>,
+) -> Result<Option<ParsedUpstreamServiceConfig<D>>, ConfigError>
 where
     F: FnMut(&str) -> Result<String, E>,
     D: Copy + Eq,
@@ -118,7 +118,7 @@ where
             };
 
             (
-                AtlassianAuth::OAuthAccessToken {
+                UpstreamAuth::OAuthAccessToken {
                     access_token: access_token.value,
                 },
                 Some(cloud_id.value),
@@ -134,7 +134,7 @@ where
             }
 
             (
-                AtlassianAuth::Basic {
+                UpstreamAuth::Basic {
                     username: username.expect("missing variables were checked").value,
                     api_token: api_token.expect("missing variables were checked").value,
                 },
@@ -143,14 +143,14 @@ where
         }
     } else if let Some(personal_token) = personal_token {
         (
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: personal_token.value,
             },
             None,
         )
     } else if let Some(access_token) = oauth_access_token {
         (
-            AtlassianAuth::OAuthAccessToken {
+            UpstreamAuth::OAuthAccessToken {
                 access_token: access_token.value,
             },
             None,
@@ -204,7 +204,7 @@ where
         spec.invalid_timeout_error,
     )?;
 
-    Ok(Some(ParsedAtlassianServiceConfig {
+    Ok(Some(ParsedUpstreamServiceConfig {
         base_url,
         deployment,
         auth,
@@ -221,8 +221,8 @@ fn server_basic_auth<D>(
     username: Option<NamedEnvValue>,
     password: Option<NamedEnvValue>,
     api_token: Option<NamedEnvValue>,
-    spec: &AtlassianServiceConfigSpec<D>,
-) -> Option<AtlassianAuth> {
+    spec: &UpstreamServiceConfigSpec<D>,
+) -> Option<UpstreamAuth> {
     let username = username?;
     let password_is_service_specific = password
         .as_ref()
@@ -236,7 +236,7 @@ fn server_basic_auth<D>(
         api_token.or(password)
     }?;
 
-    Some(AtlassianAuth::Basic {
+    Some(UpstreamAuth::Basic {
         username: username.value,
         api_token: secret.value,
     })
@@ -323,7 +323,7 @@ fn normalize_effective_base_url<D>(
     url: Url,
     deployment: D,
     cloud_deployment: D,
-    auth: &AtlassianAuth,
+    auth: &UpstreamAuth,
     oauth_cloud_id: &Option<String>,
     cloud_oauth_api_base_url: fn(&str) -> String,
 ) -> String
@@ -331,7 +331,7 @@ where
     D: Eq,
 {
     if deployment == cloud_deployment
-        && matches!(auth, AtlassianAuth::OAuthAccessToken { .. })
+        && matches!(auth, UpstreamAuth::OAuthAccessToken { .. })
         && let Some(cloud_id) = oauth_cloud_id
     {
         return cloud_oauth_api_base_url(cloud_id);

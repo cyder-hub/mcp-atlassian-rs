@@ -4,12 +4,8 @@ use reqwest::Url;
 use serde_json::{Map, Value, json};
 
 #[cfg(test)]
-use crate::atlassian::{custom_headers::CustomHeaders, proxy::ProxyConfig};
+use crate::upstream::{custom_headers::CustomHeaders, proxy::ProxyConfig};
 use crate::{
-    atlassian::{
-        error::AtlassianError,
-        http::{AtlassianHttpClient, DownloadedContent},
-    },
     jira::{
         config::{JiraConfig, JiraDeployment},
         formatting::{
@@ -24,6 +20,10 @@ use crate::{
             simplify_options,
         },
     },
+    upstream::{
+        error::UpstreamError,
+        http::{DownloadedContent, UpstreamHttpClient},
+    },
 };
 
 pub const DEFAULT_LIMIT: u64 = 50;
@@ -33,8 +33,8 @@ const ATLASSIAN_API_BASE_URL: &str = "https://api.atlassian.com";
 #[derive(Clone, Debug)]
 pub struct JiraClient {
     config: JiraConfig,
-    http: AtlassianHttpClient,
-    atlassian_api_http: AtlassianHttpClient,
+    http: UpstreamHttpClient,
+    atlassian_api_http: UpstreamHttpClient,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -102,8 +102,8 @@ mod service_desk;
 mod transitions;
 
 impl JiraClient {
-    pub fn new(config: JiraConfig) -> Result<Self, AtlassianError> {
-        let http = AtlassianHttpClient::new_with_proxy_headers_and_mtls(
+    pub fn new(config: JiraConfig) -> Result<Self, UpstreamError> {
+        let http = UpstreamHttpClient::new_with_proxy_headers_and_mtls(
             &config.base_url,
             config.auth.clone(),
             config.timeout_seconds,
@@ -112,7 +112,7 @@ impl JiraClient {
             config.custom_headers.clone(),
             config.mtls.clone(),
         )?;
-        let atlassian_api_http = AtlassianHttpClient::new_with_proxy_headers_and_mtls(
+        let atlassian_api_http = UpstreamHttpClient::new_with_proxy_headers_and_mtls(
             &atlassian_api_base_url(&config),
             config.auth.clone(),
             config.timeout_seconds,
@@ -128,7 +128,7 @@ impl JiraClient {
         })
     }
 
-    pub async fn get_user_profile(&self, user_identifier: String) -> Result<Value, AtlassianError> {
+    pub async fn get_user_profile(&self, user_identifier: String) -> Result<Value, UpstreamError> {
         let identifier = user_identifier.trim();
         if identifier.eq_ignore_ascii_case("currentuser()") || identifier.eq_ignore_ascii_case("me")
         {
@@ -152,37 +152,37 @@ impl JiraClient {
     }
 }
 
-fn is_cloud_unbounded_jql_error(error: &AtlassianError) -> bool {
+fn is_cloud_unbounded_jql_error(error: &UpstreamError) -> bool {
     matches!(
         error,
-        AtlassianError::HttpStatus { status: 400, message }
+        UpstreamError::HttpStatus { status: 400, message }
             if message.contains("Unbounded JQL queries are not allowed here")
     )
 }
 
-fn is_removed_cloud_legacy_search_error(error: &AtlassianError) -> bool {
+fn is_removed_cloud_legacy_search_error(error: &UpstreamError) -> bool {
     matches!(
         error,
-        AtlassianError::HttpStatus { status: 410, message }
+        UpstreamError::HttpStatus { status: 410, message }
             if message.contains("/rest/api/3/search/jql")
     )
 }
 
-fn cloud_unbounded_jql_error(jql: &str) -> AtlassianError {
-    AtlassianError::invalid_input(format!(
+fn cloud_unbounded_jql_error(jql: &str) -> UpstreamError {
+    UpstreamError::invalid_input(format!(
         "Jira Cloud rejected an unbounded JQL query and the legacy search API is removed. Add a search restriction such as `project = \"KEY\"`, `issuekey in (...)`, or a configured JIRA_PROJECTS_FILTER before the order clause. Rejected JQL: {jql}"
     ))
 }
 
-fn cloud_offset_pagination_removed_error() -> AtlassianError {
-    AtlassianError::invalid_input(
+fn cloud_offset_pagination_removed_error() -> UpstreamError {
+    UpstreamError::invalid_input(
         "Jira Cloud offset pagination with start_at requires the removed /rest/api/3/search API. Use page_token from a previous jira_search_issues response instead.",
     )
 }
 
-fn field_context_mapping_context_id(value: &Value) -> Result<Option<String>, AtlassianError> {
+fn field_context_mapping_context_id(value: &Value) -> Result<Option<String>, UpstreamError> {
     let Some(context_id) = value.get("contextId") else {
-        return Err(AtlassianError::unexpected_shape(
+        return Err(UpstreamError::unexpected_shape(
             "field context mapping response did not include contextId",
         ));
     };
@@ -192,7 +192,7 @@ fn field_context_mapping_context_id(value: &Value) -> Result<Option<String>, Atl
 
     field_value_id(value, "contextId")
         .map(Some)
-        .ok_or_else(|| AtlassianError::unexpected_shape("contextId must be a string or integer"))
+        .ok_or_else(|| UpstreamError::unexpected_shape("contextId must be a string or integer"))
 }
 
 fn cloud_issue_type_matches(value: &Value, requested: &str) -> bool {
@@ -324,9 +324,9 @@ fn atlassian_api_base_url(config: &JiraConfig) -> String {
     }
 }
 
-fn jira_software_agile_unavailable(error: AtlassianError) -> Result<Value, AtlassianError> {
+fn jira_software_agile_unavailable(error: UpstreamError) -> Result<Value, UpstreamError> {
     match error {
-        AtlassianError::HttpStatus {
+        UpstreamError::HttpStatus {
             status: 403 | 404,
             message,
         } => Ok(JiraOperationResult::product_unavailable(
@@ -338,9 +338,9 @@ fn jira_software_agile_unavailable(error: AtlassianError) -> Result<Value, Atlas
     }
 }
 
-fn jira_service_management_unavailable(error: AtlassianError) -> Result<Value, AtlassianError> {
+fn jira_service_management_unavailable(error: UpstreamError) -> Result<Value, UpstreamError> {
     match error {
-        AtlassianError::HttpStatus {
+        UpstreamError::HttpStatus {
             status: 403 | 404,
             message,
         } => Ok(JiraOperationResult::product_unavailable(
@@ -352,9 +352,9 @@ fn jira_service_management_unavailable(error: AtlassianError) -> Result<Value, A
     }
 }
 
-fn jira_forms_unavailable(error: AtlassianError) -> Result<Value, AtlassianError> {
+fn jira_forms_unavailable(error: UpstreamError) -> Result<Value, UpstreamError> {
     match error {
-        AtlassianError::HttpStatus {
+        UpstreamError::HttpStatus {
             status: 403 | 404,
             message,
         } => Ok(JiraOperationResult::product_unavailable(
@@ -366,9 +366,9 @@ fn jira_forms_unavailable(error: AtlassianError) -> Result<Value, AtlassianError
     }
 }
 
-fn jira_development_unavailable(error: AtlassianError) -> Result<Value, AtlassianError> {
+fn jira_development_unavailable(error: UpstreamError) -> Result<Value, UpstreamError> {
     match error {
-        AtlassianError::HttpStatus {
+        UpstreamError::HttpStatus {
             status: 403 | 404,
             message,
         } => Ok(JiraOperationResult::product_unavailable(
@@ -380,7 +380,7 @@ fn jira_development_unavailable(error: AtlassianError) -> Result<Value, Atlassia
     }
 }
 
-fn forms_cloud_id_or_unavailable(cloud_id: Option<&str>) -> Result<Option<String>, AtlassianError> {
+fn forms_cloud_id_or_unavailable(cloud_id: Option<&str>) -> Result<Option<String>, UpstreamError> {
     let Some(cloud_id) = cloud_id.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(None);
     };
@@ -489,12 +489,12 @@ fn simplify_sla_value(value: &Value, include_raw_dates: bool) -> Value {
     Value::Object(simplified)
 }
 
-fn issue_form_answers_payload(answers: Vec<Value>) -> Result<Value, AtlassianError> {
+fn issue_form_answers_payload(answers: Vec<Value>) -> Result<Value, UpstreamError> {
     let mut payload_answers = serde_json::Map::new();
 
     for answer in answers {
         let Value::Object(answer) = answer else {
-            return Err(AtlassianError::invalid_input(
+            return Err(UpstreamError::invalid_input(
                 "answers must be an array of JSON objects",
             ));
         };
@@ -505,7 +505,7 @@ fn issue_form_answers_payload(answers: Vec<Value>) -> Result<Value, AtlassianErr
             .map(str::trim)
             .filter(|value| !value.is_empty())
         else {
-            return Err(AtlassianError::invalid_input(
+            return Err(UpstreamError::invalid_input(
                 "each answer must include a non-empty questionId",
             ));
         };
@@ -552,11 +552,11 @@ fn insert_optional(target: &mut Value, key: &'static str, value: Option<Value>) 
 fn extract_createmeta_options(
     value: &Value,
     field_id: &str,
-) -> Result<Vec<JiraFieldOption>, AtlassianError> {
+) -> Result<Vec<JiraFieldOption>, UpstreamError> {
     let projects = value
         .get("projects")
         .and_then(Value::as_array)
-        .ok_or_else(|| AtlassianError::unexpected_shape("createmeta response missing projects"))?;
+        .ok_or_else(|| UpstreamError::unexpected_shape("createmeta response missing projects"))?;
 
     for project in projects {
         let Some(issue_types) = project.get("issuetypes").and_then(Value::as_array) else {
@@ -573,18 +573,18 @@ fn extract_createmeta_options(
                 .get("allowedValues")
                 .and_then(Value::as_array)
                 .ok_or_else(|| {
-                    AtlassianError::unexpected_shape("createmeta field missing allowedValues")
+                    UpstreamError::unexpected_shape("createmeta field missing allowedValues")
                 })?;
             return options
                 .iter()
                 .cloned()
                 .map(serde_json::from_value)
                 .collect::<Result<Vec<JiraFieldOption>, _>>()
-                .map_err(|error| AtlassianError::unexpected_shape(error.to_string()));
+                .map_err(|error| UpstreamError::unexpected_shape(error.to_string()));
         }
     }
 
-    Err(AtlassianError::unexpected_shape(format!(
+    Err(UpstreamError::unexpected_shape(format!(
         "createmeta response missing field `{field_id}`"
     )))
 }

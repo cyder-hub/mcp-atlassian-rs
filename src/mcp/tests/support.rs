@@ -37,11 +37,23 @@ pub(super) const SYNTHETIC_CONFLUENCE_READ: ToolMetadata = ToolMetadata {
     description: "Test-only Confluence read metadata.",
 };
 
+pub(super) const SYNTHETIC_GITLAB_READ: ToolMetadata = ToolMetadata {
+    name: "synthetic_gitlab_read",
+    service: ToolService::Gitlab,
+    access: ToolAccess::Read,
+    toolset: Some("gitlab_projects_read"),
+    annotations: ToolAnnotationMetadata::read_only(),
+    output_schema: None,
+    title: "Synthetic GitLab read",
+    description: "Test-only GitLab read metadata.",
+};
+
 pub(super) fn metadata_for_test_tool(name: &str) -> Option<ToolMetadata> {
     match name {
         "synthetic_jira_read" => Some(SYNTHETIC_JIRA_READ),
         "synthetic_jira_write" => Some(SYNTHETIC_JIRA_WRITE),
         "synthetic_confluence_read" => Some(SYNTHETIC_CONFLUENCE_READ),
+        "synthetic_gitlab_read" => Some(SYNTHETIC_GITLAB_READ),
         _ => tool_registry::metadata_for(name),
     }
 }
@@ -61,11 +73,31 @@ pub(super) fn confluence_config() -> ConfluenceConfig {
     confluence_config_with_base_url("https://confluence.example".to_string())
 }
 
+pub(super) fn gitlab_config() -> GitlabConfig {
+    gitlab_config_with_base_url("https://gitlab.example".to_string())
+}
+
+pub(super) fn gitlab_config_with_base_url(base_url: String) -> GitlabConfig {
+    GitlabConfig {
+        base_url,
+        auth: UpstreamAuth::HeaderToken {
+            header_name: reqwest::header::HeaderName::from_static("private-token"),
+            token: "gitlab-token".to_string(),
+        },
+        ssl_verify: true,
+        proxy: ProxyConfig::default(),
+        custom_headers: CustomHeaders::default(),
+        mtls: None,
+        projects_filter: BTreeSet::new(),
+        timeout_seconds: 75,
+    }
+}
+
 pub(super) fn jira_cloud_config_with_base_url(base_url: String) -> JiraConfig {
     JiraConfig {
         base_url,
         deployment: JiraDeployment::Cloud,
-        auth: AtlassianAuth::Basic {
+        auth: UpstreamAuth::Basic {
             username: "test-user".to_string(),
             api_token: "test-api-token".to_string(),
         },
@@ -83,7 +115,7 @@ pub(super) fn confluence_cloud_config_with_base_url(base_url: String) -> Conflue
     ConfluenceConfig {
         base_url,
         deployment: ConfluenceDeployment::Cloud,
-        auth: AtlassianAuth::Basic {
+        auth: UpstreamAuth::Basic {
             username: "test-user".to_string(),
             api_token: "test-api-token".to_string(),
         },
@@ -101,7 +133,7 @@ pub(super) fn confluence_config_with_base_url(base_url: String) -> ConfluenceCon
     ConfluenceConfig {
         base_url,
         deployment: ConfluenceDeployment::ServerDataCenter,
-        auth: AtlassianAuth::Pat {
+        auth: UpstreamAuth::Pat {
             personal_token: "test-pat-value".to_string(),
         },
         oauth_cloud_id: None,
@@ -118,7 +150,7 @@ pub(super) fn jira_config_with_base_url(base_url: String) -> JiraConfig {
     JiraConfig {
         base_url,
         deployment: JiraDeployment::ServerDataCenter,
-        auth: AtlassianAuth::Pat {
+        auth: UpstreamAuth::Pat {
             personal_token: "test-pat-value".to_string(),
         },
         oauth_cloud_id: None,
@@ -1088,6 +1120,13 @@ pub(super) fn all_confluence_tool_names() -> Vec<String> {
         .collect()
 }
 
+pub(super) fn all_gitlab_tool_names() -> Vec<String> {
+    gitlab_tools::GITLAB_TOOL_NAMES
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SupportMatrixToolRow {
     pub(super) name: String,
@@ -1104,7 +1143,10 @@ pub(super) fn support_matrix_tool_rows() -> Vec<SupportMatrixToolRow> {
                 return None;
             };
             let name = name.strip_prefix('`')?.strip_suffix('`')?;
-            if !(name.starts_with("jira_") || name.starts_with("confluence_")) {
+            if !(name.starts_with("jira_")
+                || name.starts_with("confluence_")
+                || name.starts_with("gitlab_"))
+            {
                 return None;
             }
 

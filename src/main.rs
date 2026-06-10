@@ -3,15 +3,16 @@ mod config;
 mod confluence;
 mod context;
 mod error;
+mod gitlab;
 mod jira;
 mod mcp;
 mod mcp_confluence_helpers;
 mod mcp_errors;
 mod tool_registry;
+mod upstream;
 
 use std::{net::SocketAddr, sync::Arc};
 
-use atlassian::redaction::redact_text;
 use axum::{
     Json, Router,
     extract::{Request, State},
@@ -34,6 +35,7 @@ use rmcp::{
 };
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
+use upstream::redaction::redact_text;
 
 type AppResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -138,6 +140,7 @@ fn log_runtime_context(context: &AppContext) {
         enabled_toolsets = context.enabled_toolsets().len(),
         jira_configured = availability.jira,
         confluence_configured = availability.confluence,
+        gitlab_configured = availability.gitlab,
         "loaded MCP runtime control plane"
     );
 }

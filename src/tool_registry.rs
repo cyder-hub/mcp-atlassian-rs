@@ -45,6 +45,7 @@ const ALL_TOOLSETS: &[&str] = &[
     "jira_issue_forms_read",
     "jira_issue_forms_write",
     "jira_issue_metrics_read",
+    "jira_issue_sla_read",
     "confluence_content_read",
     "confluence_content_write",
     "confluence_content_update",
@@ -59,6 +60,10 @@ const ALL_TOOLSETS: &[&str] = &[
     "confluence_attachments_read",
     "confluence_attachments_write",
     "confluence_attachments_delete",
+    "gitlab_projects_read",
+    "gitlab_merge_requests_read",
+    "gitlab_merge_requests_write",
+    "gitlab_merge_requests_merge",
 ];
 
 const DEFAULT_TOOLSETS: &[&str] = &[
@@ -71,6 +76,8 @@ const DEFAULT_TOOLSETS: &[&str] = &[
     "confluence_content_read",
     "confluence_page_comments_read",
     "confluence_content_labels_read",
+    "gitlab_projects_read",
+    "gitlab_merge_requests_read",
 ];
 
 const BASIC_PROFILE_TOOLSETS: &[&str] = DEFAULT_TOOLSETS;
@@ -90,11 +97,13 @@ const DEVELOPER_PROFILE_TOOLSETS: &[&str] = &[
     "jira_sprint_membership_write",
     "jira_issue_development_read",
     "jira_issue_attachments_read",
-    "jira_issue_worklogs_read",
-    "jira_issue_worklogs_write",
     "jira_issue_metrics_read",
     "confluence_page_versions_read",
     "confluence_attachments_read",
+    "gitlab_projects_read",
+    "gitlab_merge_requests_read",
+    "gitlab_merge_requests_write",
+    "gitlab_merge_requests_merge",
 ];
 const MANAGER_PROFILE_TOOLSETS: &[&str] = &[
     "jira_issues_read",
@@ -135,12 +144,17 @@ const MANAGER_PROFILE_TOOLSETS: &[&str] = &[
     "jira_service_desks_read",
     "jira_issue_forms_read",
     "jira_issue_forms_write",
+    "jira_issue_sla_read",
     "confluence_content_write",
     "confluence_content_update",
     "confluence_page_comments_write",
     "confluence_content_labels_write",
     "confluence_page_analytics_read",
     "confluence_attachments_write",
+    "gitlab_projects_read",
+    "gitlab_merge_requests_read",
+    "gitlab_merge_requests_write",
+    "gitlab_merge_requests_merge",
 ];
 const FULL_PROFILE_TOOLSETS: &[&str] = ALL_TOOLSETS;
 const CUSTOM_PROFILE_TOOLSETS: &[&str] = &[];
@@ -150,6 +164,7 @@ const CUSTOM_PROFILE_TOOLSETS: &[&str] = &[];
 pub enum ToolService {
     Jira,
     Confluence,
+    Gitlab,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -263,10 +278,32 @@ macro_rules! confluence_metadata {
     };
 }
 
+macro_rules! gitlab_metadata {
+    ($constant:ident, $name:expr, $access:ident, $toolset:literal, $annotations:ident, $title:literal, $description:literal $(, $output_schema:ident)?) => {
+        pub const $constant: ToolMetadata = ToolMetadata {
+            name: $name,
+            service: ToolService::Gitlab,
+            access: ToolAccess::$access,
+            toolset: Some($toolset),
+            annotations: ToolAnnotationMetadata::$annotations(),
+            output_schema: gitlab_metadata!(@output_schema $($output_schema)?),
+            title: $title,
+            description: $description,
+        };
+    };
+    (@output_schema) => {
+        None
+    };
+    (@output_schema $output_schema:ident) => {
+        Some(ToolOutputSchema::$output_schema)
+    };
+}
+
 mod confluence;
+mod gitlab;
 mod jira;
 
-const REGISTERED_TOOLS: &[&[ToolMetadata]] = &[jira::TOOLS, confluence::TOOLS];
+const REGISTERED_TOOLS: &[&[ToolMetadata]] = &[jira::TOOLS, confluence::TOOLS, gitlab::TOOLS];
 
 fn registered_tools() -> impl Iterator<Item = ToolMetadata> {
     REGISTERED_TOOLS
@@ -375,6 +412,7 @@ fn is_service_available(metadata: ToolMetadata, context: &AppContext) -> bool {
     match metadata.service {
         ToolService::Jira => availability.jira,
         ToolService::Confluence => availability.confluence,
+        ToolService::Gitlab => availability.gitlab,
     }
 }
 

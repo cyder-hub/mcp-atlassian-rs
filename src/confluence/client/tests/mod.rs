@@ -16,8 +16,8 @@ use serde_json::{Value, json};
 use tokio::sync::Mutex;
 
 use crate::{
-    atlassian::{auth::AtlassianAuth, error::AtlassianError},
     confluence::config::{ConfluenceConfig, ConfluenceDeployment},
+    upstream::{auth::UpstreamAuth, error::UpstreamError},
 };
 
 use super::*;
