@@ -1,15 +1,14 @@
 use std::{sync::Arc, time::Instant};
 
 use crate::{
-    atlassian::{
-        error::AtlassianError, redaction::redact_text,
-        request_auth::parse_request_auth_headers_with_oauth_bearer,
-    },
+    atlassian::request_auth::parse_request_auth_headers_with_oauth_bearer,
     confluence::client::ConfluenceClient,
     context::AppContext,
+    gitlab::client::GitlabClient,
     jira::client::JiraClient,
-    mcp_errors::atlassian_error,
+    mcp_errors::upstream_error,
     tool_registry,
+    upstream::{error::UpstreamError, redaction::redact_text},
 };
 use axum::http::{HeaderMap, request::Parts};
 use rmcp::{
@@ -27,6 +26,7 @@ use serde_json::{Value, json};
 
 mod confluence_handlers;
 mod confluence_values;
+mod gitlab_handlers;
 mod jira_handlers;
 mod jira_payloads;
 mod schema;
@@ -80,7 +80,7 @@ impl AtlassianMcpServer {
     }
 
     fn tool_router() -> ToolRouter<Self> {
-        Self::jira_tool_router() + Self::confluence_tool_router()
+        Self::jira_tool_router() + Self::confluence_tool_router() + Self::gitlab_tool_router()
     }
 
     fn scoped_for_request_context(
@@ -142,7 +142,7 @@ impl AtlassianMcpServer {
             return Err(ErrorData::invalid_params("Jira is not configured", None));
         };
 
-        JiraClient::new(config.clone()).map_err(atlassian_error)
+        JiraClient::new(config.clone()).map_err(upstream_error)
     }
 
     #[allow(dead_code)]
@@ -154,7 +154,16 @@ impl AtlassianMcpServer {
             ));
         };
 
-        ConfluenceClient::new(config.clone()).map_err(atlassian_error)
+        ConfluenceClient::new(config.clone()).map_err(upstream_error)
+    }
+
+    #[allow(dead_code)]
+    fn gitlab_client(&self) -> Result<GitlabClient, ErrorData> {
+        let Some(config) = self.context.gitlab_config() else {
+            return Err(ErrorData::invalid_params("GitLab is not configured", None));
+        };
+
+        GitlabClient::new(config.clone()).map_err(upstream_error)
     }
 
     #[cfg(test)]
@@ -192,7 +201,7 @@ impl Default for AtlassianMcpServer {
 fn required_non_empty_arg(value: String, field_name: &'static str) -> Result<String, ErrorData> {
     let value = value.trim();
     if value.is_empty() {
-        Err(atlassian_error(AtlassianError::invalid_input(format!(
+        Err(upstream_error(UpstreamError::invalid_input(format!(
             "{field_name} must not be empty"
         ))))
     } else {
@@ -211,7 +220,7 @@ fn optional_positive_i64_arg(
     field_name: &'static str,
 ) -> Result<Option<i64>, ErrorData> {
     match value {
-        Some(value) if value <= 0 => Err(atlassian_error(AtlassianError::invalid_input(format!(
+        Some(value) if value <= 0 => Err(upstream_error(UpstreamError::invalid_input(format!(
             "{field_name} must be positive"
         )))),
         value => Ok(value),
@@ -223,7 +232,7 @@ fn optional_positive_u64_arg(
     field_name: &'static str,
 ) -> Result<Option<u64>, ErrorData> {
     match value {
-        Some(0) => Err(atlassian_error(AtlassianError::invalid_input(format!(
+        Some(0) => Err(upstream_error(UpstreamError::invalid_input(format!(
             "{field_name} must be positive"
         )))),
         value => Ok(value),
@@ -311,7 +320,7 @@ impl ServerHandler for AtlassianMcpServer {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new(SERVER_NAME, env!("CARGO_PKG_VERSION")))
             .with_instructions(format!(
-                "Rust MCP Atlassian exposes 73 Jira and Confluence business tools. Tool visibility is controlled by TOOL_PROFILE, TOOLSETS, ENABLED_TOOLS, and DISABLED_TOOLS. Jira and Confluence tools are available when their service configuration and authentication are complete. See docs/support-matrix.md for per-tool and runtime support status."
+                "Rust MCP Atlassian exposes 88 Jira, Confluence, and GitLab business tools. Tool visibility is controlled by TOOL_PROFILE, TOOLSETS, ENABLED_TOOLS, and DISABLED_TOOLS. Jira, Confluence, and GitLab tools are available when their service configuration and authentication are complete. See docs/support-matrix.md for per-tool and runtime support status."
             ))
     }
 }

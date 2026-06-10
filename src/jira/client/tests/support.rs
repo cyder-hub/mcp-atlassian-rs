@@ -556,11 +556,11 @@ pub(super) fn config(base_url: String, deployment: JiraDeployment) -> JiraConfig
         base_url,
         deployment,
         auth: match deployment {
-            JiraDeployment::Cloud => AtlassianAuth::Basic {
+            JiraDeployment::Cloud => UpstreamAuth::Basic {
                 username: "user@example.com".to_string(),
                 api_token: "test-api-token".to_string(),
             },
-            JiraDeployment::ServerDataCenter => AtlassianAuth::Pat {
+            JiraDeployment::ServerDataCenter => UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             },
         },

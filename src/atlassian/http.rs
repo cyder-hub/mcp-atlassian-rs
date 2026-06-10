@@ -11,16 +11,16 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::atlassian::{
-    auth::AtlassianAuth, custom_headers::CustomHeaders, error::AtlassianError,
+    auth::UpstreamAuth, custom_headers::CustomHeaders, error::UpstreamError,
     mtls::ClientTlsIdentityConfig, proxy::ProxyConfig, redaction::redact_text,
     security::MAX_SAME_ORIGIN_REDIRECTS,
 };
 
 #[derive(Clone, Debug)]
-pub struct AtlassianHttpClient {
+pub struct UpstreamHttpClient {
     base_url: Url,
     client: Client,
-    auth: AtlassianAuth,
+    auth: UpstreamAuth,
     proxy: ProxyConfig,
     custom_headers: CustomHeaders,
     mtls: Option<ClientTlsIdentityConfig>,
@@ -32,13 +32,13 @@ pub struct DownloadedContent {
     pub bytes: Vec<u8>,
 }
 
-impl AtlassianHttpClient {
+impl UpstreamHttpClient {
     pub fn new(
         base_url: &str,
-        auth: AtlassianAuth,
+        auth: UpstreamAuth,
         timeout_seconds: u64,
         ssl_verify: bool,
-    ) -> Result<Self, AtlassianError> {
+    ) -> Result<Self, UpstreamError> {
         Self::new_with_proxy(
             base_url,
             auth,
@@ -50,11 +50,11 @@ impl AtlassianHttpClient {
 
     pub fn new_with_proxy(
         base_url: &str,
-        auth: AtlassianAuth,
+        auth: UpstreamAuth,
         timeout_seconds: u64,
         ssl_verify: bool,
         proxy: ProxyConfig,
-    ) -> Result<Self, AtlassianError> {
+    ) -> Result<Self, UpstreamError> {
         Self::new_with_proxy_and_headers(
             base_url,
             auth,
@@ -67,12 +67,12 @@ impl AtlassianHttpClient {
 
     pub fn new_with_proxy_and_headers(
         base_url: &str,
-        auth: AtlassianAuth,
+        auth: UpstreamAuth,
         timeout_seconds: u64,
         ssl_verify: bool,
         proxy: ProxyConfig,
         custom_headers: CustomHeaders,
-    ) -> Result<Self, AtlassianError> {
+    ) -> Result<Self, UpstreamError> {
         Self::new_with_proxy_headers_and_mtls(
             base_url,
             auth,
@@ -86,15 +86,15 @@ impl AtlassianHttpClient {
 
     pub fn new_with_proxy_headers_and_mtls(
         base_url: &str,
-        auth: AtlassianAuth,
+        auth: UpstreamAuth,
         timeout_seconds: u64,
         ssl_verify: bool,
         proxy: ProxyConfig,
         custom_headers: CustomHeaders,
         mtls: Option<ClientTlsIdentityConfig>,
-    ) -> Result<Self, AtlassianError> {
+    ) -> Result<Self, UpstreamError> {
         let base_url = Url::parse(base_url)
-            .map_err(|error| AtlassianError::invalid_base_url(error.to_string()))?;
+            .map_err(|error| UpstreamError::invalid_base_url(error.to_string()))?;
         let builder = Client::builder()
             .timeout(Duration::from_secs(timeout_seconds))
             .danger_accept_invalid_certs(!ssl_verify)
@@ -103,7 +103,7 @@ impl AtlassianHttpClient {
         let builder = apply_proxy_config(builder, &proxy)?;
         let client = apply_mtls_identity(builder, mtls.as_ref())?
             .build()
-            .map_err(AtlassianError::transport)?;
+            .map_err(UpstreamError::transport)?;
 
         Ok(Self {
             base_url,
@@ -115,7 +115,7 @@ impl AtlassianHttpClient {
         })
     }
 
-    pub fn get(&self, path: &str) -> Result<RequestBuilder, AtlassianError> {
+    pub fn get(&self, path: &str) -> Result<RequestBuilder, UpstreamError> {
         self.request(Method::GET, path)
     }
 
@@ -123,18 +123,18 @@ impl AtlassianHttpClient {
         &self,
         value: &str,
         field_name: &'static str,
-    ) -> Result<RequestBuilder, AtlassianError> {
+    ) -> Result<RequestBuilder, UpstreamError> {
         let trimmed = value.trim();
         if trimmed.is_empty() {
-            return Err(AtlassianError::invalid_input(format!(
+            return Err(UpstreamError::invalid_input(format!(
                 "{field_name} must not be empty"
             )));
         }
 
         if let Ok(url) = Url::parse(trimmed) {
             if !same_origin(&self.base_url, &url) {
-                return Err(AtlassianError::invalid_input(format!(
-                    "{field_name} absolute URL must use the configured Atlassian base origin"
+                return Err(UpstreamError::invalid_input(format!(
+                    "{field_name} absolute URL must use the configured upstream base origin"
                 )));
             }
 
@@ -144,14 +144,14 @@ impl AtlassianHttpClient {
         self.get(trimmed)
     }
 
-    pub fn post_json<T>(&self, path: &str, body: &T) -> Result<RequestBuilder, AtlassianError>
+    pub fn post_json<T>(&self, path: &str, body: &T) -> Result<RequestBuilder, UpstreamError>
     where
         T: Serialize + ?Sized,
     {
         Ok(self.request(Method::POST, path)?.json(body))
     }
 
-    pub fn put_json<T>(&self, path: &str, body: &T) -> Result<RequestBuilder, AtlassianError>
+    pub fn put_json<T>(&self, path: &str, body: &T) -> Result<RequestBuilder, UpstreamError>
     where
         T: Serialize + ?Sized,
     {
@@ -164,7 +164,7 @@ impl AtlassianHttpClient {
         body: Vec<u8>,
         content_type: &str,
         headers: &[(&'static str, &'static str)],
-    ) -> Result<RequestBuilder, AtlassianError> {
+    ) -> Result<RequestBuilder, UpstreamError> {
         let mut builder = self
             .request(Method::PUT, path)?
             .header(CONTENT_TYPE, content_type)
@@ -180,7 +180,7 @@ impl AtlassianHttpClient {
         path: &str,
         form: Form,
         headers: &[(&'static str, &'static str)],
-    ) -> Result<RequestBuilder, AtlassianError> {
+    ) -> Result<RequestBuilder, UpstreamError> {
         let mut builder = self.request(Method::PUT, path)?.multipart(form);
         for (name, value) in headers {
             builder = builder.header(*name, *value);
@@ -188,16 +188,16 @@ impl AtlassianHttpClient {
         Ok(builder)
     }
 
-    pub fn delete(&self, path: &str) -> Result<RequestBuilder, AtlassianError> {
+    pub fn delete(&self, path: &str) -> Result<RequestBuilder, UpstreamError> {
         self.request(Method::DELETE, path)
     }
 
-    pub async fn send_json<T>(&self, builder: RequestBuilder) -> Result<T, AtlassianError>
+    pub async fn send_json<T>(&self, builder: RequestBuilder) -> Result<T, UpstreamError>
     where
         T: DeserializeOwned,
     {
         let request_context = request_context(&builder);
-        let response = builder.send().await.map_err(AtlassianError::transport)?;
+        let response = builder.send().await.map_err(UpstreamError::transport)?;
         let status = response.status();
 
         if !status.is_success() {
@@ -205,20 +205,20 @@ impl AtlassianHttpClient {
                 .text()
                 .await
                 .unwrap_or_else(|_| "failed to read error response".to_string());
-            return Err(AtlassianError::http_status(status, message));
+            return Err(UpstreamError::http_status(status, message));
         }
 
-        let bytes = response.bytes().await.map_err(AtlassianError::transport)?;
+        let bytes = response.bytes().await.map_err(UpstreamError::transport)?;
         serde_json::from_slice(&bytes)
-            .map_err(|error| AtlassianError::json_decode_body(error, request_context.as_deref()))
+            .map_err(|error| UpstreamError::json_decode_body(error, request_context.as_deref()))
     }
 
     pub async fn send_json_value_or_null(
         &self,
         builder: RequestBuilder,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let request_context = request_context(&builder);
-        let response = builder.send().await.map_err(AtlassianError::transport)?;
+        let response = builder.send().await.map_err(UpstreamError::transport)?;
         let status = response.status();
 
         if !status.is_success() {
@@ -226,24 +226,24 @@ impl AtlassianHttpClient {
                 .text()
                 .await
                 .unwrap_or_else(|_| "failed to read error response".to_string());
-            return Err(AtlassianError::http_status(status, message));
+            return Err(UpstreamError::http_status(status, message));
         }
 
-        let bytes = response.bytes().await.map_err(AtlassianError::transport)?;
+        let bytes = response.bytes().await.map_err(UpstreamError::transport)?;
         if bytes.is_empty() {
             return Ok(Value::Null);
         }
 
         serde_json::from_slice(&bytes)
-            .map_err(|error| AtlassianError::json_decode_body(error, request_context.as_deref()))
+            .map_err(|error| UpstreamError::json_decode_body(error, request_context.as_deref()))
     }
 
     pub async fn send_bytes_limited(
         &self,
         builder: RequestBuilder,
         max_bytes: u64,
-    ) -> Result<DownloadedContent, AtlassianError> {
-        let response = builder.send().await.map_err(AtlassianError::transport)?;
+    ) -> Result<DownloadedContent, UpstreamError> {
+        let response = builder.send().await.map_err(UpstreamError::transport)?;
         let status = response.status();
         let content_type = response
             .headers()
@@ -256,23 +256,23 @@ impl AtlassianHttpClient {
                 .text()
                 .await
                 .unwrap_or_else(|_| "failed to read error response".to_string());
-            return Err(AtlassianError::http_status(status, message));
+            return Err(UpstreamError::http_status(status, message));
         }
 
         if response
             .content_length()
             .is_some_and(|content_length| content_length > max_bytes)
         {
-            return Err(AtlassianError::invalid_input(format!(
+            return Err(UpstreamError::invalid_input(format!(
                 "response body exceeds configured limit of {max_bytes} bytes"
             )));
         }
 
         let mut response = response;
         let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(AtlassianError::transport)? {
+        while let Some(chunk) = response.chunk().await.map_err(UpstreamError::transport)? {
             if bytes.len() as u64 + chunk.len() as u64 > max_bytes {
-                return Err(AtlassianError::invalid_input(format!(
+                return Err(UpstreamError::invalid_input(format!(
                     "response body exceeds configured limit of {max_bytes} bytes"
                 )));
             }
@@ -305,7 +305,7 @@ impl AtlassianHttpClient {
         url
     }
 
-    fn request(&self, method: Method, path: &str) -> Result<RequestBuilder, AtlassianError> {
+    fn request(&self, method: Method, path: &str) -> Result<RequestBuilder, UpstreamError> {
         let url = self.join_api_path(path);
         Ok(self.authorized_request(method, url))
     }
@@ -326,20 +326,20 @@ impl AtlassianHttpClient {
 fn apply_proxy_config(
     mut builder: ClientBuilder,
     proxy: &ProxyConfig,
-) -> Result<ClientBuilder, AtlassianError> {
+) -> Result<ClientBuilder, UpstreamError> {
     let no_proxy = proxy.no_proxy.as_deref().and_then(NoProxy::from_string);
 
     if let Some(http_proxy) = proxy.http_proxy.as_deref() {
         builder = builder.proxy(
             Proxy::http(http_proxy)
-                .map_err(AtlassianError::transport)?
+                .map_err(UpstreamError::transport)?
                 .no_proxy(no_proxy.clone()),
         );
     }
     if let Some(https_proxy) = proxy.https_proxy.as_deref() {
         builder = builder.proxy(
             Proxy::https(https_proxy)
-                .map_err(AtlassianError::transport)?
+                .map_err(UpstreamError::transport)?
                 .no_proxy(no_proxy),
         );
     }
@@ -350,7 +350,7 @@ fn apply_proxy_config(
 fn apply_mtls_identity(
     builder: ClientBuilder,
     mtls: Option<&ClientTlsIdentityConfig>,
-) -> Result<ClientBuilder, AtlassianError> {
+) -> Result<ClientBuilder, UpstreamError> {
     match mtls {
         Some(mtls) => Ok(builder.identity(mtls.load_identity()?)),
         None => Ok(builder),
@@ -422,16 +422,16 @@ mod tests {
     use serde_json::json;
 
     use crate::atlassian::{
-        auth::AtlassianAuth, compat::ENV_JIRA_CUSTOM_HEADERS, custom_headers::CustomHeaders,
+        auth::UpstreamAuth, compat::ENV_JIRA_CUSTOM_HEADERS, custom_headers::CustomHeaders,
         mtls::ClientTlsIdentityConfig, proxy::ProxyConfig,
     };
 
     use super::*;
 
-    fn client() -> AtlassianHttpClient {
-        AtlassianHttpClient::new(
+    fn client() -> UpstreamHttpClient {
+        UpstreamHttpClient::new(
             "https://jira.example/base/",
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             },
             75,
@@ -464,9 +464,9 @@ mod tests {
 
     #[test]
     fn joins_api_paths_under_jira_cloud_byot_gateway_base_url() {
-        let client = AtlassianHttpClient::new(
+        let client = UpstreamHttpClient::new(
             "https://api.atlassian.com/ex/jira/cloud-123",
-            AtlassianAuth::OAuthAccessToken {
+            UpstreamAuth::OAuthAccessToken {
                 access_token: "test-access-token".to_string(),
             },
             75,
@@ -482,9 +482,9 @@ mod tests {
 
     #[test]
     fn joins_api_paths_under_confluence_cloud_byot_gateway_base_url() {
-        let client = AtlassianHttpClient::new(
+        let client = UpstreamHttpClient::new(
             "https://api.atlassian.com/ex/confluence/cloud-123/wiki",
-            AtlassianAuth::OAuthAccessToken {
+            UpstreamAuth::OAuthAccessToken {
                 access_token: "test-access-token".to_string(),
             },
             75,
@@ -517,7 +517,7 @@ mod tests {
             allowed.url().as_str(),
             "https://jira.example/base/secure/attachment/1/file.png?token=secret"
         );
-        assert!(blocked.contains("absolute URL must use the configured Atlassian base origin"));
+        assert!(blocked.contains("absolute URL must use the configured upstream base origin"));
     }
 
     #[test]
@@ -541,9 +541,9 @@ mod tests {
     #[test]
     fn request_helpers_apply_custom_headers_without_overwriting_auth() {
         let expected_header = format!("Bearer {}", "test-pat-value");
-        let client = AtlassianHttpClient::new_with_proxy_and_headers(
+        let client = UpstreamHttpClient::new_with_proxy_and_headers(
             "https://jira.example/base/",
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             },
             75,
@@ -583,9 +583,9 @@ mod tests {
 
     #[test]
     fn body_helpers_keep_content_type_and_apply_custom_headers() {
-        let client = AtlassianHttpClient::new_with_proxy_and_headers(
+        let client = UpstreamHttpClient::new_with_proxy_and_headers(
             "https://jira.example/base/",
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             },
             75,
@@ -630,9 +630,9 @@ mod tests {
 
     #[test]
     fn client_debug_redacts_proxy_credentials() {
-        let client = AtlassianHttpClient::new_with_proxy(
+        let client = UpstreamHttpClient::new_with_proxy(
             "https://jira.example/base/",
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             },
             75,
@@ -654,9 +654,9 @@ mod tests {
     #[test]
     fn client_builder_accepts_mtls_identity_without_debug_key_leakage() {
         let mtls = generate_temp_mtls_identity("client-builder");
-        let client = AtlassianHttpClient::new_with_proxy_headers_and_mtls(
+        let client = UpstreamHttpClient::new_with_proxy_headers_and_mtls(
             "https://jira.example/base/",
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             },
             75,
@@ -695,9 +695,9 @@ mod tests {
             )
             .route("/final", get(|| async { Json(json!({ "ok": true })) }));
         let base_url = serve(app).await;
-        let client = AtlassianHttpClient::new(
+        let client = UpstreamHttpClient::new(
             &base_url,
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             },
             75,
@@ -737,9 +737,9 @@ mod tests {
             }),
         ))
         .await;
-        let client = AtlassianHttpClient::new(
+        let client = UpstreamHttpClient::new(
             &redirector,
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             },
             75,
@@ -764,9 +764,9 @@ mod tests {
         let target_hits = Arc::new(AtomicUsize::new(0));
         let proxy = counted_json_server("proxy", proxy_hits.clone()).await;
         let target = counted_json_server("target", target_hits.clone()).await;
-        let proxied = AtlassianHttpClient::new_with_proxy(
+        let proxied = UpstreamHttpClient::new_with_proxy(
             &target,
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             },
             75,
@@ -788,9 +788,9 @@ mod tests {
         assert_eq!(proxy_hits.load(Ordering::SeqCst), 1);
         assert_eq!(target_hits.load(Ordering::SeqCst), 0);
 
-        let bypassed = AtlassianHttpClient::new_with_proxy(
+        let bypassed = UpstreamHttpClient::new_with_proxy(
             &target,
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             },
             75,
@@ -831,9 +831,9 @@ mod tests {
             ),
         );
         let base_url = serve(app).await;
-        let client = AtlassianHttpClient::new(
+        let client = UpstreamHttpClient::new(
             &base_url,
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             },
             75,

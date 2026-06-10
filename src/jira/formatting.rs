@@ -1,8 +1,8 @@
 use serde_json::{Value, json};
 
 use crate::{
-    atlassian::{error::AtlassianError, redaction::redact_text},
     jira::config::{JiraConfig, JiraDeployment},
+    upstream::{error::UpstreamError, redaction::redact_text},
 };
 
 pub fn extract_adf_text(value: &Value) -> String {
@@ -39,7 +39,7 @@ pub fn comment_body_for_deployment(deployment: JiraDeployment, text: &str) -> Va
 pub fn parse_optional_object(
     value: Option<Value>,
     field_name: &'static str,
-) -> Result<Option<Value>, AtlassianError> {
+) -> Result<Option<Value>, UpstreamError> {
     let Some(value) = value else {
         return Ok(None);
     };
@@ -48,18 +48,18 @@ pub fn parse_optional_object(
         Value::Object(_) => Ok(Some(value)),
         Value::String(raw) => {
             let parsed: Value = serde_json::from_str(&raw).map_err(|_| {
-                AtlassianError::invalid_input(format!("{field_name} must be a JSON object"))
+                UpstreamError::invalid_input(format!("{field_name} must be a JSON object"))
             })?;
 
             if parsed.is_object() {
                 Ok(Some(parsed))
             } else {
-                Err(AtlassianError::invalid_input(format!(
+                Err(UpstreamError::invalid_input(format!(
                     "{field_name} must be a JSON object"
                 )))
             }
         }
-        _ => Err(AtlassianError::invalid_input(format!(
+        _ => Err(UpstreamError::invalid_input(format!(
             "{field_name} must be a JSON object"
         ))),
     }
@@ -68,15 +68,15 @@ pub fn parse_optional_object(
 pub fn parse_required_object(
     value: Value,
     field_name: &'static str,
-) -> Result<Value, AtlassianError> {
+) -> Result<Value, UpstreamError> {
     parse_optional_object(Some(value), field_name)?
-        .ok_or_else(|| AtlassianError::invalid_input(format!("{field_name} must be a JSON object")))
+        .ok_or_else(|| UpstreamError::invalid_input(format!("{field_name} must be a JSON object")))
 }
 
 pub fn parse_optional_string_list(
     value: Option<Value>,
     field_name: &'static str,
-) -> Result<Option<Vec<String>>, AtlassianError> {
+) -> Result<Option<Vec<String>>, UpstreamError> {
     let Some(value) = value else {
         return Ok(None);
     };
@@ -86,7 +86,7 @@ pub fn parse_optional_string_list(
             .into_iter()
             .map(|value| match value {
                 Value::String(value) if !value.trim().is_empty() => Ok(value.trim().to_string()),
-                _ => Err(AtlassianError::invalid_input(format!(
+                _ => Err(UpstreamError::invalid_input(format!(
                     "{field_name} must be a string or array of strings"
                 ))),
             })
@@ -100,7 +100,7 @@ pub fn parse_optional_string_list(
                 .map(ToString::to_string)
                 .collect(),
         )),
-        _ => Err(AtlassianError::invalid_input(format!(
+        _ => Err(UpstreamError::invalid_input(format!(
             "{field_name} must be a string or array of strings"
         ))),
     }
@@ -109,26 +109,26 @@ pub fn parse_optional_string_list(
 pub fn parse_required_string_list(
     value: Value,
     field_name: &'static str,
-) -> Result<Vec<String>, AtlassianError> {
+) -> Result<Vec<String>, UpstreamError> {
     parse_optional_string_list(Some(value), field_name).map(|values| values.unwrap_or_default())
 }
 
 pub fn parse_required_object_list(
     value: Value,
     field_name: &'static str,
-) -> Result<Vec<Value>, AtlassianError> {
+) -> Result<Vec<Value>, UpstreamError> {
     let parsed = match value {
         Value::Array(values) => values,
         Value::String(raw) => {
             let parsed: Value = serde_json::from_str(&raw).map_err(|_| {
-                AtlassianError::invalid_input(format!("{field_name} must be a JSON array"))
+                UpstreamError::invalid_input(format!("{field_name} must be a JSON array"))
             })?;
             parsed.as_array().cloned().ok_or_else(|| {
-                AtlassianError::invalid_input(format!("{field_name} must be a JSON array"))
+                UpstreamError::invalid_input(format!("{field_name} must be a JSON array"))
             })?
         }
         _ => {
-            return Err(AtlassianError::invalid_input(format!(
+            return Err(UpstreamError::invalid_input(format!(
                 "{field_name} must be a JSON array"
             )));
         }
@@ -137,7 +137,7 @@ pub fn parse_required_object_list(
     if parsed.iter().all(Value::is_object) {
         Ok(parsed)
     } else {
-        Err(AtlassianError::invalid_input(format!(
+        Err(UpstreamError::invalid_input(format!(
             "{field_name} must contain only JSON objects"
         )))
     }
@@ -147,7 +147,7 @@ pub fn merge_optional_objects(
     base: Value,
     additional: Option<Value>,
     additional_field_name: &'static str,
-) -> Result<Value, AtlassianError> {
+) -> Result<Value, UpstreamError> {
     let mut base = parse_required_object(base, "fields")?;
     let Some(additional) = parse_optional_object(additional, additional_field_name)? else {
         return Ok(base);
@@ -155,9 +155,9 @@ pub fn merge_optional_objects(
 
     let base_object = base
         .as_object_mut()
-        .ok_or_else(|| AtlassianError::invalid_input("fields must be a JSON object"))?;
+        .ok_or_else(|| UpstreamError::invalid_input("fields must be a JSON object"))?;
     let additional_object = additional.as_object().ok_or_else(|| {
-        AtlassianError::invalid_input(format!("{additional_field_name} must be a JSON object"))
+        UpstreamError::invalid_input(format!("{additional_field_name} must be a JSON object"))
     })?;
     for (key, value) in additional_object {
         base_object.insert(key.clone(), value.clone());
@@ -170,13 +170,13 @@ pub fn issue_project_key(issue_key: &str) -> Option<&str> {
     issue_key.split_once('-').map(|(project, _)| project)
 }
 
-pub fn ensure_issue_allowed(issue_key: &str, config: &JiraConfig) -> Result<(), AtlassianError> {
+pub fn ensure_issue_allowed(issue_key: &str, config: &JiraConfig) -> Result<(), UpstreamError> {
     if config.projects_filter.is_empty() {
         return Ok(());
     }
 
     let Some(project_key) = issue_project_key(issue_key) else {
-        return Err(AtlassianError::invalid_input(
+        return Err(UpstreamError::invalid_input(
             "issue_key must include a project key prefix",
         ));
     };
@@ -184,20 +184,17 @@ pub fn ensure_issue_allowed(issue_key: &str, config: &JiraConfig) -> Result<(), 
     if config.projects_filter.contains(project_key) {
         Ok(())
     } else {
-        Err(AtlassianError::invalid_input(format!(
+        Err(UpstreamError::invalid_input(format!(
             "issue `{issue_key}` is outside the configured Jira project filter"
         )))
     }
 }
 
-pub fn ensure_project_allowed(
-    project_key: &str,
-    config: &JiraConfig,
-) -> Result<(), AtlassianError> {
+pub fn ensure_project_allowed(project_key: &str, config: &JiraConfig) -> Result<(), UpstreamError> {
     if config.projects_filter.is_empty() || config.projects_filter.contains(project_key) {
         Ok(())
     } else {
-        Err(AtlassianError::invalid_input(format!(
+        Err(UpstreamError::invalid_input(format!(
             "project `{project_key}` is outside the configured Jira project filter"
         )))
     }
@@ -245,11 +242,11 @@ pub fn inject_project_filter(jql: &str, projects: &[String]) -> String {
     }
 }
 
-pub fn safe_path_segment(segment: &str, name: &'static str) -> Result<String, AtlassianError> {
+pub fn safe_path_segment(segment: &str, name: &'static str) -> Result<String, UpstreamError> {
     let segment = segment.trim();
     if segment.is_empty() || segment.contains('/') || segment.contains('?') || segment.contains('#')
     {
-        Err(AtlassianError::invalid_input(format!(
+        Err(UpstreamError::invalid_input(format!(
             "{name} must be a non-empty path segment"
         )))
     } else {

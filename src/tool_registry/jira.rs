@@ -454,7 +454,7 @@ jira_metadata!(
     JIRA_GET_ISSUE_SLA_METRICS_METADATA,
     tools::JIRA_GET_ISSUE_SLA_METRICS_TOOL_NAME,
     Read,
-    "jira_issue_metrics_read",
+    "jira_issue_sla_read",
     read_only,
     "Get Jira issue SLA metrics",
     "Parse Jira Service Management SLA metrics from issue fields; does not recompute timers or working-hours calendars.",

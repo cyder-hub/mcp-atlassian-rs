@@ -7,8 +7,8 @@ use std::{
 
 use reqwest::{Url, header::HeaderMap};
 
-use crate::atlassian::{
-    auth::AtlassianAuth,
+use crate::upstream::{
+    auth::UpstreamAuth,
     security::{UrlValidationError, resolve_hostname, validate_service_base_url_with_resolver},
 };
 
@@ -27,7 +27,7 @@ pub const AUTH_SCHEME_BEARER: &str = "Bearer";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequestAuthContext {
-    pub authorization: Option<AtlassianAuth>,
+    pub authorization: Option<UpstreamAuth>,
     pub jira: Option<ServiceAuthOverride>,
     pub confluence: Option<ServiceAuthOverride>,
     pub cloud_id: Option<String>,
@@ -46,7 +46,7 @@ impl RequestAuthContext {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceAuthOverride {
     pub base_url: String,
-    pub auth: AtlassianAuth,
+    pub auth: UpstreamAuth,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -235,7 +235,7 @@ where
                 .map_err(|source| RequestAuthError::InvalidServiceUrl { service, source })?;
             Ok(Some(ServiceAuthOverride {
                 base_url: url.to_string().trim_end_matches('/').to_string(),
-                auth: AtlassianAuth::Pat {
+                auth: UpstreamAuth::Pat {
                     personal_token: personal_token.to_string(),
                 },
             }))
@@ -246,7 +246,7 @@ where
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ParsedAuthorization {
     scheme: ParsedAuthorizationScheme,
-    auth: AtlassianAuth,
+    auth: UpstreamAuth,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -257,10 +257,10 @@ enum ParsedAuthorizationScheme {
 }
 
 impl ParsedAuthorization {
-    fn into_auth(self, oauth_bearer: bool) -> AtlassianAuth {
+    fn into_auth(self, oauth_bearer: bool) -> UpstreamAuth {
         match (self.scheme, self.auth, oauth_bearer) {
-            (ParsedAuthorizationScheme::Bearer, AtlassianAuth::Pat { personal_token }, true) => {
-                AtlassianAuth::OAuthAccessToken {
+            (ParsedAuthorizationScheme::Bearer, UpstreamAuth::Pat { personal_token }, true) => {
+                UpstreamAuth::OAuthAccessToken {
                     access_token: personal_token,
                 }
             }
@@ -295,7 +295,7 @@ fn parse_authorization_header(value: &str) -> Result<ParsedAuthorization, Reques
         }
         return Ok(ParsedAuthorization {
             scheme: ParsedAuthorizationScheme::Basic,
-            auth: AtlassianAuth::Basic {
+            auth: UpstreamAuth::Basic {
                 username: username.to_string(),
                 api_token: api_token.to_string(),
             },
@@ -305,7 +305,7 @@ fn parse_authorization_header(value: &str) -> Result<ParsedAuthorization, Reques
     if scheme.eq_ignore_ascii_case(AUTH_SCHEME_TOKEN) {
         return Ok(ParsedAuthorization {
             scheme: ParsedAuthorizationScheme::Token,
-            auth: AtlassianAuth::Pat {
+            auth: UpstreamAuth::Pat {
                 personal_token: credential.to_string(),
             },
         });
@@ -314,7 +314,7 @@ fn parse_authorization_header(value: &str) -> Result<ParsedAuthorization, Reques
     if scheme.eq_ignore_ascii_case(AUTH_SCHEME_BEARER) {
         return Ok(ParsedAuthorization {
             scheme: ParsedAuthorizationScheme::Bearer,
-            auth: AtlassianAuth::Pat {
+            auth: UpstreamAuth::Pat {
                 personal_token: credential.to_string(),
             },
         });
@@ -367,27 +367,37 @@ fn safe_authorization_scheme(scheme: &str) -> Option<String> {
 }
 
 fn build_fingerprint(
-    authorization: Option<&AtlassianAuth>,
+    authorization: Option<&UpstreamAuth>,
     jira: Option<&ServiceAuthOverride>,
     confluence: Option<&ServiceAuthOverride>,
     cloud_id: Option<&str>,
 ) -> RequestAuthFingerprint {
     let mut parts = Vec::new();
     parts.push(match authorization {
-        Some(AtlassianAuth::Basic {
+        Some(UpstreamAuth::Basic {
             username,
             api_token,
         }) => format!(
             "authorization=basic:{}",
             secret_hash(&format!("{username}:{api_token}"))
         ),
-        Some(AtlassianAuth::Pat { personal_token }) => {
+        Some(UpstreamAuth::Pat { personal_token }) => {
             format!("authorization=pat:{}", secret_hash(personal_token))
         }
-        Some(AtlassianAuth::OAuthAccessToken { access_token }) => {
+        Some(UpstreamAuth::OAuthAccessToken { access_token }) => {
             format!(
                 "authorization=oauth_access_token:{}",
                 secret_hash(access_token)
+            )
+        }
+        Some(UpstreamAuth::Bearer { token }) => {
+            format!("authorization=bearer:{}", secret_hash(token))
+        }
+        Some(UpstreamAuth::HeaderToken { header_name, token }) => {
+            format!(
+                "authorization=header:{}:{}",
+                header_name,
+                secret_hash(token)
             )
         }
         None => "authorization=global".to_string(),
@@ -410,7 +420,7 @@ fn service_fingerprint(service: &str, auth: Option<&ServiceAuthOverride>) -> Str
     auth.map_or_else(
         || format!("{service}=global"),
         |auth| match &auth.auth {
-            AtlassianAuth::Basic {
+            UpstreamAuth::Basic {
                 username,
                 api_token,
             } => format!(
@@ -418,18 +428,33 @@ fn service_fingerprint(service: &str, auth: Option<&ServiceAuthOverride>) -> Str
                 service_host(&auth.base_url),
                 secret_hash(&format!("{username}:{api_token}"))
             ),
-            AtlassianAuth::Pat { personal_token } => {
+            UpstreamAuth::Pat { personal_token } => {
                 format!(
                     "{service}=pat:{}:{}",
                     service_host(&auth.base_url),
                     secret_hash(personal_token)
                 )
             }
-            AtlassianAuth::OAuthAccessToken { access_token } => {
+            UpstreamAuth::OAuthAccessToken { access_token } => {
                 format!(
                     "{service}=oauth_access_token:{}:{}",
                     service_host(&auth.base_url),
                     secret_hash(access_token)
+                )
+            }
+            UpstreamAuth::Bearer { token } => {
+                format!(
+                    "{service}=bearer:{}:{}",
+                    service_host(&auth.base_url),
+                    secret_hash(token)
+                )
+            }
+            UpstreamAuth::HeaderToken { header_name, token } => {
+                format!(
+                    "{service}=header:{}:{}:{}",
+                    service_host(&auth.base_url),
+                    header_name,
+                    secret_hash(token)
                 )
             }
         },
@@ -494,7 +519,7 @@ fn base64_value(byte: u8) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::atlassian::redaction::REDACTED;
+    use crate::upstream::redaction::REDACTED;
     use reqwest::header::{AUTHORIZATION, HeaderValue};
 
     #[test]
@@ -531,7 +556,7 @@ mod tests {
 
         assert_eq!(
             context.authorization,
-            Some(AtlassianAuth::Basic {
+            Some(UpstreamAuth::Basic {
                 username: "user@example.com".to_string(),
                 api_token: "api-token".to_string(),
             })
@@ -570,7 +595,7 @@ mod tests {
 
         assert_eq!(
             context.authorization,
-            Some(AtlassianAuth::OAuthAccessToken {
+            Some(UpstreamAuth::OAuthAccessToken {
                 access_token: "bearer-token".to_string(),
             })
         );
@@ -603,7 +628,7 @@ mod tests {
 
         assert_eq!(
             context.authorization,
-            Some(AtlassianAuth::OAuthAccessToken {
+            Some(UpstreamAuth::OAuthAccessToken {
                 access_token: "access-token".to_string(),
             })
         );
@@ -622,7 +647,7 @@ mod tests {
 
         assert_eq!(
             context.authorization,
-            Some(AtlassianAuth::Pat {
+            Some(UpstreamAuth::Pat {
                 personal_token: "pat-token".to_string(),
             })
         );

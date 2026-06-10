@@ -79,6 +79,19 @@ pub enum ConfigError {
         variable: &'static str,
         value: String,
     },
+    MissingGitlabUrl {
+        credential_variables: Vec<&'static str>,
+    },
+    InvalidGitlabUrl {
+        variable: &'static str,
+    },
+    MissingGitlabToken {
+        variable: &'static str,
+    },
+    InvalidGitlabTimeout {
+        variable: &'static str,
+        value: String,
+    },
 }
 
 impl Display for ConfigError {
@@ -202,6 +215,27 @@ impl Display for ConfigError {
                 access_token_variables.join(", ")
             ),
             Self::InvalidConfluenceTimeout { variable, value } => {
+                write!(formatter, "invalid {variable} value `{value}`")
+            }
+            Self::MissingGitlabUrl {
+                credential_variables,
+            } => {
+                write!(
+                    formatter,
+                    "missing GITLAB_URL while GitLab credential variables are set: {}",
+                    credential_variables.join(", ")
+                )
+            }
+            Self::InvalidGitlabUrl { variable } => {
+                write!(formatter, "invalid {variable} value")
+            }
+            Self::MissingGitlabToken { variable } => {
+                write!(
+                    formatter,
+                    "missing GitLab credential variables: {variable}, GITLAB_PERSONAL_TOKEN, or GITLAB_OAUTH_ACCESS_TOKEN"
+                )
+            }
+            Self::InvalidGitlabTimeout { variable, value } => {
                 write!(formatter, "invalid {variable} value `{value}`")
             }
         }

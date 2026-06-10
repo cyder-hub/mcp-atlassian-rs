@@ -6,7 +6,7 @@ impl ConfluenceClient {
         cql: &str,
         limit: Option<u64>,
         group_name: Option<&str>,
-    ) -> Result<ConfluenceUserSearchResponse, AtlassianError> {
+    ) -> Result<ConfluenceUserSearchResponse, UpstreamError> {
         let cql = required_non_empty_input(cql, "query")?;
         let limit = user_search_limit(limit)?;
 
@@ -32,7 +32,7 @@ impl ConfluenceClient {
         cql: &str,
         group_name: Option<&str>,
         limit: u64,
-    ) -> Result<ConfluenceUserSearchResponse, AtlassianError> {
+    ) -> Result<ConfluenceUserSearchResponse, UpstreamError> {
         let group_name = required_non_empty_input(
             group_name.unwrap_or(DEFAULT_CONFLUENCE_GROUP_NAME),
             "group_name",

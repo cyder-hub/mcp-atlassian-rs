@@ -123,7 +123,7 @@ async fn search_content_does_not_fallback_on_auth_error() {
 
     assert!(matches!(
         error,
-        AtlassianError::HttpStatus { status: 401, .. }
+        UpstreamError::HttpStatus { status: 401, .. }
     ));
     assert_eq!(requests.lock().await.len(), 1);
 }
@@ -165,6 +165,6 @@ async fn search_content_rejects_invalid_limit_before_request() {
         .await
         .unwrap_err();
 
-    assert!(matches!(error, AtlassianError::InvalidInput { .. }));
+    assert!(matches!(error, UpstreamError::InvalidInput { .. }));
     assert_eq!(requests.lock().await.len(), 0);
 }

@@ -45,7 +45,7 @@ async fn client_maps_http_status_errors_without_echoing_body() {
 
     assert!(matches!(
         error,
-        AtlassianError::HttpStatus { status: 404, .. }
+        UpstreamError::HttpStatus { status: 404, .. }
     ));
     assert!(error.to_string().contains("page not found"));
 }
@@ -58,7 +58,7 @@ async fn client_maps_invalid_json_with_request_context() {
         .await
         .unwrap_err();
 
-    assert!(matches!(error, AtlassianError::JsonDecode { .. }));
+    assert!(matches!(error, UpstreamError::JsonDecode { .. }));
     assert!(error.to_string().contains("GET /rest/api/content/123"));
 }
 

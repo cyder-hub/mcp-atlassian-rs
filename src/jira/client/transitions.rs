@@ -1,7 +1,7 @@
 use super::*;
 
 impl JiraClient {
-    pub async fn get_transitions(&self, issue_key: String) -> Result<Value, AtlassianError> {
+    pub async fn get_transitions(&self, issue_key: String) -> Result<Value, UpstreamError> {
         ensure_issue_allowed(&issue_key, &self.config)?;
         let issue_key = safe_path_segment(&issue_key, "issue_key")?;
         let response: JiraTransitionsResponse = self
@@ -21,7 +21,7 @@ impl JiraClient {
         transition_id: String,
         fields: Option<Value>,
         comment: Option<String>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         ensure_issue_allowed(&issue_key, &self.config)?;
         let issue_key = safe_path_segment(&issue_key, "issue_key")?;
         let transition_id = safe_path_segment(&transition_id, "transition_id")?;

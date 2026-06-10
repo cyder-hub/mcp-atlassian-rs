@@ -5,9 +5,9 @@ impl ConfluenceClient {
         &self,
         page_id: &str,
         include_title: bool,
-    ) -> Result<ConfluencePageViews, AtlassianError> {
+    ) -> Result<ConfluencePageViews, UpstreamError> {
         if self.config.deployment != ConfluenceDeployment::Cloud {
-            return Err(AtlassianError::invalid_input(
+            return Err(UpstreamError::invalid_input(
                 "Page view analytics is only available for Confluence Cloud. Server/Data Center instances do not support the Analytics API.",
             ));
         }

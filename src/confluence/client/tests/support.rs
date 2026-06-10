@@ -153,7 +153,7 @@ pub(super) fn cloud_client(base_url: String) -> ConfluenceClient {
     ConfluenceClient::new(ConfluenceConfig {
         base_url,
         deployment: ConfluenceDeployment::Cloud,
-        auth: AtlassianAuth::Basic {
+        auth: UpstreamAuth::Basic {
             username: "test-user".to_string(),
             api_token: "test-api-token".to_string(),
         },
@@ -175,7 +175,7 @@ pub(super) fn client_with_spaces_filter(
     ConfluenceClient::new(ConfluenceConfig {
         base_url,
         deployment: ConfluenceDeployment::ServerDataCenter,
-        auth: AtlassianAuth::Pat {
+        auth: UpstreamAuth::Pat {
             personal_token: "test-pat-value".to_string(),
         },
         oauth_cloud_id: None,

@@ -23,7 +23,7 @@ use crate::{
             JiraUpdateIssueArgs, JiraUpdateIssueFormAnswersArgs, JiraUpdateSprintArgs,
         },
     },
-    mcp_errors::atlassian_error,
+    mcp_errors::upstream_error,
 };
 use rmcp::{
     ErrorData, handler::server::wrapper::Parameters, model::CallToolResult, tool, tool_router,
@@ -65,7 +65,7 @@ impl AtlassianMcpServer {
                 update_history: args.update_history,
             })
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -91,7 +91,7 @@ impl AtlassianMcpServer {
                 page_token: args.page_token,
             })
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -105,7 +105,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .get_project_issues(args.project_key, args.limit, args.start_at)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -119,7 +119,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .search_fields(args.keyword, args.limit)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -141,7 +141,7 @@ impl AtlassianMcpServer {
                 values_only: args.values_only.unwrap_or(false),
             })
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -156,7 +156,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .add_comment(args.issue_key, args.body, visibility)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -171,7 +171,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .edit_comment(args.issue_key, args.comment_id, args.body, visibility)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -185,7 +185,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .get_transitions(args.issue_key)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -200,7 +200,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .transition_issue(args.issue_key, args.transition_id, fields, args.comment)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -220,7 +220,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .create_issue(fields)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -240,7 +240,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .batch_create_issues(issue_updates, args.validate_only.unwrap_or(false))
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -258,7 +258,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .batch_get_changelogs(issue_ids_or_keys, fields, limit)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -283,7 +283,7 @@ impl AtlassianMcpServer {
                 fields.notify_users,
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -297,7 +297,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .delete_issue(args.issue_key, args.delete_subtasks.unwrap_or(false))
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -311,7 +311,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .get_all_projects(args.include_archived.unwrap_or(false))
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -325,7 +325,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .get_project_versions(args.project_key)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -339,7 +339,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .get_project_components(args.project_key)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -353,7 +353,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .create_version(version_payload_from_args(args)?)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -372,7 +372,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .batch_create_versions(versions)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -389,7 +389,7 @@ impl AtlassianMcpServer {
                 "user_identifier",
             )?)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -403,7 +403,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .get_issue_watchers(args.issue_key)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -420,7 +420,7 @@ impl AtlassianMcpServer {
                 required_non_empty_arg(args.user_identifier, "user_identifier")?,
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -437,7 +437,7 @@ impl AtlassianMcpServer {
                 required_non_empty_arg(args.user_identifier, "user_identifier")?,
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -451,7 +451,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .get_worklog(args.issue_key, args.start_at, args.limit)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -471,7 +471,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .add_worklog(issue_key, payload, query)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -485,7 +485,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .get_link_types()
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         if let Some(name_filter) = optional_non_empty_arg(args.name_filter) {
             let name_filter = name_filter.to_lowercase();
@@ -517,7 +517,7 @@ impl AtlassianMcpServer {
                 required_non_empty_arg(args.epic_key, "epic_key")?,
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -536,7 +536,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .create_issue_link(issue_link_payload_from_args(args, deployment)?)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -551,7 +551,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .create_remote_issue_link(issue_key, payload)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -565,7 +565,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .remove_issue_link(required_non_empty_arg(args.link_id, "link_id")?)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -590,7 +590,7 @@ impl AtlassianMcpServer {
                 },
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -614,7 +614,7 @@ impl AtlassianMcpServer {
                 },
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -628,7 +628,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .get_agile_boards(args.project_key, args.board_type, args.start_at, args.limit)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -643,7 +643,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .get_board_issues(args.board_id, args.jql, fields, args.start_at, args.limit)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -658,7 +658,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .get_sprints_from_board(args.board_id, state, args.start_at, args.limit)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -673,7 +673,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .get_sprint_issues(args.sprint_id, fields, args.start_at, args.limit)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -687,7 +687,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .create_sprint(create_sprint_payload_from_args(args)?)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -702,7 +702,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .update_sprint(sprint_id, payload)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -717,7 +717,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .add_issues_to_sprint(args.sprint_id, issue_keys)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -731,7 +731,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .get_service_desk_for_project(required_non_empty_arg(args.project_key, "project_key")?)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -745,7 +745,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .get_service_desk_queues(args.service_desk_id, args.start_at, args.limit)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -764,7 +764,7 @@ impl AtlassianMcpServer {
                 args.limit,
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -781,7 +781,7 @@ impl AtlassianMcpServer {
                 self.context.atlassian_oauth_cloud_id(),
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -799,7 +799,7 @@ impl AtlassianMcpServer {
                 self.context.atlassian_oauth_cloud_id(),
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -819,7 +819,7 @@ impl AtlassianMcpServer {
                 self.context.atlassian_oauth_cloud_id(),
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -837,7 +837,7 @@ impl AtlassianMcpServer {
                 args.include_status_summary.unwrap_or(false),
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -856,7 +856,7 @@ impl AtlassianMcpServer {
                 args.include_raw_dates.unwrap_or(false),
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -874,7 +874,7 @@ impl AtlassianMcpServer {
                 args.data_type,
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }
@@ -889,7 +889,7 @@ impl AtlassianMcpServer {
             .jira_client()?
             .get_issues_development_info(issue_keys, args.application_type, args.data_type)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
     }

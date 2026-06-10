@@ -4,7 +4,7 @@ impl ConfluenceClient {
     pub async fn get_page_comments(
         &self,
         page_id: &str,
-    ) -> Result<ConfluenceCommentListResponse, AtlassianError> {
+    ) -> Result<ConfluenceCommentListResponse, UpstreamError> {
         let page_id = safe_path_segment(page_id, "page_id")?;
         self.get_json(
             &format!("/rest/api/content/{page_id}/child/comment"),
@@ -23,7 +23,7 @@ impl ConfluenceClient {
         &self,
         page_id: &str,
         storage_body: &str,
-    ) -> Result<ConfluenceComment, AtlassianError> {
+    ) -> Result<ConfluenceComment, UpstreamError> {
         let payload = comment_payload(page_id, "page", storage_body)?;
         self.http
             .send_json(self.http.post_json("/rest/api/content", &payload)?)
@@ -34,7 +34,7 @@ impl ConfluenceClient {
         &self,
         comment_id: &str,
         storage_body: &str,
-    ) -> Result<ConfluenceComment, AtlassianError> {
+    ) -> Result<ConfluenceComment, UpstreamError> {
         let payload = comment_payload(comment_id, "comment", storage_body)?;
         self.http
             .send_json(self.http.post_json("/rest/api/content", &payload)?)

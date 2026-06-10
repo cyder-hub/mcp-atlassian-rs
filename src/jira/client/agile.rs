@@ -7,7 +7,7 @@ impl JiraClient {
         board_type: Option<String>,
         start_at: Option<u64>,
         limit: Option<u64>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let query = optional_query_params([
             ("projectKeyOrId", project_key),
             ("type", board_type),
@@ -27,7 +27,7 @@ impl JiraClient {
         fields: Option<Vec<String>>,
         start_at: Option<u64>,
         limit: Option<u64>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let query = optional_query_params([
             ("jql", jql),
             ("fields", fields.map(|fields| fields.join(","))),
@@ -50,7 +50,7 @@ impl JiraClient {
         state: Option<Vec<String>>,
         start_at: Option<u64>,
         limit: Option<u64>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let query = optional_query_params([
             ("state", state.map(|state| state.join(","))),
             ("startAt", start_at.map(|value| value.to_string())),
@@ -72,7 +72,7 @@ impl JiraClient {
         fields: Option<Vec<String>>,
         start_at: Option<u64>,
         limit: Option<u64>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let query = optional_query_params([
             ("fields", fields.map(|fields| fields.join(","))),
             ("startAt", start_at.map(|value| value.to_string())),
@@ -88,7 +88,7 @@ impl JiraClient {
             .or_else(jira_software_agile_unavailable)
     }
 
-    pub async fn create_sprint(&self, payload: Value) -> Result<Value, AtlassianError> {
+    pub async fn create_sprint(&self, payload: Value) -> Result<Value, UpstreamError> {
         self.http
             .send_json(self.http.post_json("/rest/agile/1.0/sprint", &payload)?)
             .await
@@ -98,7 +98,7 @@ impl JiraClient {
         &self,
         sprint_id: u64,
         payload: Value,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         self.http
             .send_json(
                 self.http
@@ -111,7 +111,7 @@ impl JiraClient {
         &self,
         sprint_id: u64,
         issue_keys: Vec<String>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         self.http
             .send_json_value_or_null(self.http.post_json(
                 &format!("/rest/agile/1.0/sprint/{sprint_id}/issue"),

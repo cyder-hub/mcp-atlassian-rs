@@ -132,6 +132,6 @@ async fn client_search_user_preserves_auth_errors() {
 
     assert!(matches!(
         error,
-        AtlassianError::HttpStatus { status: 401, .. }
+        UpstreamError::HttpStatus { status: 401, .. }
     ));
 }

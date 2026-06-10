@@ -1,4 +1,4 @@
-use crate::atlassian::redaction::{REDACTED, redact_text};
+use crate::upstream::redaction::{REDACTED, redact_text};
 use serde_json::{Map, Value, json};
 
 pub(super) const TOOL_LOG_REDACTED: &str = REDACTED;

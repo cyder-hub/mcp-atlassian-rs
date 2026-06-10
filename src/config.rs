@@ -1,12 +1,12 @@
 use std::{collections::BTreeSet, net::IpAddr};
 
-use crate::atlassian::security::BLOCKED_HOSTNAMES;
 use crate::tool_registry::{
     DEFAULT_TOOL_PROFILE, all_toolsets, default_toolsets, toolsets_for_profile,
 };
+use crate::upstream::security::BLOCKED_HOSTNAMES;
 use crate::{
     atlassian::compat::ENV_ATLASSIAN_OAUTH_ENABLE, confluence::config::ConfluenceConfig,
-    error::ConfigError, jira::config::JiraConfig,
+    error::ConfigError, gitlab::config::GitlabConfig, jira::config::JiraConfig,
 };
 
 pub const DEFAULT_HTTP_HOST: &str = "127.0.0.1";
@@ -22,7 +22,7 @@ pub const ENV_HTTP_HOST: &str = "MCP_HTTP_HOST";
 pub const ENV_HTTP_PORT: &str = "MCP_HTTP_PORT";
 pub const ENV_HTTP_PATH: &str = "MCP_HTTP_PATH";
 pub use crate::atlassian::request_auth::ENV_IGNORE_HEADER_AUTH;
-pub use crate::atlassian::security::ENV_ALLOWED_URL_DOMAINS;
+pub use crate::upstream::security::ENV_ALLOWED_URL_DOMAINS;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeConfig {
@@ -31,6 +31,7 @@ pub struct RuntimeConfig {
     pub enabled_toolsets: BTreeSet<String>,
     pub jira: Option<JiraConfig>,
     pub confluence: Option<ConfluenceConfig>,
+    pub gitlab: Option<GitlabConfig>,
     pub atlassian_oauth_cloud_id: Option<String>,
     pub atlassian_oauth_enabled: bool,
     pub allowed_url_domains: Option<Vec<String>>,
@@ -66,6 +67,7 @@ impl RuntimeConfig {
             parse_toolsets(&tool_profile, get_var(ENV_TOOLSETS).ok().as_deref())?;
         let jira = JiraConfig::from_var_provider(&mut get_var)?;
         let confluence = ConfluenceConfig::from_var_provider(&mut get_var)?;
+        let gitlab = GitlabConfig::from_var_provider(&mut get_var)?;
         let atlassian_oauth_cloud_id =
             parse_optional_string(get_var(ENV_ATLASSIAN_OAUTH_CLOUD_ID).ok());
         let atlassian_oauth_enabled =
@@ -86,6 +88,7 @@ impl RuntimeConfig {
             enabled_toolsets,
             jira,
             confluence,
+            gitlab,
             atlassian_oauth_cloud_id,
             atlassian_oauth_enabled,
             allowed_url_domains,
@@ -109,6 +112,7 @@ impl Default for RuntimeConfig {
             enabled_toolsets: default_toolsets(),
             jira: None,
             confluence: None,
+            gitlab: None,
             atlassian_oauth_cloud_id: None,
             atlassian_oauth_enabled: false,
             allowed_url_domains: None,
@@ -348,17 +352,15 @@ mod tests {
     use std::collections::BTreeMap;
 
     use crate::{
-        atlassian::{
-            auth::AtlassianAuth,
-            compat::{
-                ENV_ATLASSIAN_API_TOKEN, ENV_ATLASSIAN_PERSONAL_TOKEN, ENV_ATLASSIAN_USERNAME,
-            },
+        atlassian::compat::{
+            ENV_ATLASSIAN_API_TOKEN, ENV_ATLASSIAN_PERSONAL_TOKEN, ENV_ATLASSIAN_USERNAME,
         },
         confluence::config::{
             ConfluenceDeployment, ENV_CONFLUENCE_API_TOKEN, ENV_CONFLUENCE_PERSONAL_TOKEN,
             ENV_CONFLUENCE_URL, ENV_CONFLUENCE_USERNAME,
         },
         jira::config::{ENV_JIRA_PERSONAL_TOKEN, ENV_JIRA_URL, JiraDeployment},
+        upstream::auth::UpstreamAuth,
     };
 
     use super::*;
@@ -517,7 +519,7 @@ mod tests {
         assert_eq!(jira.deployment, JiraDeployment::ServerDataCenter);
         assert_eq!(
             jira.auth,
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             }
         );
@@ -540,7 +542,7 @@ mod tests {
 
         assert_eq!(
             jira.auth,
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: "shared-pat-value".to_string(),
             }
         );
@@ -560,7 +562,7 @@ mod tests {
         assert_eq!(config.jira, None);
         assert_eq!(
             confluence.auth,
-            AtlassianAuth::Basic {
+            UpstreamAuth::Basic {
                 username: "user@example.com".to_string(),
                 api_token: "shared-api-token".to_string(),
             }
@@ -581,7 +583,7 @@ mod tests {
         assert_eq!(confluence.deployment, ConfluenceDeployment::Cloud);
         assert_eq!(
             confluence.auth,
-            AtlassianAuth::Basic {
+            UpstreamAuth::Basic {
                 username: "user@example.com".to_string(),
                 api_token: "test-api-token".to_string(),
             }

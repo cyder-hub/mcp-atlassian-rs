@@ -3,15 +3,16 @@ use std::{collections::BTreeSet, sync::Arc};
 use rmcp::model::{JsonObject, Tool};
 
 use crate::{
-    atlassian::{auth::AtlassianAuth, custom_headers::CustomHeaders, proxy::ProxyConfig},
     config::{HttpConfig, RuntimeConfig},
     confluence::{
         config::{ConfluenceConfig, ConfluenceDeployment},
         tools as confluence_tools,
     },
     context::AppContext,
+    gitlab::{config::GitlabConfig, tools as gitlab_tools},
     jira::config::{JiraConfig, JiraDeployment},
     jira::tools,
+    upstream::{auth::UpstreamAuth, custom_headers::CustomHeaders, proxy::ProxyConfig},
 };
 
 use super::*;
@@ -49,11 +50,23 @@ const SYNTHETIC_CONFLUENCE_READ: ToolMetadata = ToolMetadata {
     description: "Test-only Confluence read metadata.",
 };
 
+const SYNTHETIC_GITLAB_READ: ToolMetadata = ToolMetadata {
+    name: "synthetic_gitlab_read",
+    service: ToolService::Gitlab,
+    access: ToolAccess::Read,
+    toolset: Some("gitlab_projects_read"),
+    annotations: ToolAnnotationMetadata::read_only(),
+    output_schema: None,
+    title: "Synthetic GitLab read",
+    description: "Test-only GitLab read metadata.",
+};
+
 fn metadata_for_test_tool(name: &str) -> Option<ToolMetadata> {
     match name {
         "synthetic_jira_read" => Some(SYNTHETIC_JIRA_READ),
         "synthetic_jira_write" => Some(SYNTHETIC_JIRA_WRITE),
         "synthetic_confluence_read" => Some(SYNTHETIC_CONFLUENCE_READ),
+        "synthetic_gitlab_read" => Some(SYNTHETIC_GITLAB_READ),
         _ => metadata_for(name),
     }
 }
@@ -77,7 +90,7 @@ fn jira_config() -> JiraConfig {
     JiraConfig {
         base_url: "https://jira.example".to_string(),
         deployment: JiraDeployment::ServerDataCenter,
-        auth: AtlassianAuth::Pat {
+        auth: UpstreamAuth::Pat {
             personal_token: "test-pat-value".to_string(),
         },
         oauth_cloud_id: None,
@@ -94,7 +107,7 @@ fn confluence_config() -> ConfluenceConfig {
     ConfluenceConfig {
         base_url: "https://confluence.example".to_string(),
         deployment: ConfluenceDeployment::ServerDataCenter,
-        auth: AtlassianAuth::Pat {
+        auth: UpstreamAuth::Pat {
             personal_token: "test-pat-value".to_string(),
         },
         oauth_cloud_id: None,
@@ -103,6 +116,21 @@ fn confluence_config() -> ConfluenceConfig {
         custom_headers: CustomHeaders::default(),
         mtls: None,
         spaces_filter: BTreeSet::new(),
+        timeout_seconds: 75,
+    }
+}
+
+fn gitlab_config() -> GitlabConfig {
+    GitlabConfig {
+        base_url: "https://gitlab.example".to_string(),
+        auth: UpstreamAuth::Bearer {
+            token: "test-token".to_string(),
+        },
+        ssl_verify: true,
+        proxy: ProxyConfig::default(),
+        custom_headers: CustomHeaders::default(),
+        mtls: None,
+        projects_filter: BTreeSet::new(),
         timeout_seconds: 75,
     }
 }
@@ -119,16 +147,21 @@ fn toolsets_and_profiles_match_control_plane_contract() {
     let all = all_toolsets();
     let defaults = default_toolsets();
 
-    assert_eq!(all.len(), 47);
-    assert_eq!(defaults.len(), 9);
+    assert_eq!(all.len(), 52);
+    assert_eq!(defaults.len(), 11);
     assert!(defaults.is_subset(&all));
     assert!(all.contains("jira_issues_read"));
     assert!(all.contains("jira_issues_delete"));
     assert!(all.contains("jira_sprints_write"));
     assert!(all.contains("jira_service_desks_read"));
+    assert!(all.contains("jira_issue_sla_read"));
     assert!(all.contains("confluence_content_read"));
     assert!(all.contains("confluence_content_update"));
     assert!(all.contains("confluence_content_delete"));
+    assert!(all.contains("gitlab_projects_read"));
+    assert!(all.contains("gitlab_merge_requests_read"));
+    assert!(all.contains("gitlab_merge_requests_write"));
+    assert!(all.contains("gitlab_merge_requests_merge"));
     let basic_profile = toolsets_for_profile("basic")
         .unwrap()
         .iter()
@@ -141,9 +174,49 @@ fn toolsets_and_profiles_match_control_plane_contract() {
             .contains(&"jira_sprint_membership_write")
     );
     assert!(
+        toolsets_for_profile("developer")
+            .unwrap()
+            .contains(&"gitlab_merge_requests_merge")
+    );
+    assert!(
+        toolsets_for_profile("developer")
+            .unwrap()
+            .contains(&"jira_issue_metrics_read")
+    );
+    assert!(
+        !toolsets_for_profile("developer")
+            .unwrap()
+            .contains(&"jira_issue_worklogs_read")
+    );
+    assert!(
+        !toolsets_for_profile("developer")
+            .unwrap()
+            .contains(&"jira_issue_worklogs_write")
+    );
+    assert!(
+        !toolsets_for_profile("developer")
+            .unwrap()
+            .contains(&"jira_issue_sla_read")
+    );
+    assert!(
         toolsets_for_profile("manager")
             .unwrap()
             .contains(&"jira_issues_delete")
+    );
+    assert!(
+        toolsets_for_profile("manager")
+            .unwrap()
+            .contains(&"jira_issue_worklogs_read")
+    );
+    assert!(
+        toolsets_for_profile("manager")
+            .unwrap()
+            .contains(&"jira_issue_worklogs_write")
+    );
+    assert!(
+        toolsets_for_profile("manager")
+            .unwrap()
+            .contains(&"jira_issue_sla_read")
     );
     assert_eq!(toolsets_for_profile("full").unwrap(), ALL_TOOLSETS);
     assert!(toolsets_for_profile("custom").unwrap().is_empty());
@@ -167,10 +240,10 @@ fn profile_tool_counts_match_registered_taxonomy() {
             .count()
     };
 
-    assert_eq!(count("basic"), 15);
-    assert_eq!(count("developer"), 35);
-    assert_eq!(count("manager"), 70);
-    assert_eq!(count("full"), 73);
+    assert_eq!(count("basic"), 23);
+    assert_eq!(count("developer"), 47);
+    assert_eq!(count("manager"), 85);
+    assert_eq!(count("full"), 88);
     assert_eq!(count("custom"), 0);
 }
 
@@ -181,7 +254,7 @@ fn registered_tool_metadata_is_complete_unique_and_uses_known_toolsets() {
     let mut used_toolsets = BTreeSet::new();
     let tools = registered_tools().collect::<Vec<_>>();
 
-    assert_eq!(tools.len(), 73);
+    assert_eq!(tools.len(), 88);
     for metadata in tools {
         assert!(
             names.insert(metadata.name),
@@ -216,6 +289,7 @@ fn registered_tool_metadata_is_complete_unique_and_uses_known_toolsets() {
         match metadata.service {
             ToolService::Jira => assert!(metadata.name.starts_with("jira_")),
             ToolService::Confluence => assert!(metadata.name.starts_with("confluence_")),
+            ToolService::Gitlab => assert!(metadata.name.starts_with("gitlab_")),
         }
         match metadata.access {
             ToolAccess::Read => assert_eq!(
@@ -314,6 +388,42 @@ fn confluence_metadata_uses_risk_split_toolsets() {
 }
 
 #[test]
+fn gitlab_metadata_uses_coarse_toolsets() {
+    for name in gitlab_tools::GITLAB_TOOL_NAMES {
+        let metadata = metadata_for(name).unwrap_or_else(|| panic!("{name} missing metadata"));
+        assert_eq!(metadata.service, ToolService::Gitlab);
+        assert!(metadata.toolset.is_some());
+        assert!(!metadata.title.is_empty());
+        assert!(!metadata.description.is_empty());
+    }
+
+    assert_eq!(
+        metadata_for(gitlab_tools::GITLAB_GET_PROJECT_TOOL_NAME)
+            .unwrap()
+            .toolset,
+        Some("gitlab_projects_read")
+    );
+    assert_eq!(
+        metadata_for(gitlab_tools::GITLAB_GET_MERGE_REQUEST_TOOL_NAME)
+            .unwrap()
+            .toolset,
+        Some("gitlab_merge_requests_read")
+    );
+    assert_eq!(
+        metadata_for(gitlab_tools::GITLAB_CREATE_MERGE_REQUEST_TOOL_NAME)
+            .unwrap()
+            .toolset,
+        Some("gitlab_merge_requests_write")
+    );
+    assert_eq!(
+        metadata_for(gitlab_tools::GITLAB_ACCEPT_MERGE_REQUEST_TOOL_NAME)
+            .unwrap()
+            .toolset,
+        Some("gitlab_merge_requests_merge")
+    );
+}
+
+#[test]
 fn metadata_declares_tool_annotations_without_name_heuristics() {
     let read = metadata_for(tools::JIRA_GET_ISSUE_TOOL_NAME).unwrap();
     let additive_write = metadata_for(tools::JIRA_CREATE_ISSUE_TOOL_NAME).unwrap();
@@ -367,6 +477,10 @@ fn destructive_annotation_set_matches_reviewed_write_tools() {
             confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENT_TOOL_NAME,
             confluence_tools::CONFLUENCE_UPLOAD_CONTENT_ATTACHMENTS_TOOL_NAME,
             confluence_tools::CONFLUENCE_DELETE_ATTACHMENT_TOOL_NAME,
+            gitlab_tools::GITLAB_UPDATE_MERGE_REQUEST_TOOL_NAME,
+            gitlab_tools::GITLAB_RESOLVE_MERGE_REQUEST_DISCUSSION_TOOL_NAME,
+            gitlab_tools::GITLAB_SET_MERGE_REQUEST_APPROVAL_TOOL_NAME,
+            gitlab_tools::GITLAB_ACCEPT_MERGE_REQUEST_TOOL_NAME,
         ])
     );
 }
@@ -499,11 +613,12 @@ fn toolsets_are_additive_and_exact_tools_can_add_or_remove() {
 }
 
 #[test]
-fn service_availability_filters_jira_and_confluence_tools() {
+fn service_availability_filters_jira_confluence_and_gitlab_tools() {
     let unavailable = AppContext::default();
     let available = context(RuntimeConfig {
         jira: Some(jira_config()),
         confluence: Some(confluence_config()),
+        gitlab: Some(gitlab_config()),
         ..runtime_config()
     });
 
@@ -512,6 +627,7 @@ fn service_availability_filters_jira_and_confluence_tools() {
             [
                 tool("synthetic_jira_read"),
                 tool("synthetic_confluence_read"),
+                tool("synthetic_gitlab_read"),
             ],
             &unavailable,
             metadata_for_test_tool,
@@ -523,13 +639,60 @@ fn service_availability_filters_jira_and_confluence_tools() {
             [
                 tool("synthetic_jira_read"),
                 tool("synthetic_confluence_read"),
+                tool("synthetic_gitlab_read"),
             ],
             &available,
             metadata_for_test_tool,
         )),
         vec![
             "synthetic_confluence_read".to_string(),
+            "synthetic_gitlab_read".to_string(),
             "synthetic_jira_read".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn gitlab_profile_toolsets_and_disabled_tools_are_enforced() {
+    let basic = context(RuntimeConfig {
+        gitlab: Some(gitlab_config()),
+        disabled_tools: BTreeSet::from([
+            gitlab_tools::GITLAB_GET_MERGE_REQUEST_TOOL_NAME.to_string()
+        ]),
+        ..runtime_config()
+    });
+    let developer = context(RuntimeConfig {
+        gitlab: Some(gitlab_config()),
+        enabled_toolsets: toolsets_for_profile("developer")
+            .unwrap()
+            .iter()
+            .map(|toolset| (*toolset).to_string())
+            .collect(),
+        ..runtime_config()
+    });
+
+    let candidates = [
+        tool(gitlab_tools::GITLAB_GET_PROJECT_TOOL_NAME),
+        tool(gitlab_tools::GITLAB_GET_MERGE_REQUEST_TOOL_NAME),
+        tool(gitlab_tools::GITLAB_CREATE_MERGE_REQUEST_TOOL_NAME),
+        tool(gitlab_tools::GITLAB_ACCEPT_MERGE_REQUEST_TOOL_NAME),
+    ];
+
+    assert_eq!(
+        names(visible_tools(candidates.clone(), &basic)),
+        vec![gitlab_tools::GITLAB_GET_PROJECT_TOOL_NAME.to_string()]
+    );
+    assert!(guard_tool_call(gitlab_tools::GITLAB_GET_PROJECT_TOOL_NAME, &basic).is_ok());
+    assert!(guard_tool_call(gitlab_tools::GITLAB_GET_MERGE_REQUEST_TOOL_NAME, &basic).is_err());
+    assert!(guard_tool_call(gitlab_tools::GITLAB_ACCEPT_MERGE_REQUEST_TOOL_NAME, &basic).is_err());
+
+    assert_eq!(
+        names(visible_tools(candidates, &developer)),
+        vec![
+            gitlab_tools::GITLAB_ACCEPT_MERGE_REQUEST_TOOL_NAME.to_string(),
+            gitlab_tools::GITLAB_CREATE_MERGE_REQUEST_TOOL_NAME.to_string(),
+            gitlab_tools::GITLAB_GET_MERGE_REQUEST_TOOL_NAME.to_string(),
+            gitlab_tools::GITLAB_GET_PROJECT_TOOL_NAME.to_string(),
         ]
     );
 }

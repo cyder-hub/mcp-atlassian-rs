@@ -36,9 +36,9 @@ fn tool_log_arguments_redact_sensitive_fields_and_truncate_large_values() {
 }
 
 #[test]
-fn atlassian_error_preserves_http_status_and_redacts_sensitive_values() {
+fn upstream_error_preserves_http_status_and_redacts_sensitive_values() {
     for status in [401, 403, 404, 429] {
-        let error = atlassian_error(AtlassianError::HttpStatus {
+        let error = upstream_error(UpstreamError::HttpStatus {
                 status,
                 message: "failed https://example.atlassian.net/rest/api?token=secret with Authorization: Bearer abc123"
                     .to_string(),
@@ -54,14 +54,14 @@ fn atlassian_error_preserves_http_status_and_redacts_sensitive_values() {
 }
 
 #[test]
-fn atlassian_error_reports_non_http_categories() {
-    let invalid_base = atlassian_error(AtlassianError::invalid_base_url(
+fn upstream_error_reports_non_http_categories() {
+    let invalid_base = upstream_error(UpstreamError::invalid_base_url(
         "bad base https://example.atlassian.net?password=secret",
     ));
-    let json_decode = atlassian_error(AtlassianError::JsonDecode {
+    let json_decode = upstream_error(UpstreamError::JsonDecode {
         message: "expected JSON object".to_string(),
     });
-    let unexpected_shape = atlassian_error(AtlassianError::unexpected_shape(
+    let unexpected_shape = upstream_error(UpstreamError::unexpected_shape(
         "missing field customfield_10000",
     ));
 

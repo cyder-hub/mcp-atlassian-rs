@@ -6,7 +6,7 @@ impl JiraClient {
         issue_key: String,
         include_status_changes: bool,
         include_status_summary: bool,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let expand = (include_status_changes || include_status_summary)
             .then(|| vec!["changelog".to_string()]);
         let issue = self
@@ -46,7 +46,7 @@ impl JiraClient {
         issue_key: String,
         metrics: Option<Vec<String>>,
         include_raw_dates: bool,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let requested_fields = metrics
             .clone()
             .filter(|metrics| !metrics.is_empty())

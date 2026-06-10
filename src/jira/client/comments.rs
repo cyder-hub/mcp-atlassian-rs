@@ -6,7 +6,7 @@ impl JiraClient {
         issue_key: String,
         body: String,
         visibility: Option<Value>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         ensure_issue_allowed(&issue_key, &self.config)?;
         let issue_key = safe_path_segment(&issue_key, "issue_key")?;
         let visibility = parse_optional_object(visibility, "visibility")?;
@@ -29,7 +29,7 @@ impl JiraClient {
         comment_id: String,
         body: String,
         visibility: Option<Value>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         ensure_issue_allowed(&issue_key, &self.config)?;
         let issue_key = safe_path_segment(&issue_key, "issue_key")?;
         let comment_id = safe_path_segment(&comment_id, "comment_id")?;

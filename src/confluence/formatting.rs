@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::atlassian::error::AtlassianError;
+use crate::upstream::error::UpstreamError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfluenceContentFormat {
@@ -11,7 +11,7 @@ pub enum ConfluenceContentFormat {
 }
 
 impl ConfluenceContentFormat {
-    pub fn parse(value: Option<&str>) -> Result<Self, AtlassianError> {
+    pub fn parse(value: Option<&str>) -> Result<Self, UpstreamError> {
         match value
             .unwrap_or("markdown")
             .trim()
@@ -22,7 +22,7 @@ impl ConfluenceContentFormat {
             "storage" => Ok(Self::Storage),
             "html" => Ok(Self::Html),
             "wiki" => Ok(Self::Wiki),
-            _ => Err(AtlassianError::invalid_input(
+            _ => Err(UpstreamError::invalid_input(
                 "content_format must be markdown, storage, html, or wiki",
             )),
         }
@@ -201,11 +201,11 @@ fn render_inline_storage(value: &str) -> String {
     output
 }
 
-pub fn safe_path_segment(segment: &str, name: &'static str) -> Result<String, AtlassianError> {
+pub fn safe_path_segment(segment: &str, name: &'static str) -> Result<String, UpstreamError> {
     let segment = segment.trim();
     if segment.is_empty() || segment.contains('/') || segment.contains('?') || segment.contains('#')
     {
-        Err(AtlassianError::invalid_input(format!(
+        Err(UpstreamError::invalid_input(format!(
             "{name} must be a non-empty path segment"
         )))
     } else {

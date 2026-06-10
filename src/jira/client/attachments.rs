@@ -4,7 +4,7 @@ impl JiraClient {
     pub async fn get_issue_attachments(
         &self,
         issue_key: String,
-    ) -> Result<Vec<JiraAttachment>, AtlassianError> {
+    ) -> Result<Vec<JiraAttachment>, UpstreamError> {
         let issue = self
             .get_issue(GetIssueRequest {
                 issue_key,
@@ -21,14 +21,14 @@ impl JiraClient {
             .into_iter()
             .map(serde_json::from_value)
             .collect::<Result<Vec<JiraAttachment>, _>>()
-            .map_err(|error| AtlassianError::unexpected_shape(error.to_string()))
+            .map_err(|error| UpstreamError::unexpected_shape(error.to_string()))
     }
 
     pub async fn fetch_attachment_content(
         &self,
         content_path: &str,
         max_bytes: u64,
-    ) -> Result<DownloadedContent, AtlassianError> {
+    ) -> Result<DownloadedContent, UpstreamError> {
         self.http
             .send_bytes_limited(
                 self.http
@@ -42,9 +42,9 @@ impl JiraClient {
         &self,
         issue_key: String,
         options: AttachmentFetchOptions,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         if options.include_content && options.max_bytes == 0 {
-            return Err(AtlassianError::invalid_input("max_bytes must be positive"));
+            return Err(UpstreamError::invalid_input("max_bytes must be positive"));
         }
 
         let attachments = self.get_issue_attachments(issue_key.clone()).await?;

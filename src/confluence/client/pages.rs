@@ -8,7 +8,7 @@ impl ConfluenceClient {
         &self,
         page_id: &str,
         expand: &[&str],
-    ) -> Result<ConfluencePage, AtlassianError> {
+    ) -> Result<ConfluencePage, UpstreamError> {
         let page_id = safe_path_segment(page_id, "page_id")?;
         let mut query = Vec::new();
         if !expand.is_empty() {
@@ -24,9 +24,9 @@ impl ConfluenceClient {
         page_id: &str,
         version: u64,
         expand: &[&str],
-    ) -> Result<ConfluencePage, AtlassianError> {
+    ) -> Result<ConfluencePage, UpstreamError> {
         if version == 0 {
-            return Err(AtlassianError::invalid_input("version must be positive"));
+            return Err(UpstreamError::invalid_input("version must be positive"));
         }
         let page_id = safe_path_segment(page_id, "page_id")?;
         let mut query = vec![
@@ -46,7 +46,7 @@ impl ConfluenceClient {
         space_key: &str,
         title: &str,
         expand: &[&str],
-    ) -> Result<Option<ConfluencePage>, AtlassianError> {
+    ) -> Result<Option<ConfluencePage>, UpstreamError> {
         let space_key = required_non_empty_input(space_key, "space_key")?;
         let title = required_non_empty_input(title, "title")?;
         let mut query = vec![
@@ -70,7 +70,7 @@ impl ConfluenceClient {
         start: Option<u64>,
         limit: Option<u64>,
         expand: &[&str],
-    ) -> Result<ConfluencePageListResponse, AtlassianError> {
+    ) -> Result<ConfluencePageListResponse, UpstreamError> {
         let page_id = safe_path_segment(page_id, "page_id")?;
         let child_type = safe_path_segment(child_type, "child_type")?;
         let mut query = vec![
@@ -98,7 +98,7 @@ impl ConfluenceClient {
         limit: Option<u64>,
         expand: &[&str],
         include_folders: bool,
-    ) -> Result<ConfluencePageChildrenResponse, AtlassianError> {
+    ) -> Result<ConfluencePageChildrenResponse, UpstreamError> {
         let requested_start = start.unwrap_or(0);
         let requested_limit = limit.unwrap_or(DEFAULT_LIMIT);
         let page_response = self
@@ -157,14 +157,14 @@ impl ConfluenceClient {
         &self,
         page_id: &str,
         before_start: u64,
-    ) -> Result<u64, AtlassianError> {
+    ) -> Result<u64, UpstreamError> {
         let mut counted = 0;
         let mut start = 0;
         let mut request_count = 0;
 
         while counted < before_start {
             if request_count >= MAX_PAGE_CHILD_RECOUNT_REQUESTS {
-                return Err(AtlassianError::invalid_input(format!(
+                return Err(UpstreamError::invalid_input(format!(
                     "start is too large to combine page and folder children exactly; page-child recount is capped at {MAX_PAGE_CHILD_RECOUNT_REQUESTS} requests"
                 )));
             }
@@ -196,7 +196,7 @@ impl ConfluenceClient {
         start: Option<u64>,
         limit: Option<u64>,
         expand: &[&str],
-    ) -> Result<ConfluencePageListResponse, AtlassianError> {
+    ) -> Result<ConfluencePageListResponse, UpstreamError> {
         let space_key = required_non_empty_input(space_key, "space_key")?;
         let mut query = vec![
             ("spaceKey".to_string(), space_key),
@@ -220,7 +220,7 @@ impl ConfluenceClient {
         title: &str,
         storage_body: &str,
         parent_id: Option<&str>,
-    ) -> Result<ConfluencePage, AtlassianError> {
+    ) -> Result<ConfluencePage, UpstreamError> {
         let payload = page_write_payload(
             None,
             required_non_empty_input(space_key, "space_key")?,
@@ -244,7 +244,7 @@ impl ConfluenceClient {
         parent_id: Option<&str>,
         is_minor_edit: bool,
         version_comment: Option<&str>,
-    ) -> Result<ConfluencePage, AtlassianError> {
+    ) -> Result<ConfluencePage, UpstreamError> {
         let current = self
             .get_page_by_id(page_id, &["version", "space", "body.storage"])
             .await?;
@@ -252,9 +252,7 @@ impl ConfluenceClient {
             .space
             .as_ref()
             .and_then(|space| space.key.as_deref())
-            .ok_or_else(|| {
-                AtlassianError::unexpected_shape("page response is missing space.key")
-            })?;
+            .ok_or_else(|| UpstreamError::unexpected_shape("page response is missing space.key"))?;
         let next_version = current
             .version
             .as_ref()
@@ -275,7 +273,7 @@ impl ConfluenceClient {
         .await
     }
 
-    pub async fn delete_page(&self, page_id: &str) -> Result<serde_json::Value, AtlassianError> {
+    pub async fn delete_page(&self, page_id: &str) -> Result<serde_json::Value, UpstreamError> {
         let page_id = safe_path_segment(page_id, "page_id")?;
         self.http
             .send_json_value_or_null(self.http.delete(&format!("/rest/api/content/{page_id}"))?)
@@ -315,7 +313,7 @@ impl ConfluenceClient {
         target_parent_id: Option<&str>,
         target_space_key: Option<&str>,
         position: Option<&str>,
-    ) -> Result<ConfluencePage, AtlassianError> {
+    ) -> Result<ConfluencePage, UpstreamError> {
         let page_id = safe_path_segment(page_id, "page_id")?;
         let target_parent_id = optional_non_empty_input(target_parent_id);
         let target_space_key = optional_non_empty_input(target_space_key);
@@ -324,19 +322,19 @@ impl ConfluenceClient {
             .filter(|value| !value.is_empty())
             .unwrap_or("append");
         if !matches!(position, "append" | "above" | "below") {
-            return Err(AtlassianError::invalid_input(
+            return Err(UpstreamError::invalid_input(
                 "position must be append, above, or below",
             ));
         }
         if target_parent_id.is_none() && target_space_key.is_none() {
-            return Err(AtlassianError::invalid_input(
+            return Err(UpstreamError::invalid_input(
                 "At least one of target_parent_id or target_space_key must be provided",
             ));
         }
 
         if matches!(position, "above" | "below") {
             let target_id = target_parent_id.ok_or_else(|| {
-                AtlassianError::invalid_input(
+                UpstreamError::invalid_input(
                     "target_parent_id is required when position is above or below",
                 )
             })?;
@@ -358,15 +356,13 @@ impl ConfluenceClient {
         let title = current
             .title
             .as_deref()
-            .ok_or_else(|| AtlassianError::unexpected_shape("page response is missing title"))?;
+            .ok_or_else(|| UpstreamError::unexpected_shape("page response is missing title"))?;
         let storage_body = body_value_as_storage(&current.body).unwrap_or_default();
         let current_space_key = current
             .space
             .as_ref()
             .and_then(|space| space.key.as_deref())
-            .ok_or_else(|| {
-                AtlassianError::unexpected_shape("page response is missing space.key")
-            })?;
+            .ok_or_else(|| UpstreamError::unexpected_shape("page response is missing space.key"))?;
         let space_key = target_space_key.as_deref().unwrap_or(current_space_key);
         let next_version = current
             .version
@@ -391,7 +387,7 @@ impl ConfluenceClient {
     async fn update_page_with_space(
         &self,
         request: ConfluenceUpdatePageWithSpaceRequest<'_>,
-    ) -> Result<ConfluencePage, AtlassianError> {
+    ) -> Result<ConfluencePage, UpstreamError> {
         let page_id = safe_path_segment(request.page_id, "page_id")?;
         let payload = page_write_payload(
             Some(page_id.as_str()),
@@ -416,7 +412,7 @@ impl ConfluenceClient {
         cql: &str,
         start: Option<u64>,
         limit: Option<u64>,
-    ) -> Result<ConfluenceSearchResponse, AtlassianError> {
+    ) -> Result<ConfluenceSearchResponse, UpstreamError> {
         let limit = limit.unwrap_or(DEFAULT_LIMIT);
         let start = start.unwrap_or(0);
         self.get_json(
@@ -435,7 +431,7 @@ impl ConfluenceClient {
         query: &str,
         limit: Option<u64>,
         spaces_filter: Option<&str>,
-    ) -> Result<ConfluenceSearchResponse, AtlassianError> {
+    ) -> Result<ConfluenceSearchResponse, UpstreamError> {
         let query = required_non_empty_input(query, "query")?;
         let limit = search_limit(limit)?;
 
@@ -448,7 +444,7 @@ impl ConfluenceClient {
                 .await
             {
                 Ok(response) => Ok(response),
-                Err(AtlassianError::HttpStatus { status: 400, .. }) => {
+                Err(UpstreamError::HttpStatus { status: 400, .. }) => {
                     let text_search_cql = format!("text ~ \"{escaped_query}\"");
                     self.search_cql_with_spaces_filter(&text_search_cql, Some(limit), spaces_filter)
                         .await
@@ -466,7 +462,7 @@ impl ConfluenceClient {
         cql: &str,
         limit: Option<u64>,
         spaces_filter: Option<&str>,
-    ) -> Result<ConfluenceSearchResponse, AtlassianError> {
+    ) -> Result<ConfluenceSearchResponse, UpstreamError> {
         let cql = apply_spaces_filter(cql, spaces_filter_values(spaces_filter, &self.config));
         self.search_cql(&cql, Some(0), limit).await
     }

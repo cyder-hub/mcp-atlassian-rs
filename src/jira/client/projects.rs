@@ -1,7 +1,7 @@
 use super::*;
 
 impl JiraClient {
-    pub async fn get_all_projects(&self, include_archived: bool) -> Result<Value, AtlassianError> {
+    pub async fn get_all_projects(&self, include_archived: bool) -> Result<Value, UpstreamError> {
         let query = vec![("includeArchived".to_string(), include_archived.to_string())];
         let mut projects: Vec<Value> = self
             .http
@@ -18,7 +18,7 @@ impl JiraClient {
         Ok(Value::Array(projects))
     }
 
-    pub async fn get_project_versions(&self, project_key: String) -> Result<Value, AtlassianError> {
+    pub async fn get_project_versions(&self, project_key: String) -> Result<Value, UpstreamError> {
         let project_key = safe_path_segment(&project_key, "project_key")?;
         ensure_project_allowed(&project_key, &self.config)?;
         self.http
@@ -32,7 +32,7 @@ impl JiraClient {
     pub async fn get_project_components(
         &self,
         project_key: String,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let project_key = safe_path_segment(&project_key, "project_key")?;
         ensure_project_allowed(&project_key, &self.config)?;
         self.http
@@ -43,7 +43,7 @@ impl JiraClient {
             .await
     }
 
-    pub async fn create_version(&self, mut version: Value) -> Result<Value, AtlassianError> {
+    pub async fn create_version(&self, mut version: Value) -> Result<Value, UpstreamError> {
         version = parse_optional_object(Some(version), "version")?.unwrap_or_else(|| json!({}));
         self.http
             .send_json(self.http.post_json("/rest/api/2/version", &version)?)
@@ -53,7 +53,7 @@ impl JiraClient {
     pub async fn batch_create_versions(
         &self,
         versions: Vec<Value>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let mut results = Vec::new();
         for version in versions {
             match self.create_version(version).await {

@@ -4,7 +4,7 @@ impl ConfluenceClient {
     pub async fn get_labels(
         &self,
         content_id: &str,
-    ) -> Result<ConfluenceLabelListResponse, AtlassianError> {
+    ) -> Result<ConfluenceLabelListResponse, UpstreamError> {
         let content_id = safe_path_segment(content_id, "content_id")?;
         self.get_json(&format!("/rest/api/content/{content_id}/label"), Vec::new())
             .await
@@ -14,7 +14,7 @@ impl ConfluenceClient {
         &self,
         content_id: &str,
         name: &str,
-    ) -> Result<ConfluenceLabelListResponse, AtlassianError> {
+    ) -> Result<ConfluenceLabelListResponse, UpstreamError> {
         let content_id = safe_path_segment(content_id, "content_id")?;
         let name = required_non_empty_input(name, "name")?;
         let payload = json!([{ "prefix": "global", "name": name }]);

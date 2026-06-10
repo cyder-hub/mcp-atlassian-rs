@@ -1,5 +1,4 @@
 use crate::{
-    atlassian::error::AtlassianError,
     confluence::{
         config::ConfluenceDeployment,
         formatting::{ConfluenceContentFormat, content_to_storage},
@@ -10,7 +9,8 @@ use crate::{
         confluence_attachment_with_content_value, confluence_file_path_display,
         confluence_is_image_attachment,
     },
-    mcp_errors::atlassian_error,
+    mcp_errors::upstream_error,
+    upstream::error::UpstreamError,
 };
 use rmcp::{
     ErrorData, handler::server::wrapper::Parameters, model::CallToolResult, tool, tool_router,
@@ -60,7 +60,7 @@ impl AtlassianMcpServer {
             .confluence_client()?
             .search_content(&query, limit, args.spaces_filter.as_deref())
             .await
-            .map_err(atlassian_error)?
+            .map_err(upstream_error)?
             .to_simplified_value();
 
         Ok(CallToolResult::structured(crate::mcp::wrap_array(value)))
@@ -81,12 +81,12 @@ impl AtlassianMcpServer {
                 .await
             {
                 Ok(page) => page,
-                Err(AtlassianError::HttpStatus { status: 404, .. }) => {
+                Err(UpstreamError::HttpStatus { status: 404, .. }) => {
                     return Ok(CallToolResult::structured_error(json!({
                         "error": format!("Failed to retrieve page by ID '{page_id}': page not found")
                     })));
                 }
-                Err(error) => return Err(atlassian_error(error)),
+                Err(error) => return Err(upstream_error(error)),
             };
 
             return Ok(CallToolResult::structured(confluence_page_tool_value(
@@ -99,7 +99,7 @@ impl AtlassianMcpServer {
         let title = optional_non_empty_arg(args.title);
         let space_key = optional_non_empty_arg(args.space_key);
         let (Some(title), Some(space_key)) = (title, space_key) else {
-            return Err(atlassian_error(AtlassianError::invalid_input(
+            return Err(upstream_error(UpstreamError::invalid_input(
                 "Either page_id OR both title and space_key must be provided",
             )));
         };
@@ -107,7 +107,7 @@ impl AtlassianMcpServer {
         let Some(page) = client
             .get_page_by_title(&space_key, &title, CONFLUENCE_PAGE_EXPAND)
             .await
-            .map_err(atlassian_error)?
+            .map_err(upstream_error)?
         else {
             return Ok(CallToolResult::structured_error(json!({
                 "error": format!("Page with title '{title}' not found in space '{space_key}'.")
@@ -149,7 +149,7 @@ impl AtlassianMcpServer {
                 include_folders,
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
         let results = children
             .results
             .iter()
@@ -193,7 +193,7 @@ impl AtlassianMcpServer {
             let response = client
                 .get_space_pages(&space_key, Some(start), Some(fetch_limit), &["ancestors"])
                 .await
-                .map_err(atlassian_error)?;
+                .map_err(upstream_error)?;
             let batch_len = response.results.len() as u64;
             next_link_exists = response.links.get("next").and_then(Value::as_str).is_some();
             pages.extend(response.results);
@@ -247,7 +247,7 @@ impl AtlassianMcpServer {
         let page = client
             .create_page(&space_key, &title, &storage_body, parent_id.as_deref())
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
         let emoji_status = match page.id.as_deref() {
             Some(page_id) => {
                 client
@@ -286,7 +286,7 @@ impl AtlassianMcpServer {
                 args.version_comment.as_deref(),
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
         let emoji_status = match page.id.as_deref() {
             Some(page_id) => {
                 client
@@ -338,7 +338,7 @@ impl AtlassianMcpServer {
                 args.position.as_deref(),
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(json!({
             "message": "Page moved successfully",
@@ -356,7 +356,7 @@ impl AtlassianMcpServer {
             .confluence_client()?
             .get_page_comments(&page_id)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
         let values = comments
             .results
             .iter()
@@ -438,7 +438,7 @@ impl AtlassianMcpServer {
             .confluence_client()?
             .get_labels(&content_id)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
         let values = labels
             .results
             .iter()
@@ -467,7 +467,7 @@ impl AtlassianMcpServer {
             .confluence_client()?
             .add_label(&content_id, &name)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
         let values = labels
             .results
             .iter()
@@ -518,7 +518,7 @@ impl AtlassianMcpServer {
                     "links": response.links,
                 })))
             }
-            Err(AtlassianError::HttpStatus {
+            Err(UpstreamError::HttpStatus {
                 status, message, ..
             }) if matches!(status, 401 | 403) => Ok(CallToolResult::structured_error(json!({
                 "success": false,
@@ -526,7 +526,7 @@ impl AtlassianMcpServer {
                 "status": status,
                 "details": message,
             }))),
-            Err(error) => Err(atlassian_error(error)),
+            Err(error) => Err(upstream_error(error)),
         }
     }
 
@@ -542,7 +542,7 @@ impl AtlassianMcpServer {
             .confluence_client()?
             .get_page_history(&page_id, version, CONFLUENCE_PAGE_EXPAND)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         Ok(CallToolResult::structured(
             page.to_simplified_value(convert_to_markdown),
@@ -558,7 +558,7 @@ impl AtlassianMcpServer {
         let from_version = confluence_positive_version_arg(args.from_version, "from_version")?;
         let to_version = confluence_positive_version_arg(args.to_version, "to_version")?;
         if from_version > to_version {
-            return Err(atlassian_error(AtlassianError::invalid_input(
+            return Err(upstream_error(UpstreamError::invalid_input(
                 "from_version must be less than or equal to to_version",
             )));
         }
@@ -566,14 +566,14 @@ impl AtlassianMcpServer {
         let from_page = client
             .get_page_history(&page_id, from_version, CONFLUENCE_PAGE_EXPAND)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
         let to_page = if from_version == to_version {
             from_page.clone()
         } else {
             client
                 .get_page_history(&page_id, to_version, CONFLUENCE_PAGE_EXPAND)
                 .await
-                .map_err(atlassian_error)?
+                .map_err(upstream_error)?
         };
         let from_content = confluence_page_markdown_content(&from_page);
         let to_content = confluence_page_markdown_content(&to_page);
@@ -610,7 +610,7 @@ impl AtlassianMcpServer {
             Ok(views) => Ok(CallToolResult::structured(crate::mcp::wrap_array(
                 views.to_simplified_value(),
             ))),
-            Err(AtlassianError::HttpStatus {
+            Err(UpstreamError::HttpStatus {
                 status, message, ..
             }) if matches!(status, 401 | 403) => Ok(CallToolResult::structured_error(json!({
                 "success": false,
@@ -618,7 +618,7 @@ impl AtlassianMcpServer {
                 "status": status,
                 "details": message,
             }))),
-            Err(error) => Err(atlassian_error(error)),
+            Err(error) => Err(upstream_error(error)),
         }
     }
 
@@ -727,7 +727,7 @@ impl AtlassianMcpServer {
                 media_type.as_deref(),
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
         let attachments = response
             .results
             .iter()
@@ -760,7 +760,7 @@ impl AtlassianMcpServer {
         let attachment = client
             .get_attachment_by_id(&attachment_id)
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
 
         match confluence_attachment_with_content_value(
             &client,
@@ -804,7 +804,7 @@ impl AtlassianMcpServer {
                     None,
                 )
                 .await
-                .map_err(atlassian_error)?;
+                .map_err(upstream_error)?;
             pages_fetched += 1;
             total += response.results.len();
             let response_has_more = response.has_next_link();
@@ -908,7 +908,7 @@ impl AtlassianMcpServer {
                 None,
             )
             .await
-            .map_err(atlassian_error)?;
+            .map_err(upstream_error)?;
         let mut images = Vec::new();
         let mut failed = Vec::new();
         let mut skipped_non_images = 0usize;

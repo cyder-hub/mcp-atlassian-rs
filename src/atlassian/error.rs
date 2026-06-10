@@ -4,10 +4,10 @@ use std::fmt::{Display, Formatter};
 
 use serde_json::Value;
 
-use crate::atlassian::redaction::{REDACTED, is_sensitive_query_key, redact_text};
+use crate::upstream::redaction::{REDACTED, is_sensitive_query_key, redact_text};
 
 #[derive(Debug)]
-pub enum AtlassianError {
+pub enum UpstreamError {
     InvalidBaseUrl { message: String },
     HttpStatus { status: u16, message: String },
     Transport { message: String },
@@ -16,7 +16,7 @@ pub enum AtlassianError {
     InvalidInput { message: String },
 }
 
-impl AtlassianError {
+impl UpstreamError {
     pub fn transport(error: reqwest::Error) -> Self {
         Self::Transport {
             message: redact_text(&error.without_url().to_string()),
@@ -75,7 +75,7 @@ impl AtlassianError {
     }
 }
 
-impl Display for AtlassianError {
+impl Display for UpstreamError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidBaseUrl { message } => {
@@ -100,7 +100,7 @@ impl Display for AtlassianError {
     }
 }
 
-impl std::error::Error for AtlassianError {}
+impl std::error::Error for UpstreamError {}
 
 fn sanitize_message(message: String) -> String {
     let trimmed = message.trim();
@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn status_error_display_contains_status_and_jira_error_summary() {
-        let error = AtlassianError::http_status(
+        let error = UpstreamError::http_status(
             reqwest::StatusCode::NOT_FOUND,
             r#"{"errorMessages":["issue not found"],"errors":{"issue":"missing"}}"#,
         );
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn status_error_display_does_not_echo_plain_response_body() {
         let echoed_header = format!("Bearer {}", "test-pat-value");
-        let error = AtlassianError::http_status(
+        let error = UpstreamError::http_status(
             reqwest::StatusCode::UNAUTHORIZED,
             format!("authentication failed for {echoed_header}"),
         );
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn status_error_display_redacts_json_error_summary() {
-        let error = AtlassianError::http_status(
+        let error = UpstreamError::http_status(
             reqwest::StatusCode::BAD_REQUEST,
             r#"{"errorMessages":["Authorization Bearer json-secret-token"],"errors":{"token":"raw-token-value","issue":"failed /path?token=query-secret"}}"#,
         );
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn json_decode_body_redacts_request_context() {
         let error = serde_json::from_str::<Value>("not-json").unwrap_err();
-        let output = AtlassianError::json_decode_body(
+        let output = UpstreamError::json_decode_body(
             error,
             Some("GET /rest/api/2/issue/ABC-1?token=query-secret&client=abc"),
         )

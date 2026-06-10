@@ -21,7 +21,7 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum XtaskCommand {
-    /// Run local smoke checks against Rust mock Atlassian services.
+    /// Run local smoke checks against Rust mock upstream services.
     Smoke(SmokeCli),
     /// Run real acceptance checks against configured test Atlassian services.
     Acceptance(acceptance::AcceptanceCommand),
@@ -39,6 +39,8 @@ enum SmokeTarget {
     Jira(smoke::SmokeArgs),
     /// Run Confluence smoke checks.
     Confluence(smoke::SmokeArgs),
+    /// Run GitLab smoke checks.
+    Gitlab(smoke::SmokeArgs),
 }
 
 impl SmokeTarget {
@@ -46,6 +48,7 @@ impl SmokeTarget {
         match self {
             Self::Jira(args) => args.into_command(smoke::SmokeService::Jira),
             Self::Confluence(args) => args.into_command(smoke::SmokeService::Confluence),
+            Self::Gitlab(args) => args.into_command(smoke::SmokeService::GitLab),
         }
     }
 }
@@ -103,6 +106,18 @@ mod tests {
             cli.command,
             XtaskCommand::Smoke(SmokeCli { target: None })
         ));
+    }
+
+    #[test]
+    fn parses_gitlab_smoke_command() {
+        let cli = Cli::try_parse_from(["xtask", "smoke", "gitlab", "restricted"]).unwrap();
+        let XtaskCommand::Smoke(SmokeCli {
+            target: Some(SmokeTarget::Gitlab(args)),
+        }) = cli.command
+        else {
+            panic!("expected gitlab smoke command");
+        };
+        assert_eq!(args.mode, smoke::SmokeMode::Restricted);
     }
 
     #[test]

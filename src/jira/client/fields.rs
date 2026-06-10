@@ -5,7 +5,7 @@ impl JiraClient {
         &self,
         keyword: Option<String>,
         limit: Option<u64>,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let limit = limit.unwrap_or(DEFAULT_LIMIT);
         let fields: Vec<JiraField> = match self.config.deployment {
             JiraDeployment::Cloud => {
@@ -52,7 +52,7 @@ impl JiraClient {
     pub async fn get_field_options(
         &self,
         request: FieldOptionsRequest,
-    ) -> Result<Value, AtlassianError> {
+    ) -> Result<Value, UpstreamError> {
         let field_id = safe_path_segment(&request.field_id, "field_id")?;
         let mut options = match self.config.deployment {
             JiraDeployment::Cloud => {
@@ -80,13 +80,13 @@ impl JiraClient {
                     .project_key
                     .as_deref()
                     .ok_or_else(|| {
-                        AtlassianError::invalid_input(
+                        UpstreamError::invalid_input(
                             "project_key is required for Jira Server/Data Center field options",
                         )
                     })
                     .and_then(|project_key| safe_path_segment(project_key, "project_key"))?;
                 let issue_type = request.issue_type.as_deref().ok_or_else(|| {
-                    AtlassianError::invalid_input(
+                    UpstreamError::invalid_input(
                         "issue_type is required for Jira Server/Data Center field options",
                     )
                 })?;
@@ -123,18 +123,18 @@ impl JiraClient {
         &self,
         field_id: &str,
         request: &FieldOptionsRequest,
-    ) -> Result<String, AtlassianError> {
+    ) -> Result<String, UpstreamError> {
         if let Some(context_id) = request.context_id.as_deref() {
             return safe_path_segment(context_id, "context_id");
         }
 
         let project_key = request.project_key.as_deref().ok_or_else(|| {
-            AtlassianError::invalid_input(
+            UpstreamError::invalid_input(
                 "context_id is required for Jira Cloud field options unless project_key and issue_type are provided",
             )
         })?;
         let issue_type = request.issue_type.as_deref().ok_or_else(|| {
-            AtlassianError::invalid_input(
+            UpstreamError::invalid_input(
                 "context_id is required for Jira Cloud field options unless project_key and issue_type are provided",
             )
         })?;
@@ -161,12 +161,12 @@ impl JiraClient {
             .await?;
 
         let mapping = response.values.first().ok_or_else(|| {
-            AtlassianError::unexpected_shape(format!(
+            UpstreamError::unexpected_shape(format!(
                 "field `{field_id}` context mapping response did not include a mapping"
             ))
         })?;
         let Some(context_id) = field_context_mapping_context_id(mapping)? else {
-            return Err(AtlassianError::invalid_input(format!(
+            return Err(UpstreamError::invalid_input(format!(
                 "No Jira Cloud field context applies to field `{field_id}` for project `{project_key}` and issue type `{issue_type}`"
             )));
         };
@@ -178,13 +178,11 @@ impl JiraClient {
         &self,
         project_key: &str,
         issue_type: &str,
-    ) -> Result<(String, String), AtlassianError> {
+    ) -> Result<(String, String), UpstreamError> {
         let project_key = safe_path_segment(project_key, "project_key")?;
         let issue_type = issue_type.trim();
         if issue_type.is_empty() {
-            return Err(AtlassianError::invalid_input(
-                "issue_type must not be empty",
-            ));
+            return Err(UpstreamError::invalid_input("issue_type must not be empty"));
         }
 
         let project: Value = self
@@ -195,7 +193,7 @@ impl JiraClient {
             )
             .await?;
         let project_id = field_value_id(&project, "id").ok_or_else(|| {
-            AtlassianError::unexpected_shape(format!(
+            UpstreamError::unexpected_shape(format!(
                 "project `{project_key}` response did not include an id"
             ))
         })?;
@@ -203,7 +201,7 @@ impl JiraClient {
             .get("issueTypes")
             .and_then(Value::as_array)
             .ok_or_else(|| {
-                AtlassianError::unexpected_shape(format!(
+                UpstreamError::unexpected_shape(format!(
                     "project `{project_key}` response did not include issueTypes"
                 ))
             })?;
@@ -212,7 +210,7 @@ impl JiraClient {
             .find(|candidate| cloud_issue_type_matches(candidate, issue_type))
             .and_then(|candidate| field_value_id(candidate, "id"))
             .ok_or_else(|| {
-                AtlassianError::invalid_input(format!(
+                UpstreamError::invalid_input(format!(
                     "issue_type `{issue_type}` was not found in Jira Cloud project `{project_key}`"
                 ))
             })?;

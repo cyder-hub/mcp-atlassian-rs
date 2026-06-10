@@ -3,22 +3,21 @@ use std::collections::BTreeSet;
 use reqwest::Url;
 
 use crate::{
-    atlassian::{
-        auth::AtlassianAuth,
-        compat::{
-            ENV_CONFLUENCE_CLIENT_CERT, ENV_CONFLUENCE_CLIENT_KEY, ENV_CONFLUENCE_CUSTOM_HEADERS,
-            ENV_CONFLUENCE_HTTP_PROXY, ENV_CONFLUENCE_HTTPS_PROXY, ENV_CONFLUENCE_NO_PROXY,
-            ENV_CONFLUENCE_OAUTH_ACCESS_TOKEN,
-        },
+    atlassian::compat::{
+        ENV_CONFLUENCE_CLIENT_CERT, ENV_CONFLUENCE_CLIENT_KEY, ENV_CONFLUENCE_CUSTOM_HEADERS,
+        ENV_CONFLUENCE_HTTP_PROXY, ENV_CONFLUENCE_HTTPS_PROXY, ENV_CONFLUENCE_NO_PROXY,
+        ENV_CONFLUENCE_OAUTH_ACCESS_TOKEN,
+    },
+    error::ConfigError,
+    upstream::{
+        auth::UpstreamAuth,
         config::{
-            AtlassianServiceConfigSpec, ParsedAtlassianServiceConfig,
-            parse_atlassian_service_config,
+            ParsedUpstreamServiceConfig, UpstreamServiceConfigSpec, parse_upstream_service_config,
         },
         custom_headers::CustomHeaders,
         mtls::ClientTlsIdentityConfig,
         proxy::ProxyConfig,
     },
-    error::ConfigError,
 };
 
 pub const ENV_CONFLUENCE_URL: &str = "CONFLUENCE_URL";
@@ -36,7 +35,7 @@ pub const DEFAULT_CONFLUENCE_TIMEOUT_SECONDS: u64 = 75;
 pub struct ConfluenceConfig {
     pub base_url: String,
     pub deployment: ConfluenceDeployment,
-    pub auth: AtlassianAuth,
+    pub auth: UpstreamAuth,
     pub oauth_cloud_id: Option<String>,
     pub ssl_verify: bool,
     pub proxy: ProxyConfig,
@@ -51,7 +50,7 @@ impl ConfluenceConfig {
     where
         F: FnMut(&str) -> Result<String, E>,
     {
-        let Some(parsed) = parse_atlassian_service_config(get_var, &confluence_config_spec())?
+        let Some(parsed) = parse_upstream_service_config(get_var, &confluence_config_spec())?
         else {
             return Ok(None);
         };
@@ -65,15 +64,15 @@ impl ConfluenceConfig {
     pub fn is_auth_configured(&self) -> bool {
         matches!(
             self.auth,
-            AtlassianAuth::Basic { .. }
-                | AtlassianAuth::Pat { .. }
-                | AtlassianAuth::OAuthAccessToken { .. }
+            UpstreamAuth::Basic { .. }
+                | UpstreamAuth::Pat { .. }
+                | UpstreamAuth::OAuthAccessToken { .. }
         )
     }
 
-    pub fn with_auth_override(&self, auth: AtlassianAuth, oauth_cloud_id: Option<String>) -> Self {
+    pub fn with_auth_override(&self, auth: UpstreamAuth, oauth_cloud_id: Option<String>) -> Self {
         let mut config = self.clone();
-        let effective_cloud_id = if matches!(auth, AtlassianAuth::OAuthAccessToken { .. })
+        let effective_cloud_id = if matches!(auth, UpstreamAuth::OAuthAccessToken { .. })
             && self.deployment == ConfluenceDeployment::Cloud
         {
             oauth_cloud_id
@@ -89,7 +88,7 @@ impl ConfluenceConfig {
     }
 
     fn from_parsed(
-        parsed: ParsedAtlassianServiceConfig<ConfluenceDeployment>,
+        parsed: ParsedUpstreamServiceConfig<ConfluenceDeployment>,
         spaces_filter: BTreeSet<String>,
     ) -> Self {
         Self {
@@ -160,8 +159,8 @@ fn parse_spaces_filter(value: Option<String>) -> BTreeSet<String> {
         .collect()
 }
 
-fn confluence_config_spec() -> AtlassianServiceConfigSpec<ConfluenceDeployment> {
-    AtlassianServiceConfigSpec {
+fn confluence_config_spec() -> UpstreamServiceConfigSpec<ConfluenceDeployment> {
+    UpstreamServiceConfigSpec {
         url_variable: ENV_CONFLUENCE_URL,
         username_variable: ENV_CONFLUENCE_USERNAME,
         api_token_variable: ENV_CONFLUENCE_API_TOKEN,
@@ -287,7 +286,7 @@ mod tests {
         assert_eq!(config.deployment, ConfluenceDeployment::Cloud);
         assert_eq!(
             config.auth,
-            AtlassianAuth::Basic {
+            UpstreamAuth::Basic {
                 username: "user@example.com".to_string(),
                 api_token: "test-api-token".to_string(),
             }
@@ -346,7 +345,7 @@ mod tests {
         assert_eq!(config.deployment, ConfluenceDeployment::ServerDataCenter);
         assert_eq!(
             config.auth,
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             }
         );
@@ -372,7 +371,7 @@ mod tests {
         assert_eq!(config.deployment, ConfluenceDeployment::ServerDataCenter);
         assert_eq!(
             config.auth,
-            AtlassianAuth::Basic {
+            UpstreamAuth::Basic {
                 username: "confluence-user".to_string(),
                 api_token: "test-password".to_string(),
             }
@@ -395,7 +394,7 @@ mod tests {
 
         assert_eq!(
             config.auth,
-            AtlassianAuth::Basic {
+            UpstreamAuth::Basic {
                 username: "confluence-user".to_string(),
                 api_token: "test-password".to_string(),
             }
@@ -415,7 +414,7 @@ mod tests {
 
         assert_eq!(
             config.auth,
-            AtlassianAuth::Basic {
+            UpstreamAuth::Basic {
                 username: "confluence-user".to_string(),
                 api_token: "service-api-token".to_string(),
             }
@@ -434,7 +433,7 @@ mod tests {
 
         assert_eq!(
             config.auth,
-            AtlassianAuth::Basic {
+            UpstreamAuth::Basic {
                 username: "user@example.com".to_string(),
                 api_token: "global-api-token".to_string(),
             }
@@ -453,7 +452,7 @@ mod tests {
 
         assert_eq!(
             config.auth,
-            AtlassianAuth::Basic {
+            UpstreamAuth::Basic {
                 username: "global-user".to_string(),
                 api_token: "global-password".to_string(),
             }
@@ -472,7 +471,7 @@ mod tests {
 
         assert_eq!(
             config.auth,
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: "confluence-pat-value".to_string(),
             }
         );
@@ -570,7 +569,7 @@ mod tests {
         assert_eq!(config.deployment, ConfluenceDeployment::Cloud);
         assert_eq!(
             config.auth,
-            AtlassianAuth::OAuthAccessToken {
+            UpstreamAuth::OAuthAccessToken {
                 access_token: "test-access-token".to_string(),
             }
         );
@@ -590,7 +589,7 @@ mod tests {
 
         assert_eq!(
             config.auth,
-            AtlassianAuth::OAuthAccessToken {
+            UpstreamAuth::OAuthAccessToken {
                 access_token: "shared-access-token".to_string(),
             }
         );
@@ -628,7 +627,7 @@ mod tests {
 
         assert_eq!(
             config.auth,
-            AtlassianAuth::Pat {
+            UpstreamAuth::Pat {
                 personal_token: "test-pat-value".to_string(),
             }
         );
@@ -647,7 +646,7 @@ mod tests {
 
         assert_eq!(
             config.auth,
-            AtlassianAuth::OAuthAccessToken {
+            UpstreamAuth::OAuthAccessToken {
                 access_token: "test-access-token".to_string(),
             }
         );
