@@ -65,6 +65,13 @@ pub(super) fn runtime_config() -> RuntimeConfig {
     }
 }
 
+pub(super) fn runtime_config_all_toolsets() -> RuntimeConfig {
+    RuntimeConfig {
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config()
+    }
+}
+
 pub(super) fn jira_config() -> JiraConfig {
     jira_config_with_base_url("https://jira.example".to_string())
 }
@@ -184,7 +191,7 @@ pub(super) fn assert_registered_output_schema_declares_properties(
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
         confluence: Some(confluence_config()),
-        enabled_toolsets: tool_registry::all_toolsets(),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
     let tools = server.current_tools_result().tools;
@@ -2506,7 +2513,7 @@ pub(super) fn temp_confluence_upload_file(filename: &str, content: &[u8]) -> Str
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("mcp-workhub-rs-{nonce}"));
+    let dir = std::env::temp_dir().join(format!("workhub-rs-{nonce}"));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join(filename);
     std::fs::write(&path, content).unwrap();
@@ -2518,7 +2525,7 @@ pub(super) fn oversized_temp_confluence_upload_file(filename: &str) -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("mcp-workhub-rs-oversized-{nonce}"));
+    let dir = std::env::temp_dir().join(format!("workhub-rs-oversized-{nonce}"));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join(filename);
     let file = std::fs::File::create(&path).unwrap();

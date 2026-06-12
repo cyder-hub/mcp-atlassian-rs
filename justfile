@@ -14,7 +14,7 @@ dev-http host="127.0.0.1" port="8000":
 
 # Run the streamable HTTP server with MCP tool-call diagnostics enabled.
 dev-http-debug host="127.0.0.1" port="8000":
-	cd '{{justfile_directory()}}' && RUST_LOG="${RUST_LOG:-mcp_workhub_rs::mcp=debug,mcp_workhub_rs=info,rmcp=info}" cargo run -- streamhttp --host "{{host}}" --port "{{port}}"
+	cd '{{justfile_directory()}}' && RUST_LOG="${RUST_LOG:-workhub_rs::mcp=debug,workhub_rs=info,rmcp=info}" cargo run -- streamhttp --host "{{host}}" --port "{{port}}"
 
 # Run the stdio MCP smoke check.
 smoke-stdio:
@@ -36,26 +36,30 @@ smoke-confluence:
 smoke-gitlab:
 	cd '{{justfile_directory()}}' && cargo xtask smoke gitlab all
 
-# Run all local MCP smoke checks.
-smoke: smoke-stdio smoke-http smoke-jira smoke-confluence smoke-gitlab
+# Run production CLI smoke checks against local mock upstreams.
+smoke-cli:
+	cd '{{justfile_directory()}}' && cargo xtask smoke cli all
+
+# Run all local smoke checks.
+smoke: smoke-stdio smoke-http smoke-jira smoke-confluence smoke-gitlab smoke-cli
 
 # Run real Jira acceptance checks.
 acceptance-jira:
-	cd '{{justfile_directory()}}' && cargo build --quiet --bin mcp-workhub-rs
+	cd '{{justfile_directory()}}' && cargo build --quiet --bin workhub
 	cd '{{justfile_directory()}}' && cargo xtask acceptance jira --preflight
-	cd '{{justfile_directory()}}' && cargo xtask acceptance jira --run target/debug/mcp-workhub-rs
+	cd '{{justfile_directory()}}' && cargo xtask acceptance jira --run target/debug/workhub
 
 # Run real Confluence acceptance checks.
 acceptance-confluence:
-	cd '{{justfile_directory()}}' && cargo build --quiet --bin mcp-workhub-rs
+	cd '{{justfile_directory()}}' && cargo build --quiet --bin workhub
 	cd '{{justfile_directory()}}' && cargo xtask acceptance confluence --preflight
-	cd '{{justfile_directory()}}' && cargo xtask acceptance confluence --run target/debug/mcp-workhub-rs
+	cd '{{justfile_directory()}}' && cargo xtask acceptance confluence --run target/debug/workhub
 
 # Run real Jira+Confluence MCP acceptance checks.
 acceptance-mcp:
-	cd '{{justfile_directory()}}' && cargo build --quiet --bin mcp-workhub-rs
+	cd '{{justfile_directory()}}' && cargo build --quiet --bin workhub
 	cd '{{justfile_directory()}}' && cargo xtask acceptance mcp --preflight
-	cd '{{justfile_directory()}}' && cargo xtask acceptance mcp --run target/debug/mcp-workhub-rs
+	cd '{{justfile_directory()}}' && cargo xtask acceptance mcp --run target/debug/workhub
 
 # Build the release binary.
 build:
@@ -81,5 +85,5 @@ fmt-check:
 	cd '{{justfile_directory()}}' && cargo fmt --check
 
 # Build the local Docker image.
-docker-build image="mcp-workhub-rs:local":
+docker-build image="workhub-rs:local":
 	cd '{{justfile_directory()}}' && docker build -t "{{image}}" -f Dockerfile .

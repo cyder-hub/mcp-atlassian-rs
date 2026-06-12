@@ -6,7 +6,7 @@ async fn gitlab_read_handlers_return_structured_content_from_mock_rest() {
     let (base_url, requests) = mock_gitlab_server().await;
     let server = server_with_config(RuntimeConfig {
         gitlab: Some(gitlab_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
 
     let user = server
@@ -159,7 +159,7 @@ async fn gitlab_write_handlers_send_expected_payloads_to_mock_rest() {
     let (base_url, requests) = mock_gitlab_server().await;
     let server = server_with_config(RuntimeConfig {
         gitlab: Some(gitlab_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
 
     let created = server
@@ -301,7 +301,7 @@ async fn gitlab_approval_and_merge_handlers_use_expected_endpoints() {
     let (base_url, requests) = mock_gitlab_server().await;
     let server = server_with_config(RuntimeConfig {
         gitlab: Some(gitlab_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
 
     let approval_state = server
@@ -408,7 +408,7 @@ async fn gitlab_handlers_reject_invalid_input_before_http() {
     let (base_url, requests) = mock_gitlab_server().await;
     let server = server_with_config(RuntimeConfig {
         gitlab: Some(gitlab_config_with_base_url(base_url.clone())),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let error = server
         .gitlab_accept_merge_request(Parameters(gitlab_tools::GitlabAcceptMergeRequestArgs {
@@ -430,7 +430,7 @@ async fn gitlab_handlers_reject_invalid_input_before_http() {
     gitlab.projects_filter.insert("group/project".to_string());
     let server = server_with_config(RuntimeConfig {
         gitlab: Some(gitlab),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let error = server
         .gitlab_get_project(Parameters(gitlab_tools::GitlabGetProjectArgs {

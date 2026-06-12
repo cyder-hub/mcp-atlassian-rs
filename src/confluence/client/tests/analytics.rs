@@ -22,7 +22,7 @@ async fn client_gets_cloud_page_views_with_optional_title() {
     .await;
 
     let views = cloud_client(base_url)
-        .get_page_views("123", true)
+        .get_page_views("123", true, Some("2026-01-01"), Some("2026-01-31"))
         .await
         .unwrap();
 
@@ -38,7 +38,19 @@ async fn client_gets_cloud_page_views_with_optional_title() {
         query_value(&requests[0].path, "expand").as_deref(),
         Some("title")
     );
-    assert_eq!(requests[1].path, "/rest/api/analytics/content/123/views");
+    assert!(
+        requests[1]
+            .path
+            .starts_with("/rest/api/analytics/content/123/views?")
+    );
+    assert_eq!(
+        query_value(&requests[1].path, "from").as_deref(),
+        Some("2026-01-01")
+    );
+    assert_eq!(
+        query_value(&requests[1].path, "to").as_deref(),
+        Some("2026-01-31")
+    );
 }
 
 #[tokio::test]
@@ -53,7 +65,7 @@ async fn client_gets_cloud_page_views_without_title_lookup() {
     .await;
 
     let views = cloud_client(base_url)
-        .get_page_views("123", false)
+        .get_page_views("123", false, None, None)
         .await
         .unwrap();
 
@@ -69,7 +81,7 @@ async fn client_gets_cloud_page_views_without_title_lookup() {
 async fn client_rejects_page_views_for_server_before_http_request() {
     let (base_url, requests) = mock_server(json!({}), StatusCode::OK).await;
     let error = client(base_url)
-        .get_page_views("123", true)
+        .get_page_views("123", true, None, None)
         .await
         .unwrap_err();
 

@@ -1,12 +1,13 @@
 # Development Tools
 
-This document covers development-only validation commands and variables for `mcp-workhub-rs`. These commands are not production server commands and are intentionally exposed through `just` and `cargo xtask`, not through the `mcp-workhub-rs` binary.
+This document covers development-only validation commands and variables for `workhub-rs`. These commands are not production server commands and are intentionally exposed through `just` and `cargo xtask`, not through the `workhub` binary.
 
-Production runtime commands remain:
+Production runtime commands include:
 
 ```bash
-mcp-workhub-rs stdio
-mcp-workhub-rs streamhttp --host 127.0.0.1 --port 8000 --path /mcp
+workhub stdio
+workhub streamhttp --host 127.0.0.1 --port 8000 --path /mcp
+workhub cli jira issue get ABC-1
 ```
 
 ## Local Shortcuts
@@ -19,6 +20,7 @@ just smoke-http        # Jira streamable HTTP MCP smoke with a local mock Jira
 just smoke-jira        # Jira restricted-profile guard smoke
 just smoke-confluence  # Confluence stdio, HTTP, and restricted smoke with a local mock Confluence
 just smoke-gitlab      # GitLab stdio, HTTP, and restricted smoke with a local mock GitLab
+just smoke-cli         # production CLI smoke against local mock upstreams
 just smoke             # all local smoke checks
 ```
 
@@ -30,7 +32,7 @@ cargo test mcp::tests::gitlab_handlers
 cargo test mcp::tests::discovery
 ```
 
-Real acceptance shortcuts build `target/debug/mcp-workhub-rs`, run preflight, then run the selected acceptance suite against that binary:
+Real acceptance shortcuts build `target/debug/workhub`, run preflight, then run the selected acceptance suite against that binary:
 
 ```bash
 just acceptance-jira
@@ -58,6 +60,10 @@ cargo xtask smoke gitlab all
 cargo xtask smoke gitlab stdio
 cargo xtask smoke gitlab http
 cargo xtask smoke gitlab restricted
+cargo xtask smoke cli all
+cargo xtask smoke cli jira
+cargo xtask smoke cli confluence
+cargo xtask smoke cli gitlab
 ```
 
 Smoke options:
@@ -65,21 +71,23 @@ Smoke options:
 - `--port <port>`: streamable HTTP server port for HTTP smoke.
 - `--path <path>`: streamable HTTP MCP path for HTTP smoke. Defaults to `/mcp`.
 
+`cargo xtask smoke cli all` runs the production `workhub cli ...` command surface against local mock upstreams. It verifies default text stdout, `--json` stdout, and disabled-tool stderr behavior for Jira, Confluence, and GitLab.
+
 Run real acceptance preflight or full acceptance:
 
 ```bash
 cargo xtask acceptance jira --preflight
 cargo xtask acceptance confluence --preflight
 cargo xtask acceptance mcp --preflight
-cargo xtask acceptance jira --run target/debug/mcp-workhub-rs
-cargo xtask acceptance confluence --run target/debug/mcp-workhub-rs
-cargo xtask acceptance mcp --run target/debug/mcp-workhub-rs
+cargo xtask acceptance jira --run target/debug/workhub
+cargo xtask acceptance confluence --run target/debug/workhub
+cargo xtask acceptance mcp --run target/debug/workhub
 ```
 
 Acceptance options:
 
 - `--env-file <path>`: load a dotenv file for this acceptance invocation.
-- `--run <binary>`: run the acceptance suite against the specified `mcp-workhub-rs` binary.
+- `--run <binary>`: run the acceptance suite against the specified `workhub` binary.
 - `--preflight`: check required configuration without running the acceptance suite.
 
 ## Acceptance Environment

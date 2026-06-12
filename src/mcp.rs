@@ -1,13 +1,10 @@
 use std::{sync::Arc, time::Instant};
 
+#[cfg(test)]
+use crate::upstream::error::UpstreamError;
 use crate::{
-    confluence::client::ConfluenceClient,
-    context::AppContext,
-    gitlab::client::GitlabClient,
-    jira::client::JiraClient,
-    mcp_errors::upstream_error,
-    tool_registry,
-    upstream::{error::UpstreamError, redaction::redact_text},
+    confluence::client::ConfluenceClient, context::AppContext, gitlab::client::GitlabClient,
+    mcp_errors::upstream_error, tool_registry, upstream::redaction::redact_text,
 };
 use rmcp::{
     ErrorData, RoleServer, ServerHandler,
@@ -20,12 +17,12 @@ use rmcp::{
     service::RequestContext,
     tool_handler,
 };
-use serde_json::{Value, json};
 
 mod confluence_handlers;
-mod confluence_values;
 mod gitlab_handlers;
 mod jira_handlers;
+#[cfg(test)]
+#[allow(dead_code)]
 mod jira_payloads;
 mod schema;
 mod tool_log;
@@ -35,13 +32,7 @@ use tool_log::sanitize_tool_log_arguments;
 #[cfg(test)]
 use tool_log::{TOOL_LOG_MAX_STRING_CHARS, TOOL_LOG_REDACTED, TOOL_LOG_TRUNCATED};
 
-pub(crate) fn wrap_array(value: Value) -> Value {
-    match value {
-        Value::Array(items) => json!({ "items": items }),
-        other => other,
-    }
-}
-pub const SERVER_NAME: &str = "mcp-workhub-rs";
+pub const SERVER_NAME: &str = "workhub-rs";
 
 #[derive(Clone)]
 pub struct WorkhubMcpServer {
@@ -83,14 +74,6 @@ impl WorkhubMcpServer {
         }
 
         tool_registry::guard_tool_call(name, &self.context)
-    }
-
-    fn jira_client(&self) -> Result<JiraClient, ErrorData> {
-        let Some(config) = self.context.jira_config() else {
-            return Err(ErrorData::invalid_params("Jira is not configured", None));
-        };
-
-        JiraClient::new(config.clone()).map_err(upstream_error)
     }
 
     #[allow(dead_code)]
@@ -146,6 +129,8 @@ impl Default for WorkhubMcpServer {
         Self::new(Arc::new(AppContext::default()))
     }
 }
+#[cfg(test)]
+#[allow(dead_code)]
 fn required_non_empty_arg(value: String, field_name: &'static str) -> Result<String, ErrorData> {
     let value = value.trim();
     if value.is_empty() {
@@ -157,34 +142,12 @@ fn required_non_empty_arg(value: String, field_name: &'static str) -> Result<Str
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn optional_non_empty_arg(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-}
-
-fn optional_positive_i64_arg(
-    value: Option<i64>,
-    field_name: &'static str,
-) -> Result<Option<i64>, ErrorData> {
-    match value {
-        Some(value) if value <= 0 => Err(upstream_error(UpstreamError::invalid_input(format!(
-            "{field_name} must be positive"
-        )))),
-        value => Ok(value),
-    }
-}
-
-fn optional_positive_u64_arg(
-    value: Option<u64>,
-    field_name: &'static str,
-) -> Result<Option<u64>, ErrorData> {
-    match value {
-        Some(0) => Err(upstream_error(UpstreamError::invalid_input(format!(
-            "{field_name} must be positive"
-        )))),
-        value => Ok(value),
-    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -265,7 +228,7 @@ impl ServerHandler for WorkhubMcpServer {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new(SERVER_NAME, env!("CARGO_PKG_VERSION")))
             .with_instructions(format!(
-                "mcp-workhub-rs exposes 85 Jira, Confluence, and GitLab business tools. Tool visibility is controlled by TOOL_PROFILE, TOOLSETS, ENABLED_TOOLS, and DISABLED_TOOLS. Jira, Confluence, and GitLab tools are available when their service configuration and authentication are complete. See docs/support-matrix.md for per-tool and runtime support status."
+                "workhub-rs exposes 85 Jira, Confluence, and GitLab business tools. MCP tool visibility is controlled by MCP_TOOL_PROFILE, MCP_TOOLSETS, MCP_ENABLED_TOOLS, and MCP_DISABLED_TOOLS. Jira, Confluence, and GitLab tools are available when their service configuration and authentication are complete. The resource CLI ignores MCP tool visibility controls. See docs/support-matrix.md for per-tool and runtime support status."
             ))
     }
 }

@@ -1,12 +1,13 @@
 # Production Deployment
 
-This guide describes the supported runtime shapes for `mcp-workhub-rs`.
+This guide describes the supported runtime shapes for `workhub-rs`.
 
 ## Deployment Checklist
 
 - Choose one supported transport: `stdio` for local MCP clients or streamable HTTP for server deployments.
+- Use `workhub cli ...` for production command-line automation against the same Jira, Confluence, and GitLab operation layer.
 - Configure only the Jira, Confluence, and GitLab services you want exposed.
-- Restrict exposed tools with `TOOL_PROFILE`, `TOOLSETS`, `ENABLED_TOOLS`, or `DISABLED_TOOLS` when the client should not see every configured tool.
+- Restrict exposed MCP tools with `MCP_TOOL_PROFILE`, `MCP_TOOLSETS`, `MCP_ENABLED_TOOLS`, or `MCP_DISABLED_TOOLS` when the MCP client should not see every configured tool. The resource CLI ignores these MCP visibility controls.
 - Keep service credentials in a secret manager, shell environment, or orchestrator secret. Do not commit dotenv files with real credentials.
 - Check `GET /healthz` for streamable HTTP deployments.
 - Review `SECURITY.md` before exposing the HTTP endpoint beyond localhost.
@@ -16,7 +17,7 @@ This guide describes the supported runtime shapes for `mcp-workhub-rs`.
 Use stdio when an MCP client starts the server process directly:
 
 ```bash
-mcp-workhub-rs stdio
+workhub stdio
 ```
 
 Logs are written to stderr. Stdout is reserved for the MCP protocol.
@@ -24,7 +25,7 @@ Logs are written to stderr. Stdout is reserved for the MCP protocol.
 To include MCP tool call names, elapsed time, failures, and redacted arguments in stderr logs, enable tool-call diagnostics:
 
 ```bash
-MCP_TOOL_CALL_DEBUG=true mcp-workhub-rs stdio
+MCP_TOOL_CALL_DEBUG=true workhub stdio
 ```
 
 `RUST_LOG` remains the advanced logging control and takes precedence over `MCP_TOOL_CALL_DEBUG` when set.
@@ -34,7 +35,7 @@ MCP_TOOL_CALL_DEBUG=true mcp-workhub-rs stdio
 Use streamable HTTP for server deployments:
 
 ```bash
-mcp-workhub-rs streamhttp --host 0.0.0.0 --port 8000 --path /mcp
+workhub streamhttp --host 0.0.0.0 --port 8000 --path /mcp
 ```
 
 The health endpoint is:
@@ -48,27 +49,43 @@ The MCP endpoint path defaults to `/mcp` and can be set with `MCP_HTTP_PATH` or 
 To enable tool-call diagnostics for streamable HTTP:
 
 ```bash
-MCP_TOOL_CALL_DEBUG=true mcp-workhub-rs streamhttp --host 0.0.0.0 --port 8000 --path /mcp
+MCP_TOOL_CALL_DEBUG=true workhub streamhttp --host 0.0.0.0 --port 8000 --path /mcp
 ```
+
+## Resource CLI
+
+Use the CLI for one-shot automation and shell workflows:
+
+```bash
+workhub cli jira issue get ABC-1 --fields summary,status
+workhub cli --json confluence page get --id 123456
+workhub cli gitlab mr list group/project --state opened
+```
+
+The CLI uses the same service credentials, project/space filters, proxy, TLS, mTLS, redirect policy, and redaction behavior as MCP tool calls. It ignores MCP tool visibility controls such as `MCP_TOOL_PROFILE`, `MCP_TOOLSETS`, `MCP_ENABLED_TOOLS`, and `MCP_DISABLED_TOOLS`. It does not offer provider URL, token, password, proxy, custom-header, TLS, or mTLS command-line override flags.
+
+Successful default output is compact text on stdout. `--json` emits result JSON on stdout. Errors and diagnostics are written to stderr with non-zero exit codes. CLI mode does not initialize tracing, so successful commands do not emit startup logs.
+
+See [cli.md](cli.md) for the full command reference.
 
 ## Docker And Compose
 
 Build the local image:
 
 ```bash
-docker build -t mcp-workhub-rs:local -f Dockerfile .
+docker build -t workhub-rs:local -f Dockerfile .
 ```
 
 Run the image:
 
 ```bash
-docker run --rm -p 8000:8000 mcp-workhub-rs:local
+docker run --rm -p 8000:8000 workhub-rs:local
 ```
 
 Run the image with tool-call diagnostics:
 
 ```bash
-docker run --rm -e MCP_TOOL_CALL_DEBUG=true -p 8000:8000 mcp-workhub-rs:local
+docker run --rm -e MCP_TOOL_CALL_DEBUG=true -p 8000:8000 workhub-rs:local
 ```
 
 Run with compose:
@@ -89,14 +106,14 @@ MCP_TOOL_CALL_DEBUG=true docker compose up --build
 
 | Variable | Deployment use |
 | --- | --- |
-| `TOOL_PROFILE` | Set `basic`, `developer`, `manager`, `full`, or `custom`. Defaults to `basic`. With Jira, Confluence, and GitLab configured, profiles expose 23, 47, 82, 85, or 0 tools respectively. Unknown values fail startup. |
-| `TOOLSETS` | Add comma-separated toolset names to the selected profile. `all` enables every toolset. Unknown names fail startup. |
-| `ENABLED_TOOLS` | Add comma-separated exact tool names. |
-| `DISABLED_TOOLS` | Remove comma-separated exact tool names. Takes precedence over profile/toolset inclusion. |
+| `MCP_TOOL_PROFILE` | Set `basic`, `developer`, `manager`, `full`, or `custom` for MCP discovery and MCP tool calls. Defaults to `basic`. With Jira, Confluence, and GitLab configured, profiles expose 23, 47, 82, 85, or 0 tools respectively. Unknown values fail startup. Ignored by `workhub cli ...`. |
+| `MCP_TOOLSETS` | Add comma-separated toolset names to the selected profile. `all` enables every toolset. Unknown names fail startup. |
+| `MCP_ENABLED_TOOLS` | Add comma-separated exact tool names. |
+| `MCP_DISABLED_TOOLS` | Remove comma-separated exact tool names. Takes precedence over profile/toolset inclusion. |
 | `MCP_HTTP_HOST` / `MCP_HTTP_PORT` / `MCP_HTTP_PATH` | Configure streamable HTTP when CLI flags are not used. Ignored by stdio startup. |
 | `MCP_PORT` | Compose-only host port mapping. Does not configure the Rust process itself. |
-| `ENV_FILE` | Optional dotenv file loaded at startup. The `--env-file` CLI argument takes precedence. |
-| `MCP_TOOL_CALL_DEBUG` | Set `true` to enable MCP tool-call diagnostics when `RUST_LOG` is unset. Uses `mcp_workhub_rs::mcp=debug,mcp_workhub_rs=info,rmcp=info`. |
+| `ENV_FILE` | Optional dotenv file loaded by `streamhttp` and `cli` startup. The explicit `--env-file <path>` argument takes precedence. Ignored by `stdio`. |
+| `MCP_TOOL_CALL_DEBUG` | Set `true` to enable MCP tool-call diagnostics when `RUST_LOG` is unset. Uses `workhub_rs::mcp=debug,workhub_rs=info,rmcp=info`. |
 | `RUST_LOG` | Advanced tracing filter. Takes precedence over `MCP_TOOL_CALL_DEBUG`. |
 
 ## Jira, Confluence, And GitLab Auth

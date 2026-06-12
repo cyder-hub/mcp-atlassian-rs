@@ -21,12 +21,12 @@ impl JiraIssue {
             "id": self.id,
             "key": self.key,
             "summary": fields.and_then(|fields| fields.get("summary")).and_then(Value::as_str),
-            "status": fields.and_then(|fields| fields.get("status")).map(simplify_status),
-            "assignee": fields.and_then(|fields| fields.get("assignee")).map(simplify_user),
-            "reporter": fields.and_then(|fields| fields.get("reporter")).map(simplify_user),
-            "issue_type": fields.and_then(|fields| fields.get("issuetype")).map(simplify_named),
-            "priority": fields.and_then(|fields| fields.get("priority")).map(simplify_named),
-            "project": fields.and_then(|fields| fields.get("project")).map(simplify_named),
+            "status": simplify_field_object(fields, "status", simplify_status),
+            "assignee": simplify_field_object(fields, "assignee", simplify_user),
+            "reporter": simplify_field_object(fields, "reporter", simplify_user),
+            "issue_type": simplify_field_object(fields, "issuetype", simplify_named),
+            "priority": simplify_field_object(fields, "priority", simplify_named),
+            "project": simplify_field_object(fields, "project", simplify_named),
             "fields": self.fields,
         })
     }
@@ -368,6 +368,17 @@ fn simplify_user(value: &Value) -> Value {
     })
 }
 
+fn simplify_field_object(
+    fields: Option<&serde_json::Map<String, Value>>,
+    key: &str,
+    simplify: fn(&Value) -> Value,
+) -> Option<Value> {
+    fields
+        .and_then(|fields| fields.get(key))
+        .filter(|value| value.is_object())
+        .map(simplify)
+}
+
 fn simplify_status(value: &Value) -> Value {
     json!({
         "id": value.get("id").and_then(Value::as_str),
@@ -405,7 +416,8 @@ mod tests {
             "key": "ABC-1",
             "fields": {
                 "summary": "Demo",
-                "status": {"id": "1", "name": "Done"}
+                "status": {"id": "1", "name": "Done"},
+                "assignee": null
             }
         }))
         .unwrap();
@@ -414,7 +426,7 @@ mod tests {
         assert_eq!(simplified["key"], "ABC-1");
         assert_eq!(simplified["summary"], "Demo");
         assert_eq!(simplified["status"]["name"], "Done");
-        assert!(simplified["assignee"]["display_name"].is_null());
+        assert!(simplified["assignee"].is_null());
     }
 
     #[test]

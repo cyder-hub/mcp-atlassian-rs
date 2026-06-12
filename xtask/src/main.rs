@@ -10,7 +10,7 @@ type XtaskResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 #[command(
     name = "xtask",
     bin_name = "cargo xtask",
-    about = "Development-only automation for mcp-workhub-rs",
+    about = "Development-only automation for workhub-rs",
     subcommand_required = true,
     arg_required_else_help = true
 )]
@@ -41,16 +41,29 @@ enum SmokeTarget {
     Confluence(smoke::SmokeArgs),
     /// Run GitLab smoke checks.
     Gitlab(smoke::SmokeArgs),
+    /// Run production CLI smoke checks.
+    Cli(smoke::CliSmokeArgs),
 }
 
 impl SmokeTarget {
-    fn into_command(self) -> smoke::SmokeCommand {
+    fn into_command(self) -> SmokeDispatch {
         match self {
-            Self::Jira(args) => args.into_command(smoke::SmokeService::Jira),
-            Self::Confluence(args) => args.into_command(smoke::SmokeService::Confluence),
-            Self::Gitlab(args) => args.into_command(smoke::SmokeService::GitLab),
+            Self::Jira(args) => SmokeDispatch::Mcp(args.into_command(smoke::SmokeService::Jira)),
+            Self::Confluence(args) => {
+                SmokeDispatch::Mcp(args.into_command(smoke::SmokeService::Confluence))
+            }
+            Self::Gitlab(args) => {
+                SmokeDispatch::Mcp(args.into_command(smoke::SmokeService::GitLab))
+            }
+            Self::Cli(args) => SmokeDispatch::Cli(args.into_command()),
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum SmokeDispatch {
+    Mcp(smoke::SmokeCommand),
+    Cli(smoke::CliSmokeCommand),
 }
 
 #[tokio::main]
@@ -66,8 +79,10 @@ async fn main() -> XtaskResult<()> {
                 }
                 return Ok(());
             };
-            let command = target.into_command();
-            let exit_code = smoke::run(command).await?;
+            let exit_code = match target.into_command() {
+                SmokeDispatch::Mcp(command) => smoke::run(command).await?,
+                SmokeDispatch::Cli(command) => smoke::run_cli(command).await?,
+            };
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
@@ -118,6 +133,30 @@ mod tests {
             panic!("expected gitlab smoke command");
         };
         assert_eq!(args.mode, smoke::SmokeMode::Restricted);
+    }
+
+    #[test]
+    fn parses_cli_smoke_command() {
+        let cli = Cli::try_parse_from(["xtask", "smoke", "cli", "all"]).unwrap();
+        let XtaskCommand::Smoke(SmokeCli {
+            target: Some(SmokeTarget::Cli(args)),
+        }) = cli.command
+        else {
+            panic!("expected cli smoke command");
+        };
+        assert_eq!(args.service, smoke::CliSmokeService::All);
+    }
+
+    #[test]
+    fn parses_cli_gitlab_smoke_command() {
+        let cli = Cli::try_parse_from(["xtask", "smoke", "cli", "gitlab"]).unwrap();
+        let XtaskCommand::Smoke(SmokeCli {
+            target: Some(SmokeTarget::Cli(args)),
+        }) = cli.command
+        else {
+            panic!("expected cli smoke command");
+        };
+        assert_eq!(args.service, smoke::CliSmokeService::GitLab);
     }
 
     #[test]

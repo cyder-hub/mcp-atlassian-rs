@@ -63,6 +63,8 @@ pub(super) fn create_issue_fields_from_args(
     let summary = required_non_empty_arg(args.summary, "summary")?;
     let issue_type = required_non_empty_arg(args.issue_type, "issue_type")?;
     let components = parse_optional_string_list_arg(args.components, "components")?;
+    let labels = parse_optional_string_list_arg(args.labels, "labels")?;
+    let fix_versions = parse_optional_string_list_arg(args.fix_versions, "fix_versions")?;
     let additional_fields = parse_optional_object_arg(args.additional_fields, "additional_fields")?;
     let mut fields = json!({
         "project": {"key": project_key},
@@ -87,6 +89,23 @@ pub(super) fn create_issue_fields_from_args(
             .collect::<Vec<_>>();
         if !components.is_empty() {
             fields["components"] = Value::Array(components);
+        }
+    }
+    if let Some(priority) = optional_non_empty_arg(args.priority) {
+        fields["priority"] = json!({ "name": priority });
+    }
+    if let Some(labels) = labels
+        && !labels.is_empty()
+    {
+        fields["labels"] = Value::Array(labels.into_iter().map(Value::String).collect());
+    }
+    if let Some(fix_versions) = fix_versions {
+        let fix_versions = fix_versions
+            .into_iter()
+            .map(|name| json!({ "name": name }))
+            .collect::<Vec<_>>();
+        if !fix_versions.is_empty() {
+            fields["fixVersions"] = Value::Array(fix_versions);
         }
     }
 
@@ -429,6 +448,11 @@ pub(super) fn create_issue_fields_from_value(
     let assignee = take_optional_string_field(&mut fields, "assignee")?;
     let description = take_optional_string_field(&mut fields, "description")?;
     let components = fields.remove("components");
+    let priority = take_optional_string_field(&mut fields, "priority")?;
+    let labels = fields.remove("labels");
+    let fix_versions = fields
+        .remove("fixVersions")
+        .or_else(|| fields.remove("fix_versions"));
     let additional_fields = if fields.is_empty() {
         None
     } else {
@@ -443,6 +467,9 @@ pub(super) fn create_issue_fields_from_value(
             assignee,
             description,
             components,
+            priority,
+            labels,
+            fix_versions,
             additional_fields,
         },
         deployment,

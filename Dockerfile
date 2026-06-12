@@ -6,7 +6,7 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY src/ src/
 COPY xtask/ xtask/
-RUN cargo build --release --bin mcp-workhub-rs
+RUN cargo build --release --bin workhub
 
 FROM debian:bookworm-slim AS runtime
 
@@ -20,10 +20,10 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY --from=build /build/target/release/mcp-workhub-rs /usr/local/bin/mcp-workhub-rs
+COPY --from=build /build/target/release/workhub /usr/local/bin/workhub
 
 EXPOSE 8000
 
 USER app
 
-CMD ["mcp-workhub-rs", "streamhttp", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["workhub", "streamhttp", "--host", "0.0.0.0", "--port", "8000"]

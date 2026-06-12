@@ -6,7 +6,7 @@ async fn confluence_search_content_handler_returns_structured_content_from_mock_
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .search_content(Parameters(confluence_tools::ConfluenceSearchArgs {
@@ -40,7 +40,7 @@ async fn confluence_search_content_handler_rejects_invalid_limit_before_http_req
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let error = server
         .search_content(Parameters(confluence_tools::ConfluenceSearchArgs {
@@ -64,7 +64,7 @@ async fn confluence_get_page_handler_can_lookup_by_title_and_return_raw_content_
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .get_page(Parameters(confluence_tools::ConfluenceGetPageArgs {
@@ -97,7 +97,7 @@ async fn confluence_get_page_handler_requires_page_id_or_title_and_space_key() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let error = server
         .get_page(Parameters(confluence_tools::ConfluenceGetPageArgs {
@@ -123,7 +123,7 @@ async fn confluence_get_page_handler_returns_structured_error_for_missing_page()
     let (base_url, _requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let by_id = server
         .get_page(Parameters(confluence_tools::ConfluenceGetPageArgs {
@@ -167,7 +167,7 @@ async fn confluence_list_page_children_handler_returns_pages_and_folders() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .list_page_children(Parameters(
@@ -222,7 +222,7 @@ async fn confluence_list_page_children_handler_rejects_invalid_limit_before_http
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let error = server
         .list_page_children(Parameters(
@@ -252,7 +252,7 @@ async fn confluence_get_space_page_tree_handler_returns_sorted_flat_tree() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .get_space_page_tree(Parameters(
@@ -286,7 +286,7 @@ async fn confluence_get_space_page_tree_handler_reports_truncation_hint() {
     let (base_url, _requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .get_space_page_tree(Parameters(
@@ -309,7 +309,7 @@ async fn confluence_get_space_page_tree_handler_rejects_invalid_limit_before_htt
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let error = server
         .get_space_page_tree(Parameters(
@@ -334,7 +334,7 @@ async fn confluence_create_page_handler_posts_storage_payload() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .create_page(Parameters(confluence_tools::ConfluenceCreatePageArgs {
@@ -380,7 +380,7 @@ async fn confluence_update_page_handler_increments_version_and_preserves_write_o
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .update_page(Parameters(confluence_tools::ConfluenceUpdatePageArgs {
@@ -423,7 +423,7 @@ async fn confluence_update_page_handler_reports_emoji_failure_without_failing_pa
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .update_page(Parameters(confluence_tools::ConfluenceUpdatePageArgs {
@@ -463,7 +463,7 @@ async fn confluence_write_handlers_reject_invalid_content_format_before_http_req
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let error = server
         .create_page(Parameters(confluence_tools::ConfluenceCreatePageArgs {
@@ -491,7 +491,7 @@ async fn confluence_delete_page_handler_returns_success_and_structured_failure()
     let (base_url, _requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let success = server
         .delete_page(Parameters(confluence_tools::ConfluenceDeletePageArgs {
@@ -529,7 +529,7 @@ async fn confluence_move_page_handler_updates_parent_or_calls_position_endpoint(
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let appended = server
         .move_page(Parameters(confluence_tools::ConfluenceMovePageArgs {
@@ -573,7 +573,7 @@ async fn confluence_move_page_handler_rejects_invalid_position_before_http_reque
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let error = server
         .move_page(Parameters(confluence_tools::ConfluenceMovePageArgs {
@@ -598,7 +598,7 @@ async fn confluence_list_page_comments_handler_returns_comment_list_and_empty_li
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .list_page_comments(Parameters(
@@ -653,7 +653,7 @@ async fn confluence_add_and_reply_comment_handlers_post_storage_payloads() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let added = server
         .add_page_comment(Parameters(confluence_tools::ConfluenceAddCommentArgs {
@@ -706,7 +706,7 @@ async fn confluence_comment_write_handlers_return_structured_failure() {
     let (base_url, _requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let add_failure = server
         .add_page_comment(Parameters(confluence_tools::ConfluenceAddCommentArgs {
@@ -741,8 +741,8 @@ async fn confluence_list_content_labels_handler_returns_label_list_and_empty_lis
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .list_content_labels(Parameters(
@@ -782,8 +782,8 @@ async fn confluence_add_content_label_handler_posts_label_and_refreshes_list() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .add_content_label(Parameters(confluence_tools::ConfluenceAddLabelArgs {
@@ -813,8 +813,8 @@ async fn confluence_add_content_label_handler_returns_error_on_api_failure() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let error = server
         .add_content_label(Parameters(confluence_tools::ConfluenceAddLabelArgs {
@@ -835,8 +835,8 @@ async fn confluence_search_users_handler_wraps_simple_query_for_cloud() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_cloud_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .search_users(Parameters(confluence_tools::ConfluenceSearchUserArgs {
@@ -870,8 +870,8 @@ async fn confluence_search_users_handler_uses_group_member_fallback_on_server() 
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .search_users(Parameters(confluence_tools::ConfluenceSearchUserArgs {
@@ -920,8 +920,8 @@ async fn confluence_search_users_handler_returns_structured_auth_error() {
     };
     let server = server_with_config(RuntimeConfig {
         confluence: Some(config),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .search_users(Parameters(confluence_tools::ConfluenceSearchUserArgs {
@@ -949,8 +949,8 @@ async fn confluence_search_users_handler_rejects_invalid_limit_before_http_reque
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let error = server
         .search_users(Parameters(confluence_tools::ConfluenceSearchUserArgs {
@@ -974,8 +974,8 @@ async fn confluence_get_page_version_handler_returns_specific_version() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .get_page_version(Parameters(confluence_tools::ConfluenceGetPageVersionArgs {
@@ -1012,8 +1012,8 @@ async fn confluence_get_page_version_handler_rejects_zero_version_before_http_re
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let error = server
         .get_page_version(Parameters(confluence_tools::ConfluenceGetPageVersionArgs {
@@ -1033,8 +1033,8 @@ async fn confluence_get_page_version_handler_surfaces_missing_version_error() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let error = server
         .get_page_version(Parameters(confluence_tools::ConfluenceGetPageVersionArgs {
@@ -1059,14 +1059,15 @@ async fn confluence_get_page_diff_handler_returns_deterministic_diff() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .get_page_diff(Parameters(confluence_tools::ConfluenceGetPageDiffArgs {
             page_id: "123".to_string(),
             from_version: 1,
             to_version: 2,
+            context_lines: Some(0),
         }))
         .await
         .unwrap();
@@ -1075,6 +1076,7 @@ async fn confluence_get_page_diff_handler_returns_deterministic_diff() {
     assert_eq!(structured["page_id"], json!("123"));
     assert_eq!(structured["title"], json!("Roadmap"));
     assert_eq!(structured["has_changes"], json!(true));
+    assert_eq!(structured["context_lines"], json!(0));
     assert_eq!(
         structured["diff"],
         json!("--- v1\n+++ v2\n@@ -1 +1 @@\n-Roadmap Hello team\n+Roadmap Hello team and partners")
@@ -1096,14 +1098,15 @@ async fn confluence_get_page_diff_handler_returns_empty_diff_for_same_version() 
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .get_page_diff(Parameters(confluence_tools::ConfluenceGetPageDiffArgs {
             page_id: "123".to_string(),
             from_version: 2,
             to_version: 2,
+            context_lines: None,
         }))
         .await
         .unwrap();
@@ -1121,14 +1124,15 @@ async fn confluence_get_page_diff_handler_rejects_invalid_order_before_http_requ
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let error = server
         .get_page_diff(Parameters(confluence_tools::ConfluenceGetPageDiffArgs {
             page_id: "123".to_string(),
             from_version: 3,
             to_version: 2,
+            context_lines: None,
         }))
         .await
         .unwrap_err();
@@ -1146,14 +1150,16 @@ async fn confluence_get_page_view_analytics_handler_returns_cloud_analytics_with
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_cloud_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .get_page_view_analytics(Parameters(
             confluence_tools::ConfluenceGetPageViewAnalyticsArgs {
                 page_id: "123".to_string(),
                 include_title: Some(true),
+                from_date: Some("2026-01-01".to_string()),
+                to_date: Some("2026-01-31".to_string()),
             },
         ))
         .await
@@ -1168,7 +1174,19 @@ async fn confluence_get_page_view_analytics_handler_returns_cloud_analytics_with
     let requests = requests.lock().await;
     assert_eq!(requests.len(), 2);
     assert!(requests[0].path.starts_with("/rest/api/content/123?"));
-    assert_eq!(requests[1].path, "/rest/api/analytics/content/123/views");
+    assert!(
+        requests[1]
+            .path
+            .starts_with("/rest/api/analytics/content/123/views?")
+    );
+    assert_eq!(
+        query_value(&requests[1].path, "from").as_deref(),
+        Some("2026-01-01")
+    );
+    assert_eq!(
+        query_value(&requests[1].path, "to").as_deref(),
+        Some("2026-01-31")
+    );
 }
 
 #[tokio::test]
@@ -1176,14 +1194,16 @@ async fn confluence_get_page_view_analytics_handler_skips_title_lookup_when_disa
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_cloud_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .get_page_view_analytics(Parameters(
             confluence_tools::ConfluenceGetPageViewAnalyticsArgs {
                 page_id: "123".to_string(),
                 include_title: Some(false),
+                from_date: None,
+                to_date: None,
             },
         ))
         .await
@@ -1202,14 +1222,16 @@ async fn confluence_get_page_view_analytics_handler_returns_unavailable_on_serve
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .get_page_view_analytics(Parameters(
             confluence_tools::ConfluenceGetPageViewAnalyticsArgs {
                 page_id: "123".to_string(),
                 include_title: Some(true),
+                from_date: None,
+                to_date: None,
             },
         ))
         .await
@@ -1241,14 +1263,16 @@ async fn confluence_get_page_view_analytics_handler_returns_structured_auth_erro
     };
     let server = server_with_config(RuntimeConfig {
         confluence: Some(config),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .get_page_view_analytics(Parameters(
             confluence_tools::ConfluenceGetPageViewAnalyticsArgs {
                 page_id: "123".to_string(),
                 include_title: Some(false),
+                from_date: None,
+                to_date: None,
             },
         ))
         .await
@@ -1271,14 +1295,16 @@ async fn confluence_get_page_view_analytics_handler_rejects_empty_page_id_before
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_cloud_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let error = server
         .get_page_view_analytics(Parameters(
             confluence_tools::ConfluenceGetPageViewAnalyticsArgs {
                 page_id: " ".to_string(),
                 include_title: None,
+                from_date: None,
+                to_date: None,
             },
         ))
         .await
@@ -1293,8 +1319,8 @@ async fn confluence_list_content_attachments_handler_handles_empty_and_missing_f
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let empty = server
         .list_content_attachments(Parameters(
@@ -1338,8 +1364,8 @@ async fn confluence_list_content_attachments_handler_filters_filename_and_media_
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let by_filename = server
         .list_content_attachments(Parameters(
@@ -1383,8 +1409,8 @@ async fn confluence_list_content_attachments_handler_rejects_invalid_limit_befor
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let error = server
         .list_content_attachments(Parameters(
@@ -1412,13 +1438,14 @@ async fn confluence_download_attachment_handler_returns_bounded_base64_content()
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .download_attachment(Parameters(
             confluence_tools::ConfluenceDownloadAttachmentArgs {
                 attachment_id: "att-1".to_string(),
+                max_bytes: None,
             },
         ))
         .await
@@ -1454,13 +1481,14 @@ async fn confluence_download_attachment_handler_rejects_stream_limit_and_cross_o
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let stream_too_large = server
         .download_attachment(Parameters(
             confluence_tools::ConfluenceDownloadAttachmentArgs {
                 attachment_id: "att-stream-large".to_string(),
+                max_bytes: None,
             },
         ))
         .await
@@ -1469,6 +1497,7 @@ async fn confluence_download_attachment_handler_rejects_stream_limit_and_cross_o
         .download_attachment(Parameters(
             confluence_tools::ConfluenceDownloadAttachmentArgs {
                 attachment_id: "att-cross".to_string(),
+                max_bytes: None,
             },
         ))
         .await
@@ -1513,17 +1542,43 @@ async fn confluence_download_attachment_handler_rejects_stream_limit_and_cross_o
 }
 
 #[tokio::test]
+async fn confluence_download_attachment_handler_rejects_invalid_max_bytes_before_http() {
+    let (base_url, requests) = mock_confluence_server().await;
+    let server = server_with_config(RuntimeConfig {
+        confluence: Some(confluence_config_with_base_url(base_url)),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
+    });
+    let error = server
+        .download_attachment(Parameters(
+            confluence_tools::ConfluenceDownloadAttachmentArgs {
+                attachment_id: "att-1".to_string(),
+                max_bytes: Some(0),
+            },
+        ))
+        .await
+        .unwrap_err();
+
+    assert!(error.message.contains("max_bytes must be positive"));
+    assert!(requests.lock().await.is_empty());
+}
+
+#[tokio::test]
 async fn confluence_download_content_attachments_handler_returns_partial_failure_summary() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .download_content_attachments(Parameters(
             confluence_tools::ConfluenceDownloadContentAttachmentsArgs {
                 content_id: "download-batch".to_string(),
+                filename: None,
+                media_type: None,
+                max_bytes: None,
+                limit: None,
             },
         ))
         .await
@@ -1557,17 +1612,68 @@ async fn confluence_download_content_attachments_handler_returns_partial_failure
 }
 
 #[tokio::test]
+async fn confluence_download_content_attachments_handler_applies_filters_limit_and_max_bytes() {
+    let (base_url, requests) = mock_confluence_server().await;
+    let server = server_with_config(RuntimeConfig {
+        confluence: Some(confluence_config_with_base_url(base_url)),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
+    });
+    let result = server
+        .download_content_attachments(Parameters(
+            confluence_tools::ConfluenceDownloadContentAttachmentsArgs {
+                content_id: "download-batch".to_string(),
+                filename: Some("file.png".to_string()),
+                media_type: Some("image/png".to_string()),
+                max_bytes: Some(20),
+                limit: Some(1),
+            },
+        ))
+        .await
+        .unwrap();
+
+    let structured = result.structured_content.as_ref().unwrap();
+    assert_eq!(structured["success"], json!(true));
+    assert_eq!(structured["summary"]["downloaded"], json!(1));
+    assert_eq!(structured["summary"]["failed"], json!(0));
+    assert_eq!(
+        structured["summary"]["filters"]["filename"],
+        json!("file.png")
+    );
+    assert_eq!(
+        structured["summary"]["filters"]["media_type"],
+        json!("image/png")
+    );
+    assert_eq!(structured["summary"]["max_bytes"], json!(20));
+    assert_eq!(structured["attachments"][0]["id"], json!("att-1"));
+    let requests = requests.lock().await;
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        query_value(&requests[0].path, "limit").as_deref(),
+        Some("1")
+    );
+    assert_eq!(
+        requests[1].path,
+        "/download/attachments/att-1/file.png?token=secret"
+    );
+}
+
+#[tokio::test]
 async fn confluence_download_content_attachments_handler_paginates_until_no_next_link() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .download_content_attachments(Parameters(
             confluence_tools::ConfluenceDownloadContentAttachmentsArgs {
                 content_id: "download-paged".to_string(),
+                filename: None,
+                media_type: None,
+                max_bytes: None,
+                limit: None,
             },
         ))
         .await
@@ -1606,13 +1712,17 @@ async fn confluence_download_content_attachments_handler_reports_page_protection
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .download_content_attachments(Parameters(
             confluence_tools::ConfluenceDownloadContentAttachmentsArgs {
                 content_id: "download-capped".to_string(),
+                filename: None,
+                media_type: None,
+                max_bytes: None,
+                limit: None,
             },
         ))
         .await
@@ -1645,13 +1755,14 @@ async fn confluence_get_content_image_attachments_handler_filters_non_images_and
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .get_content_image_attachments(Parameters(
             confluence_tools::ConfluenceGetContentImageAttachmentsArgs {
                 content_id: "images".to_string(),
+                max_bytes: None,
             },
         ))
         .await
@@ -1701,8 +1812,8 @@ async fn confluence_upload_content_attachment_handler_sends_local_file_as_multip
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let file_path = temp_confluence_upload_file("upload.txt", b"hello");
     let result = server
@@ -1734,7 +1845,7 @@ async fn confluence_upload_content_attachment_handler_sends_local_file_as_multip
     assert!(body.contains("Initial upload"));
     assert!(body.contains("name=\"minorEdit\""));
     assert!(body.contains("true"));
-    assert!(!body.contains("mcp-workhub-rs-boundary"));
+    assert!(!body.contains("workhub-rs-boundary"));
     assert!(!body.contains(&file_path));
 }
 
@@ -1743,8 +1854,8 @@ async fn confluence_upload_content_attachment_handler_rejects_oversized_file_bef
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let file_path = oversized_temp_confluence_upload_file("too-large.bin");
     let result = server
@@ -1775,13 +1886,13 @@ async fn confluence_upload_content_attachments_handler_returns_partial_success_s
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let ok_path = temp_confluence_upload_file("batch-1.txt", b"batch");
     let oversized_path = oversized_temp_confluence_upload_file("batch-too-large.bin");
     let missing_path = std::env::temp_dir()
-        .join("mcp-workhub-rs-missing-upload.txt")
+        .join("workhub-rs-missing-upload.txt")
         .to_string_lossy()
         .into_owned();
     let result = server
@@ -1831,7 +1942,7 @@ async fn confluence_upload_content_attachments_handler_returns_partial_success_s
     );
     assert_eq!(
         structured["failed"][1]["filename"],
-        json!("mcp-workhub-rs-missing-upload.txt")
+        json!("workhub-rs-missing-upload.txt")
     );
     assert!(
         structured["failed"][1]["error"]
@@ -1849,8 +1960,8 @@ async fn confluence_delete_attachment_handler_returns_structured_success_and_fai
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let success = server
         .delete_attachment(Parameters(
@@ -1895,7 +2006,7 @@ async fn confluence_get_page_handler_returns_metadata_by_page_id() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        ..runtime_config()
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .get_page(Parameters(confluence_tools::ConfluenceGetPageArgs {
@@ -1931,8 +2042,8 @@ async fn confluence_list_content_attachments_handler_returns_metadata_page() {
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let result = server
         .list_content_attachments(Parameters(
@@ -1987,13 +2098,14 @@ async fn confluence_download_attachment_handler_reports_metadata_errors_without_
     let (base_url, requests) = mock_confluence_server().await;
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config_with_base_url(base_url)),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        ..runtime_config()
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        ..runtime_config_all_toolsets()
     });
     let no_url = server
         .download_attachment(Parameters(
             confluence_tools::ConfluenceDownloadAttachmentArgs {
                 attachment_id: "att-no-url".to_string(),
+                max_bytes: None,
             },
         ))
         .await
@@ -2002,6 +2114,7 @@ async fn confluence_download_attachment_handler_reports_metadata_errors_without_
         .download_attachment(Parameters(
             confluence_tools::ConfluenceDownloadAttachmentArgs {
                 attachment_id: "att-large".to_string(),
+                max_bytes: None,
             },
         ))
         .await

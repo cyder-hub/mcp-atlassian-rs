@@ -976,11 +976,17 @@ fn mcp_row(
 
 fn clean_env(env: &EnvMap, disabled_tool: Option<&str>) -> EnvMap {
     let mut clean = env.clone();
+    clean.remove("TOOL_PROFILE");
+    clean.remove("TOOLSETS");
     clean.remove("ENABLED_TOOLS");
     clean.remove("DISABLED_TOOLS");
-    clean.insert("TOOLSETS".to_string(), "all".to_string());
+    clean.remove("MCP_TOOL_PROFILE");
+    clean.remove("MCP_TOOLSETS");
+    clean.remove("MCP_ENABLED_TOOLS");
+    clean.remove("MCP_DISABLED_TOOLS");
+    clean.insert("MCP_TOOLSETS".to_string(), "all".to_string());
     if let Some(tool) = disabled_tool {
-        clean.insert("DISABLED_TOOLS".to_string(), tool.to_string());
+        clean.insert("MCP_DISABLED_TOOLS".to_string(), tool.to_string());
     }
     clean
 }

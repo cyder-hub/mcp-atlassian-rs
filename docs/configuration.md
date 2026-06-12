@@ -1,6 +1,6 @@
 # Configuration
 
-This document is the detailed configuration reference for `mcp-workhub-rs`. For deployment shapes and operational guidance, see [deployment.md](deployment.md). For per-tool support status, see [support-matrix.md](support-matrix.md).
+This document is the detailed configuration reference for `workhub-rs`. For deployment shapes and operational guidance, see [deployment.md](deployment.md). For per-tool support status, see [support-matrix.md](support-matrix.md).
 
 ## Service Credentials
 
@@ -73,16 +73,16 @@ export GITLAB_TOKEN="<personal-project-or-group-access-token>"
 
 GitLab token precedence is `GITLAB_TOKEN`, then `GITLAB_PERSONAL_TOKEN`. Use `read_api` for read-only tools and `api` for writes, approvals, and merge. GitLab username/password API auth is not supported.
 
-## Tool Access
+## MCP Tool Access
 
-Most users should choose a single profile and leave lower-level controls unset.
+Most users should choose a single MCP profile and leave lower-level controls unset. These variables only affect MCP tool discovery and MCP tool calls. The resource CLI ignores them and exposes its full command surface for configured services.
 
 | Variable | Default | Behavior |
 | --- | --- | --- |
-| `TOOL_PROFILE` | `basic` | Supports `basic`, `developer`, `manager`, `full`, or `custom`. With Jira, Confluence, and GitLab configured, profiles expose 23, 47, 82, 85, or 0 tools respectively. Service availability filters out tools for unconfigured services. |
-| `TOOLSETS` | profile defaults | Adds comma-separated registered toolsets to the selected profile. `all` enables every toolset. Unknown names fail startup. |
-| `ENABLED_TOOLS` | unset | Adds comma-separated exact MCP tool names, even when their toolset is not enabled. |
-| `DISABLED_TOOLS` | unset | Removes comma-separated exact MCP tool names. This takes precedence over profile, toolset, and enabled-tool inclusion. |
+| `MCP_TOOL_PROFILE` | `basic` | Supports `basic`, `developer`, `manager`, `full`, or `custom`. With Jira, Confluence, and GitLab configured, profiles expose 23, 47, 82, 85, or 0 tools respectively. Service availability filters out tools for unconfigured services. |
+| `MCP_TOOLSETS` | profile defaults | Adds comma-separated registered toolsets to the selected profile. `all` enables every toolset. Unknown names fail startup. |
+| `MCP_ENABLED_TOOLS` | unset | Adds comma-separated exact MCP tool names, even when their toolset is not enabled. |
+| `MCP_DISABLED_TOOLS` | unset | Removes comma-separated exact MCP tool names. This takes precedence over profile, toolset, and enabled-tool inclusion. |
 
 Profiles are ordered from least to most capable:
 
@@ -92,7 +92,7 @@ Profiles are ordered from least to most capable:
 | `developer` | Adds workflow, Agile, attachment, development-info, Confluence version/attachment reads, and GitLab MR write/approval/merge tools. |
 | `manager` | Adds most Jira project, sprint, worklog, link, JSM, SLA, Forms, Confluence write, analytics, and attachment upload tools. |
 | `full` | All registered tools, including destructive Confluence delete toolsets. |
-| `custom` | No profile baseline; use `TOOLSETS` and/or exact tool variables. |
+| `custom` | No profile baseline; use `MCP_TOOLSETS` and/or exact tool variables. |
 
 ## Runtime And HTTP
 
@@ -101,11 +101,27 @@ Profiles are ordered from least to most capable:
 | `MCP_HTTP_HOST` | `127.0.0.1` | Streamable HTTP host when not overridden by CLI. |
 | `MCP_HTTP_PORT` | `8000` | Streamable HTTP port when not overridden by CLI. |
 | `MCP_HTTP_PATH` | `/mcp` | Streamable HTTP MCP path when not overridden by CLI. A missing leading slash is normalized. |
-| `ENV_FILE` | unset | Optional dotenv file loaded at startup. The `--env-file` CLI argument takes precedence. |
+| `ENV_FILE` | unset | Optional dotenv file loaded by `streamhttp` and `cli` startup. The explicit `--env-file <path>` argument takes precedence. |
 
 Docker Compose also supports `MCP_PORT` for host-to-container port mapping. `MCP_PORT` is a compose wrapper variable, not a Rust runtime variable.
 
-Supported transports are `stdio` and streamable HTTP. SSE is not implemented.
+Supported MCP transports are `stdio` and streamable HTTP. SSE is not implemented.
+
+The production resource CLI is available through:
+
+```bash
+workhub cli [--env-file <path>] [--json] [--pretty] <provider> ...
+```
+
+Startup dotenv behavior is intentionally mode-specific:
+
+| Mode | Dotenv behavior |
+| --- | --- |
+| `stdio` | Does not load `.env`, `ENV_FILE`, or `--env-file`; stdout remains protocol-only. |
+| `streamhttp` | Loads explicit `--env-file`, then `ENV_FILE`, then current directory `.env`; missing default `.env` is ignored. |
+| `cli` | Uses the same dotenv priority as `streamhttp`. |
+
+The CLI has no provider URL, token, password, proxy, custom-header, TLS, or mTLS override flags. Use environment variables, `ENV_FILE`, or `--env-file` so credentials do not enter shell history or process arguments.
 
 ## Atlassian Auth
 
@@ -187,7 +203,7 @@ SOCKS proxy support is not compiled in.
 | `MCP_TOOL_CALL_DEBUG` | `false` | Enables MCP tool-call diagnostics when `RUST_LOG` is unset. Arguments are redacted and truncated, but can still contain business data. |
 | `RUST_LOG` | unset | Advanced tracing filter. Takes precedence over `MCP_TOOL_CALL_DEBUG`. |
 
-The equivalent diagnostic filter is `mcp_workhub_rs::mcp=debug,mcp_workhub_rs=info,rmcp=info`.
+The equivalent diagnostic filter is `workhub_rs::mcp=debug,workhub_rs=info,rmcp=info`.
 
 ## Streamable HTTP Endpoint
 

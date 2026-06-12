@@ -7,7 +7,7 @@ This matrix is the current release support reference for the Rust MCP server. It
 | Term | Meaning |
 | --- | --- |
 | Implemented | Exposed by the Rust MCP server with registry metadata, schema, handler, service filtering, profile filtering, toolset filtering, enabled-tool inclusion, and disabled-tool exclusion. |
-| Local/MCP covered | Covered by local mock REST tests, MCP discovery/call tests, smoke tests, or filtering tests. |
+| Local/MCP/CLI covered | Covered by local mock REST tests, MCP discovery/call tests, production CLI tests, smoke tests, or filtering tests. |
 | Real accepted | The path was executed against real upstream test services. For writes, this only means real write execution when the note explicitly says so. |
 | Local only | Implemented and locally validated, but no dedicated real acceptance row was executed. |
 | Disabled-tool guard only | Real MCP/disabled-tool mode blocks the destructive write; the destructive operation itself was not executed on a real object. |
@@ -22,7 +22,8 @@ This matrix is the current release support reference for the Rust MCP server. It
 | Confluence | 24 | 24 | Implemented |
 | GitLab | 15 | 15 | Implemented |
 | Total business tools | 85 | 85 | Implemented |
-| Utility tools | 0 | 0 exposed | No utility tool is exposed in the production MCP tool surface. |
+| Production CLI commands | 85 | 85 | Resource-oriented CLI commands call the same shared operation layer as MCP handlers. |
+| Utility tools | 0 | 0 exposed | No utility tool is exposed in the production MCP or CLI surface. |
 
 ## Jira Tools
 
@@ -110,7 +111,7 @@ All Confluence rows below are implemented in Rust and are registry-managed busin
 
 ## GitLab Tools
 
-All GitLab rows below are implemented in Rust and are registry-managed business tools. GitLab support is local/mock validated only; real GitLab acceptance has not been run. The local GitLab smoke covers current user, project, MR list, streamable HTTP `/healthz`, and disabled create-MR guard behavior.
+All GitLab rows below are implemented in Rust and are registry-managed business tools. GitLab support is local/mock validated only; real GitLab acceptance has not been run. The local GitLab smoke covers current user, project, MR list, streamable HTTP `/healthz`, production CLI text/JSON output, MCP restricted create-MR guard behavior, and CLI isolation from MCP tool visibility controls.
 
 | Tool | Access | Toolset | Local/MCP status | Real acceptance status |
 | --- | --- | --- | --- | --- |
@@ -143,11 +144,14 @@ All GitLab rows below are implemented in Rust and are registry-managed business 
 
 | Capability | Env or CLI surface | Rust status | Notes |
 | --- | --- | --- | --- |
-| Tool profile | `TOOL_PROFILE` | Supported | Supports `basic`, `developer`, `manager`, `full`, and `custom`; defaults to `basic`. With Jira, Confluence, and GitLab configured, profiles expose 23, 47, 82, 85, and 0 tools respectively. Service availability filters out tools for unconfigured services. Unknown values fail startup. |
-| Toolset filtering | `TOOLSETS` | Supported | Adds comma-separated registered toolsets to the selected profile. `all` enables every toolset; unknown names fail startup. |
-| Exact tool inclusion | `ENABLED_TOOLS` | Supported | Comma-separated MCP tool names to add exactly. |
-| Exact tool exclusion | `DISABLED_TOOLS` | Supported | Comma-separated MCP tool names to remove exactly. Takes precedence over profile/toolset inclusion. |
+| Tool profile | `MCP_TOOL_PROFILE` | Supported | MCP-only. Supports `basic`, `developer`, `manager`, `full`, and `custom`; defaults to `basic`. With Jira, Confluence, and GitLab configured, profiles expose 23, 47, 82, 85, and 0 tools respectively. Service availability filters out tools for unconfigured services. Unknown values fail startup. |
+| Toolset filtering | `MCP_TOOLSETS` | Supported | Adds comma-separated registered toolsets to the selected profile. `all` enables every toolset; unknown names fail startup. |
+| Exact tool inclusion | `MCP_ENABLED_TOOLS` | Supported | Comma-separated MCP tool names to add exactly. |
+| Exact tool exclusion | `MCP_DISABLED_TOOLS` | Supported | Comma-separated MCP tool names to remove exactly. Takes precedence over profile/toolset inclusion. |
 | Streamable HTTP binding | `MCP_HTTP_HOST`, `MCP_HTTP_PORT`, `MCP_HTTP_PATH`, `streamhttp --host/--port/--path` | Supported | Parsed only for streamable HTTP startup. Default MCP path is `/mcp`; missing leading slash is normalized. |
+| Resource CLI | `workhub cli ...` | Supported | Covers all 85 business capabilities as resource-oriented commands for configured services. It ignores `MCP_TOOL_PROFILE`, `MCP_TOOLSETS`, `MCP_ENABLED_TOOLS`, and `MCP_DISABLED_TOOLS`; no raw MCP tool-call, schema, or tools-list fallback is exposed. |
+| CLI JSON output | `workhub cli --json ...` and `--pretty` | Supported | Successful JSON goes to stdout; errors go to stderr. `--pretty` requires `--json`. |
+| CLI env file loading | `workhub cli --env-file <path>`, `ENV_FILE`, `.env` | Supported | Same dotenv priority as `streamhttp`; `stdio` intentionally does not load dotenv files. |
 | Health endpoint | `GET /healthz` | Supported | Available for streamable HTTP deployments and compose healthchecks. |
 | GitLab project allowlist | `GITLAB_PROJECTS_FILTER` | Supported | Optional exact allowlist of numeric project IDs or full paths. Project-scoped GitLab tools reject unlisted projects before sending HTTP. |
 
@@ -175,8 +179,9 @@ All GitLab rows below are implemented in Rust and are registry-managed business 
 
 | Capability | Surface | Rust status | Notes |
 | --- | --- | --- | --- |
-| stdio transport | `mcp-workhub-rs stdio` | Supported | Logs go to stderr; stdout remains MCP protocol-only. |
-| Streamable HTTP transport | `mcp-workhub-rs streamhttp` | Supported | Default endpoint is `/mcp`; path is configurable. |
+| stdio transport | `workhub stdio` | Supported | Logs go to stderr; stdout remains MCP protocol-only. |
+| Streamable HTTP transport | `workhub streamhttp` | Supported | Default endpoint is `/mcp`; path is configurable. |
+| Production CLI | `workhub cli` | Supported | One-shot command surface for Jira, Confluence, and GitLab using the shared operation layer. |
 | Health check | `GET /healthz` | Supported | Returns a simple status response for HTTP deployments. |
 | SSE transport | SSE server mode | Not supported in the current Rust release | Fixed unsupported/backlog item; supported transports are stdio and streamable HTTP. |
 
@@ -209,7 +214,7 @@ All GitLab rows below are implemented in Rust and are registry-managed business 
 
 | Capability | Rust status | Notes |
 | --- | --- | --- |
-| Multi-platform release binary artifacts | Supported | Tag-driven workflow builds Linux, macOS, and Windows `mcp-workhub-rs-*` binaries and checksums. |
+| Multi-platform release binary artifacts | Supported | Tag-driven workflow builds Linux, macOS, and Windows `workhub-*` binaries and checksums. |
 | Docker image build | Supported | Local and CI builds use `Dockerfile`; external image publishing is not part of the current Rust release. |
 | Docker Compose | Supported | `docker-compose.yml` includes streamable HTTP startup and `/healthz` healthcheck. |
 | Helm chart | Not supported in the current Rust release | Rust Helm packaging requires a dedicated future task and remains in `docs/backlog.md`. |

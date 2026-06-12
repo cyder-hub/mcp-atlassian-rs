@@ -1,6 +1,19 @@
 use super::support::*;
 use super::*;
 
+fn default_issue_search_fields() -> serde_json::Value {
+    json!([
+        "key",
+        "summary",
+        "status",
+        "assignee",
+        "reporter",
+        "issuetype",
+        "priority",
+        "project"
+    ])
+}
+
 #[tokio::test]
 async fn cloud_search_uses_v3_search_jql_and_basic_auth() {
     let (base_url, requests) =
@@ -25,6 +38,7 @@ async fn cloud_search_uses_v3_search_jql_and_basic_auth() {
         header.starts_with("Basic ") && !header.contains("test-api-token")
     }));
     assert_eq!(requests[0].body["maxResults"], 10);
+    assert_eq!(requests[0].body["fields"], default_issue_search_fields());
     assert_eq!(requests[0].body["nextPageToken"], "token");
     assert!(
         requests[0].body["jql"]
@@ -32,6 +46,37 @@ async fn cloud_search_uses_v3_search_jql_and_basic_auth() {
             .unwrap()
             .contains("project = \"ABC\"")
     );
+}
+
+#[tokio::test]
+async fn cloud_search_respects_explicit_fields() {
+    let (base_url, requests) = mock_server(json!({
+        "issues": [{
+            "id": "10001",
+            "key": "ABC-1",
+            "fields": {"summary": "Demo", "customfield_10000": "custom"}
+        }],
+        "isLast": true
+    }))
+    .await;
+    let client = JiraClient::new(config(base_url, JiraDeployment::Cloud)).unwrap();
+    let value = client
+        .search(SearchRequest {
+            jql: "project = ABC".to_string(),
+            fields: Some(vec!["summary".to_string(), "customfield_10000".to_string()]),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let requests = requests.lock().await;
+
+    assert_eq!(
+        requests[0].body["fields"],
+        json!(["summary", "customfield_10000"])
+    );
+    assert_eq!(value["issues"][0]["key"], "ABC-1");
+    assert_eq!(value["issues"][0]["summary"], "Demo");
+    assert_eq!(value["issues"][0]["fields"]["customfield_10000"], "custom");
 }
 
 #[tokio::test]
@@ -88,6 +133,7 @@ async fn cloud_search_retries_legacy_search_when_enhanced_rejects_unbounded_jql(
     );
     assert_eq!(requests[1].body["startAt"], 0);
     assert_eq!(requests[1].body["maxResults"], 50);
+    assert_eq!(requests[1].body["fields"], default_issue_search_fields());
 }
 
 #[tokio::test]
@@ -129,6 +175,7 @@ async fn server_search_uses_v2_search_and_start_at() {
 
     assert_eq!(requests[0].path, "/rest/api/2/search");
     assert_eq!(requests[0].body["startAt"], 20);
+    assert_eq!(requests[0].body["fields"], default_issue_search_fields());
 }
 
 #[tokio::test]

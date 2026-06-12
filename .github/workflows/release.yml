@@ -89,23 +89,23 @@ jobs:
         include:
           - platform_target: linux-x86_64
             rust_target: x86_64-unknown-linux-gnu
-            binary: mcp-workhub-rs
+            binary: workhub
             os: ubuntu-22.04
           - platform_target: linux-aarch64
             rust_target: aarch64-unknown-linux-gnu
-            binary: mcp-workhub-rs
+            binary: workhub
             os: ubuntu-24.04-arm
           - platform_target: darwin-x86_64
             rust_target: x86_64-apple-darwin
-            binary: mcp-workhub-rs
+            binary: workhub
             os: macos-15-intel
           - platform_target: darwin-aarch64
             rust_target: aarch64-apple-darwin
-            binary: mcp-workhub-rs
+            binary: workhub
             os: macos-15
           - platform_target: windows-x86_64
             rust_target: x86_64-pc-windows-msvc
-            binary: mcp-workhub-rs.exe
+            binary: workhub.exe
             os: windows-latest
 
     steps:
@@ -138,9 +138,9 @@ jobs:
           mkdir -p dist
           
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            output_binary="mcp-workhub-rs-${{ matrix.platform_target }}.exe"
+            output_binary="workhub-${{ matrix.platform_target }}.exe"
           else
-            output_binary="mcp-workhub-rs-${{ matrix.platform_target }}"
+            output_binary="workhub-${{ matrix.platform_target }}"
           fi
           
           cp target/${{ matrix.rust_target }}/release/${{ matrix.binary }} dist/${output_binary}
@@ -151,7 +151,7 @@ jobs:
       - name: Upload binary release asset
         uses: actions/upload-artifact@v7
         with:
-          name: mcp-workhub-rs-${{ matrix.platform_target }}
+          name: workhub-${{ matrix.platform_target }}
           path: dist/*
           if-no-files-found: error
 
@@ -171,7 +171,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: dist/release-assets
-          pattern: mcp-workhub-rs-*
+          pattern: workhub-*
           merge-multiple: true
 
       - name: Create or update draft release

@@ -47,6 +47,8 @@ pub struct GetIssueRequest {
 #[derive(Debug, Clone)]
 pub struct AttachmentFetchOptions {
     pub attachment_ids: Option<Vec<String>>,
+    pub filename_contains: Option<String>,
+    pub media_type: Option<String>,
     pub include_content: bool,
     pub images_only: bool,
     pub max_bytes: u64,
@@ -56,6 +58,8 @@ impl Default for AttachmentFetchOptions {
     fn default() -> Self {
         Self {
             attachment_ids: None,
+            filename_contains: None,
+            media_type: None,
             include_content: false,
             images_only: false,
             max_bytes: DEFAULT_ATTACHMENT_MAX_BYTES,

@@ -9,9 +9,9 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppContext {
-    enabled_tools: Option<BTreeSet<String>>,
-    disabled_tools: BTreeSet<String>,
-    enabled_toolsets: BTreeSet<String>,
+    mcp_enabled_tools: Option<BTreeSet<String>>,
+    mcp_disabled_tools: BTreeSet<String>,
+    mcp_enabled_toolsets: BTreeSet<String>,
     jira: Option<JiraConfig>,
     confluence: Option<ConfluenceConfig>,
     gitlab: Option<GitlabConfig>,
@@ -21,9 +21,9 @@ pub struct AppContext {
 impl AppContext {
     pub fn from_config(config: &RuntimeConfig) -> Self {
         Self {
-            enabled_tools: config.enabled_tools.clone(),
-            disabled_tools: config.disabled_tools.clone(),
-            enabled_toolsets: config.enabled_toolsets.clone(),
+            mcp_enabled_tools: config.mcp_enabled_tools.clone(),
+            mcp_disabled_tools: config.mcp_disabled_tools.clone(),
+            mcp_enabled_toolsets: config.mcp_enabled_toolsets.clone(),
             jira: config.jira.clone(),
             confluence: config.confluence.clone(),
             gitlab: config.gitlab.clone(),
@@ -31,16 +31,16 @@ impl AppContext {
         }
     }
 
-    pub fn enabled_tools(&self) -> Option<&BTreeSet<String>> {
-        self.enabled_tools.as_ref()
+    pub fn mcp_enabled_tools(&self) -> Option<&BTreeSet<String>> {
+        self.mcp_enabled_tools.as_ref()
     }
 
-    pub fn disabled_tools(&self) -> &BTreeSet<String> {
-        &self.disabled_tools
+    pub fn mcp_disabled_tools(&self) -> &BTreeSet<String> {
+        &self.mcp_disabled_tools
     }
 
-    pub fn enabled_toolsets(&self) -> &BTreeSet<String> {
-        &self.enabled_toolsets
+    pub fn mcp_enabled_toolsets(&self) -> &BTreeSet<String> {
+        &self.mcp_enabled_toolsets
     }
 
     pub fn service_availability(&self) -> &ServiceAvailability {
@@ -119,8 +119,8 @@ mod tests {
     fn default_context_has_no_service_availability() {
         let context = AppContext::default();
 
-        assert_eq!(context.enabled_tools(), None);
-        assert!(context.disabled_tools().is_empty());
+        assert_eq!(context.mcp_enabled_tools(), None);
+        assert!(context.mcp_disabled_tools().is_empty());
         assert_eq!(context.jira_config(), None);
         assert_eq!(context.confluence_config(), None);
         assert_eq!(context.gitlab_config(), None);
@@ -142,9 +142,9 @@ mod tests {
         let jira = jira_config();
         let confluence = confluence_config();
         let config = RuntimeConfig {
-            enabled_tools: Some(enabled_tools.clone()),
-            disabled_tools: disabled_tools.clone(),
-            enabled_toolsets: enabled_toolsets.clone(),
+            mcp_enabled_tools: Some(enabled_tools.clone()),
+            mcp_disabled_tools: disabled_tools.clone(),
+            mcp_enabled_toolsets: enabled_toolsets.clone(),
             jira: Some(jira.clone()),
             confluence: Some(confluence.clone()),
             gitlab: None,
@@ -153,9 +153,9 @@ mod tests {
 
         let context = AppContext::from_config(&config);
 
-        assert_eq!(context.enabled_tools(), Some(&enabled_tools));
-        assert_eq!(context.disabled_tools(), &disabled_tools);
-        assert_eq!(context.enabled_toolsets(), &enabled_toolsets);
+        assert_eq!(context.mcp_enabled_tools(), Some(&enabled_tools));
+        assert_eq!(context.mcp_disabled_tools(), &disabled_tools);
+        assert_eq!(context.mcp_enabled_toolsets(), &enabled_toolsets);
         assert_eq!(context.jira_config(), Some(&jira));
         assert_eq!(context.confluence_config(), Some(&confluence));
         assert_eq!(context.gitlab_config(), None);

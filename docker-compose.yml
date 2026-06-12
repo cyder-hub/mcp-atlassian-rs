@@ -1,16 +1,16 @@
 services:
-  mcp-workhub-rs:
+  workhub-rs:
     build:
       context: .
       dockerfile: Dockerfile
-    image: mcp-workhub-rs:local
+    image: workhub-rs:local
     restart: unless-stopped
     environment:
       MCP_HTTP_PATH: "${MCP_HTTP_PATH:-/mcp}"
-      TOOL_PROFILE: "${TOOL_PROFILE:-basic}"
-      TOOLSETS: "${TOOLSETS:-}"
-      ENABLED_TOOLS: "${ENABLED_TOOLS:-}"
-      DISABLED_TOOLS: "${DISABLED_TOOLS:-}"
+      MCP_TOOL_PROFILE: "${MCP_TOOL_PROFILE:-basic}"
+      MCP_TOOLSETS: "${MCP_TOOLSETS:-}"
+      MCP_ENABLED_TOOLS: "${MCP_ENABLED_TOOLS:-}"
+      MCP_DISABLED_TOOLS: "${MCP_DISABLED_TOOLS:-}"
       MCP_TOOL_CALL_DEBUG: "${MCP_TOOL_CALL_DEBUG:-false}"
       RUST_LOG: "${RUST_LOG:-}"
       JIRA_URL: "${JIRA_URL:-}"

@@ -63,6 +63,34 @@ impl SmokeArgs {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CliSmokeCommand {
+    service: CliSmokeService,
+}
+
+#[derive(Debug, Clone, Args, PartialEq, Eq)]
+pub struct CliSmokeArgs {
+    #[arg(value_enum, default_value_t = CliSmokeService::All)]
+    pub service: CliSmokeService,
+}
+
+impl CliSmokeArgs {
+    pub fn into_command(self) -> CliSmokeCommand {
+        CliSmokeCommand {
+            service: self.service,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum CliSmokeService {
+    All,
+    Jira,
+    Confluence,
+    #[value(name = "gitlab")]
+    GitLab,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SmokeService {
     Jira,
@@ -150,6 +178,57 @@ pub async fn run_all() -> XtaskResult<i32> {
     Ok(0)
 }
 
+pub async fn run_cli(command: CliSmokeCommand) -> XtaskResult<i32> {
+    match run_cli_inner(command).await {
+        Ok(()) => Ok(0),
+        Err(error) => {
+            eprintln!("CLI smoke failed: {error}");
+            Ok(1)
+        }
+    }
+}
+
+async fn run_cli_inner(command: CliSmokeCommand) -> Result<(), String> {
+    let binary = build_mcp_binary()?;
+    let services: &[SmokeService] = match command.service {
+        CliSmokeService::All => &[
+            SmokeService::Jira,
+            SmokeService::Confluence,
+            SmokeService::GitLab,
+        ],
+        CliSmokeService::Jira => &[SmokeService::Jira],
+        CliSmokeService::Confluence => &[SmokeService::Confluence],
+        CliSmokeService::GitLab => &[SmokeService::GitLab],
+    };
+
+    for service in services {
+        run_cli_service(*service, &binary).await?;
+    }
+
+    Ok(())
+}
+
+async fn run_cli_service(service: SmokeService, binary: &PathBuf) -> Result<(), String> {
+    let server = MockServer::start(service).await?;
+    let url = server.url.clone();
+    let result = async {
+        run_cli_text_smoke(service, binary, &url)?;
+        run_cli_json_smoke(service, binary, &url)?;
+        Ok::<(), String>(())
+    }
+    .await;
+    server.shutdown().await;
+    result?;
+
+    let mcp_control_server = MockServer::start(service).await?;
+    let mcp_control_url = mcp_control_server.url.clone();
+    let result =
+        run_cli_mcp_controls_ignored_smoke(service, binary, &mcp_control_url, &mcp_control_server)
+            .await;
+    mcp_control_server.shutdown().await;
+    result
+}
+
 async fn run_inner(command: SmokeCommand) -> Result<(), String> {
     let binary = build_mcp_binary()?;
     let server = MockServer::start(command.service).await?;
@@ -193,7 +272,7 @@ fn build_mcp_binary() -> Result<PathBuf, String> {
         .ok_or_else(|| "xtask manifest directory has no parent".to_string())?
         .to_path_buf();
     let status = Command::new("cargo")
-        .args(["build", "--quiet", "--bin", "mcp-workhub-rs"])
+        .args(["build", "--quiet", "--bin", "workhub"])
         .current_dir(&workspace_root)
         .status()
         .map_err(|error| format!("failed to run cargo build: {error}"))?;
@@ -202,9 +281,9 @@ fn build_mcp_binary() -> Result<PathBuf, String> {
     }
 
     let binary_name = if cfg!(windows) {
-        "mcp-workhub-rs.exe"
+        "workhub.exe"
     } else {
-        "mcp-workhub-rs"
+        "workhub"
     };
     Ok(workspace_root
         .join("target")
@@ -494,6 +573,25 @@ fn mock_confluence_response(method: Method, path: &str, _body: Option<Value>) ->
                 "ancestors": [{"id": "100", "title": "Home"}],
                 "metadata": {"labels": {"results": [{"name": "smoke"}]}},
                 "_links": {"webui": "/spaces/ENG/pages/123/Roadmap"}
+            }),
+        ),
+        (Method::POST, "/rest/api/content") => json_response(
+            StatusCode::OK,
+            json!({
+                "id": "124",
+                "title": "CLI Smoke",
+                "type": "page",
+                "status": "current",
+                "space": {"key": "ENG", "name": "Engineering"},
+                "body": {
+                    "storage": {
+                        "value": "<h1>CLI Smoke</h1>",
+                        "representation": "storage"
+                    }
+                },
+                "version": {"number": 1},
+                "ancestors": [],
+                "_links": {"webui": "/spaces/ENG/pages/124/CLI-Smoke"}
             }),
         ),
         _ => json_response(
@@ -931,6 +1029,158 @@ async fn run_restricted(
     Ok(())
 }
 
+fn run_cli_text_smoke(service: SmokeService, binary: &PathBuf, url: &str) -> Result<(), String> {
+    let (args, expected) = match service {
+        SmokeService::Jira => (
+            vec![
+                "jira",
+                "issue",
+                "get",
+                "ABC-1",
+                "--fields",
+                "summary,status",
+            ],
+            "key: ABC-1",
+        ),
+        SmokeService::Confluence => (vec!["confluence", "page", "get", "--id", "123"], "Roadmap"),
+        SmokeService::GitLab => (
+            vec!["gitlab", "project", "get", "group/project"],
+            "path_with_namespace: group/project",
+        ),
+    };
+    let output = run_cli_process(binary, cli_smoke_env(service, url, None), &args)?;
+    assert_cli_success_text(&output, expected, service, "default text")?;
+    println!("{} CLI text smoke passed", service.display_name());
+    Ok(())
+}
+
+fn run_cli_json_smoke(service: SmokeService, binary: &PathBuf, url: &str) -> Result<(), String> {
+    let (args, check): (Vec<&str>, fn(&Value) -> bool) = match service {
+        SmokeService::Jira => (
+            vec![
+                "--json",
+                "jira",
+                "issue",
+                "comment",
+                "add",
+                "ABC-1",
+                "--body",
+                "CLI smoke",
+            ],
+            |value| value.get("id").and_then(Value::as_str) == Some("10"),
+        ),
+        SmokeService::Confluence => (
+            vec![
+                "--json",
+                "confluence",
+                "page",
+                "create",
+                "--space",
+                "ENG",
+                "--title",
+                "CLI Smoke",
+                "--content",
+                "# CLI Smoke",
+            ],
+            |value| {
+                value
+                    .get("page")
+                    .and_then(|page| page.get("title"))
+                    .and_then(Value::as_str)
+                    == Some("CLI Smoke")
+            },
+        ),
+        SmokeService::GitLab => (
+            vec![
+                "--json",
+                "gitlab",
+                "mr",
+                "create",
+                "group/project",
+                "--source",
+                "feature/smoke",
+                "--target",
+                "main",
+                "--title",
+                "CLI Smoke MR",
+            ],
+            |value| value.get("title").and_then(Value::as_str) == Some("CLI Smoke MR"),
+        ),
+    };
+    let output = run_cli_process(binary, cli_smoke_env(service, url, None), &args)?;
+    let value = assert_cli_success_json(&output, service, "json")?;
+    if !check(&value) {
+        return Err(format!(
+            "{} CLI JSON smoke returned unexpected payload: {value}",
+            service.display_name()
+        ));
+    }
+    println!("{} CLI JSON smoke passed", service.display_name());
+    Ok(())
+}
+
+async fn run_cli_mcp_controls_ignored_smoke(
+    service: SmokeService,
+    binary: &PathBuf,
+    url: &str,
+    server: &MockServer,
+) -> Result<(), String> {
+    let (tool_name, args, method, path, expected) = match service {
+        SmokeService::Jira => (
+            "jira_add_issue_comment",
+            vec![
+                "jira", "issue", "comment", "add", "ABC-1", "--body", "blocked",
+            ],
+            Method::POST,
+            "/rest/api/2/issue/ABC-1/comment",
+            "id: 10",
+        ),
+        SmokeService::Confluence => (
+            "confluence_create_page",
+            vec![
+                "confluence",
+                "page",
+                "create",
+                "--space",
+                "ENG",
+                "--title",
+                "Blocked",
+                "--content",
+                "blocked",
+            ],
+            Method::POST,
+            "/rest/api/content",
+            "Page created successfully",
+        ),
+        SmokeService::GitLab => (
+            "gitlab_create_merge_request",
+            vec![
+                "gitlab",
+                "mr",
+                "create",
+                "group/project",
+                "--source",
+                "feature/smoke",
+                "--target",
+                "main",
+                "--title",
+                "Blocked",
+            ],
+            Method::POST,
+            "/api/v4/projects/group%2Fproject/merge_requests",
+            "Blocked",
+        ),
+    };
+    let output = run_cli_process(binary, cli_smoke_env(service, url, Some(tool_name)), &args)?;
+    assert_cli_success_text(&output, expected, service, "MCP controls ignored")?;
+    assert_request(server, method, path).await?;
+    println!(
+        "{} CLI MCP-control isolation smoke passed",
+        service.display_name()
+    );
+    Ok(())
+}
+
 fn smoke_env(service: SmokeService, url: &str, restricted: bool) -> EnvMap {
     let mut env = EnvMap::new();
     match service {
@@ -939,12 +1189,12 @@ fn smoke_env(service: SmokeService, url: &str, restricted: bool) -> EnvMap {
             env.insert("JIRA_PERSONAL_TOKEN".to_string(), JIRA_TOKEN.to_string());
             env.insert("JIRA_SSL_VERIFY".to_string(), "false".to_string());
             env.insert(
-                "TOOLSETS".to_string(),
+                "MCP_TOOLSETS".to_string(),
                 "jira_issue_worklogs_read,jira_agile_boards_read,jira_sprints_read,jira_issue_metrics_read,jira_issue_sla_read".to_string(),
             );
             if restricted {
                 env.insert(
-                    "DISABLED_TOOLS".to_string(),
+                    "MCP_DISABLED_TOOLS".to_string(),
                     "jira_create_issue".to_string(),
                 );
             }
@@ -957,12 +1207,12 @@ fn smoke_env(service: SmokeService, url: &str, restricted: bool) -> EnvMap {
             );
             env.insert("CONFLUENCE_SSL_VERIFY".to_string(), "false".to_string());
             env.insert(
-                "TOOLSETS".to_string(),
+                "MCP_TOOLSETS".to_string(),
                 "confluence_content_write".to_string(),
             );
             if restricted {
                 env.insert(
-                    "DISABLED_TOOLS".to_string(),
+                    "MCP_DISABLED_TOOLS".to_string(),
                     "confluence_create_page".to_string(),
                 );
             }
@@ -976,18 +1226,169 @@ fn smoke_env(service: SmokeService, url: &str, restricted: bool) -> EnvMap {
                 "group/project".to_string(),
             );
             env.insert(
-                "TOOLSETS".to_string(),
+                "MCP_TOOLSETS".to_string(),
                 "gitlab_merge_requests_write,gitlab_merge_requests_merge".to_string(),
             );
             if restricted {
                 env.insert(
-                    "DISABLED_TOOLS".to_string(),
+                    "MCP_DISABLED_TOOLS".to_string(),
                     "gitlab_create_merge_request".to_string(),
                 );
             }
         }
     }
     env
+}
+
+fn cli_smoke_env(service: SmokeService, url: &str, disabled_tool: Option<&str>) -> EnvMap {
+    let mut env = EnvMap::new();
+    match service {
+        SmokeService::Jira => {
+            env.insert("JIRA_URL".to_string(), url.to_string());
+            env.insert("JIRA_PERSONAL_TOKEN".to_string(), JIRA_TOKEN.to_string());
+            env.insert("JIRA_SSL_VERIFY".to_string(), "false".to_string());
+        }
+        SmokeService::Confluence => {
+            env.insert("CONFLUENCE_URL".to_string(), url.to_string());
+            env.insert(
+                "CONFLUENCE_PERSONAL_TOKEN".to_string(),
+                CONFLUENCE_TOKEN.to_string(),
+            );
+            env.insert("CONFLUENCE_SSL_VERIFY".to_string(), "false".to_string());
+        }
+        SmokeService::GitLab => {
+            env.insert("GITLAB_URL".to_string(), url.to_string());
+            env.insert("GITLAB_TOKEN".to_string(), GITLAB_TOKEN.to_string());
+            env.insert("GITLAB_SSL_VERIFY".to_string(), "false".to_string());
+            env.insert(
+                "GITLAB_PROJECTS_FILTER".to_string(),
+                "group/project".to_string(),
+            );
+        }
+    }
+    env.insert("MCP_TOOL_PROFILE".to_string(), "custom".to_string());
+    if let Some(disabled_tool) = disabled_tool {
+        env.insert("MCP_DISABLED_TOOLS".to_string(), disabled_tool.to_string());
+    }
+    env
+}
+
+#[derive(Debug)]
+struct CliProcessOutput {
+    status_code: Option<i32>,
+    stdout: String,
+    stderr: String,
+}
+
+fn run_cli_process(
+    binary: &PathBuf,
+    env: EnvMap,
+    args: &[&str],
+) -> Result<CliProcessOutput, String> {
+    let output = Command::new(binary)
+        .arg("cli")
+        .args(args)
+        .env_clear()
+        .envs(env)
+        .current_dir(std::env::temp_dir())
+        .output()
+        .map_err(|error| format!("failed to run CLI smoke command {args:?}: {error}"))?;
+
+    Ok(CliProcessOutput {
+        status_code: output.status.code(),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
+}
+
+fn assert_cli_success_text(
+    output: &CliProcessOutput,
+    expected: &str,
+    service: SmokeService,
+    label: &str,
+) -> Result<(), String> {
+    assert_no_cli_secret(output, service)?;
+    if output.status_code != Some(0) {
+        return Err(format!(
+            "{} CLI {label} exited {:?}; stdout={} stderr={}",
+            service.display_name(),
+            output.status_code,
+            output.stdout,
+            output.stderr
+        ));
+    }
+    if !output.stderr.trim().is_empty() {
+        return Err(format!(
+            "{} CLI {label} wrote stderr on success: {}",
+            service.display_name(),
+            output.stderr
+        ));
+    }
+    let trimmed = output.stdout.trim();
+    if trimmed.is_empty() {
+        return Err(format!(
+            "{} CLI {label} wrote empty stdout",
+            service.display_name()
+        ));
+    }
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        return Err(format!(
+            "{} CLI {label} default output should be text, got JSON-looking stdout: {}",
+            service.display_name(),
+            output.stdout
+        ));
+    }
+    if !output.stdout.contains(expected) {
+        return Err(format!(
+            "{} CLI {label} stdout missing {expected:?}: {}",
+            service.display_name(),
+            output.stdout
+        ));
+    }
+    Ok(())
+}
+
+fn assert_cli_success_json(
+    output: &CliProcessOutput,
+    service: SmokeService,
+    label: &str,
+) -> Result<Value, String> {
+    assert_no_cli_secret(output, service)?;
+    if output.status_code != Some(0) {
+        return Err(format!(
+            "{} CLI {label} exited {:?}; stdout={} stderr={}",
+            service.display_name(),
+            output.status_code,
+            output.stdout,
+            output.stderr
+        ));
+    }
+    if !output.stderr.trim().is_empty() {
+        return Err(format!(
+            "{} CLI {label} wrote stderr on success: {}",
+            service.display_name(),
+            output.stderr
+        ));
+    }
+    serde_json::from_str(output.stdout.trim()).map_err(|error| {
+        format!(
+            "{} CLI {label} stdout was not JSON: {error}; stdout={}",
+            service.display_name(),
+            output.stdout
+        )
+    })
+}
+
+fn assert_no_cli_secret(output: &CliProcessOutput, service: SmokeService) -> Result<(), String> {
+    for secret in [JIRA_TOKEN, CONFLUENCE_TOKEN, GITLAB_TOKEN] {
+        if output.stdout.contains(secret) || output.stderr.contains(secret) {
+            return Err(format!(
+                "{} CLI smoke leaked fixture secret in process output",
+                service.display_name()
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn assert_required_tools(
@@ -1058,6 +1459,24 @@ async fn assert_no_request(
     } else {
         Err(format!(
             "restricted write tool reached mock service: {blocked:?}"
+        ))
+    }
+}
+
+async fn assert_request(
+    server: &MockServer,
+    method: Method,
+    path_prefix: &str,
+) -> Result<(), String> {
+    let requests = server.requests().await;
+    let found = requests.iter().any(|request| {
+        request.method == method && request.path.split('?').next() == Some(path_prefix)
+    });
+    if found {
+        Ok(())
+    } else {
+        Err(format!(
+            "CLI request did not reach mock service: method={method} path={path_prefix} requests={requests:?}"
         ))
     }
 }
@@ -1534,6 +1953,14 @@ fn normalize_path(path: &str) -> String {
 }
 
 impl SmokeService {
+    fn display_name(self) -> &'static str {
+        match self {
+            Self::Jira => "Jira",
+            Self::Confluence => "Confluence",
+            Self::GitLab => "GitLab",
+        }
+    }
+
     fn default_path(self) -> &'static str {
         "/mcp"
     }

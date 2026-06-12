@@ -170,6 +170,13 @@ pub enum ToolAccess {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolGuardError {
+    UnknownTool,
+    DisabledTool,
+    ServiceUnavailable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ToolMetadata {
     pub name: &'static str,
     pub service: ToolService,
@@ -376,12 +383,65 @@ pub fn guard_tool_call_with_metadata<F>(
 where
     F: Fn(&str) -> Option<ToolMetadata>,
 {
-    let Some(metadata) = metadata_for(name) else {
-        return Err(tool_unavailable_error());
-    };
+    guard_tool_access_with_metadata(name, context, metadata_for)
+        .map(|_| ())
+        .map_err(|_| tool_unavailable_error())
+}
 
-    if !is_tool_enabled(metadata, context) || !is_service_available(metadata, context) {
-        return Err(tool_unavailable_error());
+pub fn guard_operation_access(
+    name: &str,
+    context: &AppContext,
+) -> Result<ToolMetadata, ToolGuardError> {
+    guard_operation_access_with_metadata(name, context, metadata_for)
+}
+
+pub fn guard_tool_access_with_metadata<F>(
+    name: &str,
+    context: &AppContext,
+    metadata_for: F,
+) -> Result<ToolMetadata, ToolGuardError>
+where
+    F: Fn(&str) -> Option<ToolMetadata>,
+{
+    let metadata = metadata_for(name).ok_or(ToolGuardError::UnknownTool)?;
+    guard_tool_metadata(metadata, context)?;
+    Ok(metadata)
+}
+
+pub fn guard_operation_access_with_metadata<F>(
+    name: &str,
+    context: &AppContext,
+    metadata_for: F,
+) -> Result<ToolMetadata, ToolGuardError>
+where
+    F: Fn(&str) -> Option<ToolMetadata>,
+{
+    let metadata = metadata_for(name).ok_or(ToolGuardError::UnknownTool)?;
+    guard_operation_metadata(metadata, context)?;
+    Ok(metadata)
+}
+
+pub fn guard_tool_metadata(
+    metadata: ToolMetadata,
+    context: &AppContext,
+) -> Result<(), ToolGuardError> {
+    if !is_tool_enabled(metadata, context) {
+        return Err(ToolGuardError::DisabledTool);
+    }
+
+    if !is_service_available(metadata, context) {
+        return Err(ToolGuardError::ServiceUnavailable);
+    }
+
+    Ok(())
+}
+
+pub fn guard_operation_metadata(
+    metadata: ToolMetadata,
+    context: &AppContext,
+) -> Result<(), ToolGuardError> {
+    if !is_service_available(metadata, context) {
+        return Err(ToolGuardError::ServiceUnavailable);
     }
 
     Ok(())
@@ -392,12 +452,12 @@ fn is_discoverable(metadata: ToolMetadata, context: &AppContext) -> bool {
 }
 
 fn is_tool_enabled(metadata: ToolMetadata, context: &AppContext) -> bool {
-    if context.disabled_tools().contains(metadata.name) {
+    if context.mcp_disabled_tools().contains(metadata.name) {
         return false;
     }
 
     context
-        .enabled_tools()
+        .mcp_enabled_tools()
         .is_some_and(|enabled_tools| enabled_tools.contains(metadata.name))
         || is_toolset_enabled(metadata, context)
 }
@@ -414,7 +474,7 @@ fn is_service_available(metadata: ToolMetadata, context: &AppContext) -> bool {
 
 fn is_toolset_enabled(metadata: ToolMetadata, context: &AppContext) -> bool {
     match metadata.toolset {
-        Some(toolset) => context.enabled_toolsets().contains(toolset),
+        Some(toolset) => context.mcp_enabled_toolsets().contains(toolset),
         None => true,
     }
 }

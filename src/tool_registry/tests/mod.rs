@@ -581,11 +581,11 @@ fn default_profile_exposes_basic_tools_only() {
 fn toolsets_are_additive_and_exact_tools_can_add_or_remove() {
     let context = context(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_tools: Some(BTreeSet::from([
+        mcp_enabled_tools: Some(BTreeSet::from([
             tools::JIRA_DELETE_ISSUE_TOOL_NAME.to_string()
         ])),
-        disabled_tools: BTreeSet::from([tools::JIRA_CREATE_ISSUE_TOOL_NAME.to_string()]),
-        enabled_toolsets: BTreeSet::from(["jira_agile_boards_read".to_string()]),
+        mcp_disabled_tools: BTreeSet::from([tools::JIRA_CREATE_ISSUE_TOOL_NAME.to_string()]),
+        mcp_enabled_toolsets: BTreeSet::from(["jira_agile_boards_read".to_string()]),
         ..runtime_config()
     });
 
@@ -654,14 +654,14 @@ fn service_availability_filters_jira_confluence_and_gitlab_tools() {
 fn gitlab_profile_toolsets_and_disabled_tools_are_enforced() {
     let basic = context(RuntimeConfig {
         gitlab: Some(gitlab_config()),
-        disabled_tools: BTreeSet::from([
+        mcp_disabled_tools: BTreeSet::from([
             gitlab_tools::GITLAB_GET_MERGE_REQUEST_TOOL_NAME.to_string()
         ]),
         ..runtime_config()
     });
     let developer = context(RuntimeConfig {
         gitlab: Some(gitlab_config()),
-        enabled_toolsets: toolsets_for_profile("developer")
+        mcp_enabled_toolsets: toolsets_for_profile("developer")
             .unwrap()
             .iter()
             .map(|toolset| (*toolset).to_string())
@@ -699,7 +699,7 @@ fn gitlab_profile_toolsets_and_disabled_tools_are_enforced() {
 fn guard_fails_closed_for_unknown_or_disabled_tools() {
     let context = context(RuntimeConfig {
         jira: Some(jira_config()),
-        disabled_tools: BTreeSet::from(["synthetic_jira_write".to_string()]),
+        mcp_disabled_tools: BTreeSet::from(["synthetic_jira_write".to_string()]),
         ..runtime_config()
     });
 

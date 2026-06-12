@@ -291,6 +291,8 @@ async fn safe_attachment_helper_filters_images_and_redacts_content_errors() {
             "ABC-1".to_string(),
             AttachmentFetchOptions {
                 attachment_ids: Some(vec!["1".to_string(), "2".to_string()]),
+                filename_contains: None,
+                media_type: None,
                 include_content: true,
                 images_only: false,
                 max_bytes: 20,
@@ -303,6 +305,19 @@ async fn safe_attachment_helper_filters_images_and_redacts_content_errors() {
             "ABC-1".to_string(),
             AttachmentFetchOptions {
                 images_only: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let filtered = client
+        .get_safe_issue_attachments(
+            "ABC-1".to_string(),
+            AttachmentFetchOptions {
+                filename_contains: Some("FILE".to_string()),
+                media_type: Some("image/png".to_string()),
+                include_content: true,
+                max_bytes: 20,
                 ..Default::default()
             },
         )
@@ -344,6 +359,8 @@ async fn safe_attachment_helper_filters_images_and_redacts_content_errors() {
     assert!(error.contains("client=abc"));
     assert_eq!(images_only["count"], 1);
     assert_eq!(images_only["attachments"][0]["filename"], "file.png");
+    assert_eq!(filtered["count"], 1);
+    assert_eq!(filtered["attachments"][0]["filename"], "file.png");
     assert_eq!(oversized["count"], 1);
     assert!(
         oversized["attachments"][0]["content_error"]["message"]
@@ -358,5 +375,12 @@ async fn safe_attachment_helper_filters_images_and_redacts_content_errors() {
     assert_eq!(
         requests[2].path,
         "/secure/attachment/2/notes.txt?token=secret&client=abc"
+    );
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.path.contains("/secure/attachment/2/"))
+            .count(),
+        1
     );
 }

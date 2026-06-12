@@ -5,6 +5,8 @@ impl ConfluenceClient {
         &self,
         page_id: &str,
         include_title: bool,
+        from_date: Option<&str>,
+        to_date: Option<&str>,
     ) -> Result<ConfluencePageViews, UpstreamError> {
         if self.config.deployment != ConfluenceDeployment::Cloud {
             return Err(UpstreamError::invalid_input(
@@ -20,10 +22,17 @@ impl ConfluenceClient {
         } else {
             None
         };
+        let mut query = Vec::new();
+        if let Some(from_date) = from_date.filter(|value| !value.trim().is_empty()) {
+            query.push(("from".to_string(), from_date.to_string()));
+        }
+        if let Some(to_date) = to_date.filter(|value| !value.trim().is_empty()) {
+            query.push(("to".to_string(), to_date.to_string()));
+        }
         let mut views: ConfluencePageViews = self
             .get_json(
                 &format!("/rest/api/analytics/content/{page_id}/views"),
-                Vec::new(),
+                query,
             )
             .await?;
         views.page_id = Some(page_id);

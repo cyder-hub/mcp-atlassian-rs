@@ -1,19 +1,23 @@
 mod atlassian;
+mod cli;
 mod config;
 mod confluence;
 mod context;
+mod env_loader;
 mod error;
 mod gitlab;
 mod jira;
 mod mcp;
 mod mcp_confluence_helpers;
 mod mcp_errors;
+mod operations;
 mod tool_registry;
 mod upstream;
 
 use std::{net::SocketAddr, sync::Arc};
 
 use axum::{Json, Router, routing::get};
+use clap::{Args, Parser, Subcommand};
 use config::HttpConfigOverrides;
 use context::AppContext;
 use mcp::WorkhubMcpServer;
@@ -34,21 +38,23 @@ type AppResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 const ENV_RUST_LOG: &str = "RUST_LOG";
 const ENV_TOOL_CALL_DEBUG: &str = "MCP_TOOL_CALL_DEBUG";
 const DEFAULT_RUST_LOG: &str = "info";
-const TOOL_CALL_DEBUG_RUST_LOG: &str = "mcp_workhub_rs::mcp=debug,mcp_workhub_rs=info,rmcp=info";
+const TOOL_CALL_DEBUG_RUST_LOG: &str = "workhub_rs::mcp=debug,workhub_rs=info,rmcp=info";
 
 const USAGE: &str = "\
 Usage:
-  mcp-workhub-rs -v
-  mcp-workhub-rs [stdio]
-  mcp-workhub-rs streamhttp [--host <host>] [--port <port>] [--path <path>] [--env-file <path>]
+  workhub -v
+  workhub [stdio]
+  workhub streamhttp [--host <host>] [--port <port>] [--path <path>] [--env-file <path>]
+  workhub cli [--env-file <path>] [--json] [--pretty] <provider> <resource> <action> ...
 
 Commands:
   stdio       Run the MCP server over standard input/output.
   streamhttp  Run the MCP server over streamable HTTP.
+  cli         Run a resource-oriented Workhub CLI command.
 
 Options:
   -v                 Print the package version.
-  --env-file <path>  Load environment variables from the specified file (streamhttp only).
+  --env-file <path>  Load environment variables from the specified file (streamhttp and cli only).
                      Alternatively, set the ENV_FILE environment variable.
 
 Defaults:
@@ -59,8 +65,13 @@ Defaults:
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RunMode {
+    Version,
     Stdio,
-    StreamHttp(HttpConfigOverrides, Option<String>),
+    StreamHttp {
+        overrides: HttpConfigOverrides,
+        env_file: Option<String>,
+    },
+    Cli(Box<cli::CliArgs>),
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -68,68 +79,115 @@ struct HealthResponse {
     status: &'static str,
 }
 
+#[derive(Debug, Parser)]
+#[command(name = "workhub", version, disable_help_subcommand = true)]
+struct RootArgs {
+    #[command(subcommand)]
+    command: RootCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum RootCommand {
+    Streamhttp(StreamHttpArgs),
+    Cli(cli::CliArgs),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Args)]
+struct StreamHttpArgs {
+    #[arg(long)]
+    host: Option<String>,
+    #[arg(long)]
+    port: Option<u16>,
+    #[arg(long)]
+    path: Option<String>,
+    #[arg(long, value_name = "path")]
+    env_file: Option<String>,
+}
+
+#[derive(Debug)]
+enum ParseArgsError {
+    Usage(String),
+    Clap(clap::Error),
+}
+
 #[tokio::main]
 async fn main() -> AppResult<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
 
-    if args.iter().any(|arg| arg == "-h" || arg == "--help") {
-        println!("{USAGE}");
-        return Ok(());
-    }
+    let mode = match parse_args(args) {
+        Ok(mode) => mode,
+        Err(ParseArgsError::Usage(message)) => {
+            eprintln!("{message}\n\n{USAGE}");
+            std::process::exit(2);
+        }
+        Err(ParseArgsError::Clap(error)) => error.exit(),
+    };
 
-    if args.len() == 1 && args[0] == "-v" {
+    if mode == RunMode::Version {
         println!("{}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
 
-    let mode = match parse_args(args) {
-        Ok(mode) => mode,
-        Err(message) => {
-            eprintln!("{message}\n\n{USAGE}");
-            std::process::exit(2);
-        }
-    };
-
-    if let RunMode::StreamHttp(_, ref env_file_path) = mode {
-        let env_path = env_file_path
-            .clone()
-            .or_else(|| std::env::var("ENV_FILE").ok());
-        if let Some(path) = env_path {
-            if let Err(error) = dotenvy::from_filename(&path) {
-                eprintln!("Failed to load env file {}: {}", path, error);
-                std::process::exit(1);
+    if mode.loads_dotenv() {
+        match env_loader::load_dotenv(mode.explicit_env_file()) {
+            Ok(Some(path)) if mode.reports_dotenv_success() => {
+                eprintln!("Loaded environment variables from: {}", path.display())
             }
-            eprintln!("Loaded environment variables from: {}", path);
-        } else if let Ok(path) = dotenvy::dotenv() {
-            eprintln!("Loaded environment variables from: {}", path.display());
+            Ok(Some(_)) => {}
+            Ok(None) => {}
+            Err(error) => {
+                if let RunMode::Cli(args) = &mode {
+                    exit_cli_error(cli::render_config_error(args, error.to_string()));
+                }
+                eprintln!("{error}");
+                std::process::exit(3);
+            }
         }
     }
 
-    let runtime_config = match mode.http_overrides() {
-        Some(overrides) => config::RuntimeConfig::from_env_with_http_overrides(overrides)?,
-        None => config::RuntimeConfig::from_env()?,
+    let runtime_config = match &mode {
+        RunMode::Cli(args) => config::RuntimeConfig::from_env_for_cli().unwrap_or_else(|error| {
+            exit_cli_error(cli::render_config_error(args, error.to_string()))
+        }),
+        RunMode::StreamHttp { overrides, .. } => {
+            config::RuntimeConfig::from_env_with_http_overrides(overrides.clone())?
+        }
+        RunMode::Version | RunMode::Stdio => config::RuntimeConfig::from_env()?,
     };
     let context = Arc::new(AppContext::from_config(&runtime_config));
 
-    init_tracing()?;
-    log_runtime_context(&context);
+    if !matches!(mode, RunMode::Cli(_)) {
+        init_tracing()?;
+        log_runtime_context(&context);
+    }
 
     match mode {
+        RunMode::Version => unreachable!("version mode returned before runtime startup"),
         RunMode::Stdio => run_stdio(context).await?,
-        RunMode::StreamHttp(_, _) => run_streamhttp(runtime_config.http, context).await?,
+        RunMode::StreamHttp { .. } => run_streamhttp(runtime_config.http, context).await?,
+        RunMode::Cli(args) => {
+            if let Err(error) = cli::run(*args, context).await {
+                exit_cli_error(error);
+            }
+        }
     }
 
     Ok(())
 }
 
+fn exit_cli_error(error: cli::CliRunError) -> ! {
+    eprintln!("{error}");
+    std::process::exit(error.exit_code());
+}
+
 fn log_runtime_context(context: &AppContext) {
-    let enabled_tools = context.enabled_tools().map(|tools| tools.len());
+    let mcp_enabled_tools = context.mcp_enabled_tools().map(|tools| tools.len());
     let availability = context.service_availability();
 
     tracing::info!(
-        enabled_tools,
-        disabled_tools = context.disabled_tools().len(),
-        enabled_toolsets = context.enabled_toolsets().len(),
+        mcp_enabled_tools,
+        mcp_disabled_tools = context.mcp_disabled_tools().len(),
+        mcp_enabled_toolsets = context.mcp_enabled_toolsets().len(),
         jira_configured = availability.jira,
         confluence_configured = availability.confluence,
         gitlab_configured = availability.gitlab,
@@ -138,11 +196,20 @@ fn log_runtime_context(context: &AppContext) {
 }
 
 impl RunMode {
-    fn http_overrides(&self) -> Option<HttpConfigOverrides> {
+    fn explicit_env_file(&self) -> Option<&str> {
         match self {
-            Self::Stdio => None,
-            Self::StreamHttp(overrides, _) => Some(overrides.clone()),
+            Self::StreamHttp { env_file, .. } => env_file.as_deref(),
+            Self::Cli(args) => args.env_file.as_deref(),
+            Self::Version | Self::Stdio => None,
         }
+    }
+
+    fn loads_dotenv(&self) -> bool {
+        matches!(self, Self::StreamHttp { .. } | Self::Cli(_))
+    }
+
+    fn reports_dotenv_success(&self) -> bool {
+        matches!(self, Self::StreamHttp { .. })
     }
 }
 
@@ -230,7 +297,7 @@ where
     DEFAULT_RUST_LOG.to_string()
 }
 
-fn parse_args<I, S>(args: I) -> Result<RunMode, String>
+fn parse_args<I, S>(args: I) -> Result<RunMode, ParseArgsError>
 where
     I: IntoIterator<Item = S>,
     S: Into<String>,
@@ -239,98 +306,34 @@ where
     match args.first().map(String::as_str) {
         None => Ok(RunMode::Stdio),
         Some("stdio") if args.len() <= 1 => Ok(RunMode::Stdio),
-        Some("stdio") => Err(format!("unexpected argument for stdio: `{}`", args[1])),
-        Some("streamhttp") => {
-            let (overrides, env_file) = parse_streamhttp_args(&args[1..])?;
-            Ok(RunMode::StreamHttp(overrides, env_file))
+        Some("stdio") => Err(ParseArgsError::Usage(format!(
+            "unexpected argument for stdio: `{}`",
+            args[1]
+        ))),
+        Some("-v") if args.len() == 1 => Ok(RunMode::Version),
+        _ => {
+            let argv = std::iter::once("workhub".to_string()).chain(args);
+            let root = RootArgs::try_parse_from(argv).map_err(ParseArgsError::Clap)?;
+            Ok(match root.command {
+                RootCommand::Streamhttp(args) => RunMode::StreamHttp {
+                    overrides: HttpConfigOverrides {
+                        host: args.host,
+                        port: args.port,
+                        path: args.path,
+                    },
+                    env_file: args.env_file,
+                },
+                RootCommand::Cli(args) => RunMode::Cli(Box::new(args)),
+            })
         }
-        Some(command) => Err(format!("unknown command `{command}`")),
     }
-}
-
-fn parse_streamhttp_args(args: &[String]) -> Result<(HttpConfigOverrides, Option<String>), String> {
-    let mut overrides = HttpConfigOverrides::default();
-    let mut env_file = None;
-    let mut index = 0;
-
-    while index < args.len() {
-        match args[index].as_str() {
-            "--host" => {
-                index += 1;
-                overrides.host = Some(
-                    args.get(index)
-                        .ok_or_else(|| "--host requires a value".to_string())?
-                        .clone(),
-                );
-            }
-            "--port" => {
-                index += 1;
-                let value = args
-                    .get(index)
-                    .ok_or_else(|| "--port requires a value".to_string())?;
-                overrides.port = Some(parse_cli_port(value)?);
-            }
-            "--path" => {
-                index += 1;
-                overrides.path = Some(
-                    args.get(index)
-                        .ok_or_else(|| "--path requires a value".to_string())?
-                        .clone(),
-                );
-            }
-            "--env-file" => {
-                index += 1;
-                env_file = Some(
-                    args.get(index)
-                        .ok_or_else(|| "--env-file requires a path".to_string())?
-                        .clone(),
-                );
-            }
-            arg if arg.starts_with("--host=") => {
-                overrides.host = Some(
-                    arg.strip_prefix("--host=")
-                        .expect("prefix was just checked")
-                        .to_string(),
-                );
-            }
-            arg if arg.starts_with("--port=") => {
-                let value = arg
-                    .strip_prefix("--port=")
-                    .expect("prefix was just checked");
-                overrides.port = Some(parse_cli_port(value)?);
-            }
-            arg if arg.starts_with("--path=") => {
-                overrides.path = Some(
-                    arg.strip_prefix("--path=")
-                        .expect("prefix was just checked")
-                        .to_string(),
-                );
-            }
-            arg if arg.starts_with("--env-file=") => {
-                env_file = Some(
-                    arg.strip_prefix("--env-file=")
-                        .expect("prefix was just checked")
-                        .to_string(),
-                );
-            }
-            arg => return Err(format!("unexpected streamhttp argument `{arg}`")),
-        }
-        index += 1;
-    }
-
-    Ok((overrides, env_file))
-}
-
-fn parse_cli_port(value: &str) -> Result<u16, String> {
-    value
-        .parse()
-        .map_err(|_| format!("invalid --port value `{value}`"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::{DEFAULT_HTTP_HOST, DEFAULT_HTTP_PATH, DEFAULT_HTTP_PORT};
+    use clap::error::ErrorKind;
 
     fn env_provider<'a>(
         pairs: &'a [(&'a str, &'a str)],
@@ -352,13 +355,18 @@ mod tests {
     fn parse_args_defaults_to_stdio() {
         assert_eq!(parse_args(Vec::<String>::new()).unwrap(), RunMode::Stdio);
         assert_eq!(parse_args(["stdio"]).unwrap(), RunMode::Stdio);
+        assert!(!parse_args(Vec::<String>::new()).unwrap().loads_dotenv());
+        assert!(!parse_args(["stdio"]).unwrap().loads_dotenv());
     }
 
     #[test]
     fn parse_args_accepts_streamhttp_env_defaults() {
         assert_eq!(
             parse_args(["streamhttp"]).unwrap(),
-            RunMode::StreamHttp(HttpConfigOverrides::default(), None)
+            RunMode::StreamHttp {
+                overrides: HttpConfigOverrides::default(),
+                env_file: None,
+            }
         );
         assert_eq!(
             merge_http(HttpConfigOverrides::default()),
@@ -384,20 +392,20 @@ mod tests {
 
         assert_eq!(
             mode,
-            RunMode::StreamHttp(
-                HttpConfigOverrides {
+            RunMode::StreamHttp {
+                overrides: HttpConfigOverrides {
                     host: Some("0.0.0.0".to_string()),
                     port: Some(9000),
                     path: Some("alt-mcp".to_string()),
                 },
-                None
-            )
+                env_file: None,
+            }
         );
 
         assert_eq!(
             merge_http(match mode {
-                RunMode::StreamHttp(overrides, _) => overrides,
-                RunMode::Stdio => unreachable!("test parsed streamhttp"),
+                RunMode::StreamHttp { overrides, .. } => overrides,
+                _ => unreachable!("test parsed streamhttp"),
             }),
             config::HttpConfig {
                 host: "0.0.0.0".to_string(),
@@ -409,22 +417,97 @@ mod tests {
 
     #[test]
     fn parse_args_rejects_invalid_streamhttp_port() {
-        assert!(parse_args(["streamhttp", "--port", "bad"]).is_err());
-        assert!(parse_args(["streamhttp", "--port=bad"]).is_err());
+        for args in [
+            ["streamhttp", "--port", "bad"].as_slice(),
+            ["streamhttp", "--port=bad"].as_slice(),
+        ] {
+            let Err(ParseArgsError::Clap(error)) = parse_args(args.iter().copied()) else {
+                panic!("expected clap error");
+            };
+            assert_eq!(error.kind(), ErrorKind::ValueValidation);
+        }
     }
 
     #[test]
     fn parse_args_rejects_unknown_command() {
-        assert!(parse_args(["http"]).is_err());
-        assert!(parse_args(["acceptance", "jira", "--preflight"]).is_err());
-        assert!(parse_args(["smoke", "jira", "restricted"]).is_err());
+        for args in [
+            ["http"].as_slice(),
+            ["acceptance", "jira", "--preflight"].as_slice(),
+            ["smoke", "jira", "restricted"].as_slice(),
+        ] {
+            let Err(ParseArgsError::Clap(error)) = parse_args(args.iter().copied()) else {
+                panic!("expected clap error");
+            };
+            assert_eq!(error.kind(), ErrorKind::InvalidSubcommand);
+        }
     }
 
     #[test]
     fn parse_args_rejects_sse_transport() {
-        let error = parse_args(["sse"]).unwrap_err();
+        let Err(ParseArgsError::Clap(error)) = parse_args(["sse"]) else {
+            panic!("expected clap error");
+        };
 
-        assert_eq!(error, "unknown command `sse`");
+        assert_eq!(error.kind(), ErrorKind::InvalidSubcommand);
+    }
+
+    #[test]
+    fn parse_args_keeps_stdio_fast_path_errors_out_of_clap() {
+        let Err(ParseArgsError::Usage(error)) = parse_args(["stdio", "--env-file", ".env"]) else {
+            panic!("expected fast-path usage error");
+        };
+
+        assert_eq!(error, "unexpected argument for stdio: `--env-file`");
+    }
+
+    #[test]
+    fn parse_args_accepts_cli_mode_and_env_file() {
+        let mode = parse_args([
+            "cli",
+            "--env-file",
+            "workhub.env",
+            "--json",
+            "jira",
+            "project",
+            "list",
+        ])
+        .unwrap();
+
+        assert!(mode.loads_dotenv());
+        assert!(!mode.reports_dotenv_success());
+        assert_eq!(mode.explicit_env_file(), Some("workhub.env"));
+        assert!(matches!(mode, RunMode::Cli(_)));
+    }
+
+    #[test]
+    fn parse_args_reports_dotenv_success_only_for_streamhttp() {
+        assert!(
+            parse_args(["streamhttp", "--env-file", "workhub.env"])
+                .unwrap()
+                .reports_dotenv_success()
+        );
+        assert!(
+            !parse_args([
+                "cli",
+                "--env-file",
+                "workhub.env",
+                "jira",
+                "project",
+                "list"
+            ])
+            .unwrap()
+            .reports_dotenv_success()
+        );
+    }
+
+    #[test]
+    fn parse_args_allows_nested_cli_help_without_top_level_help_scan() {
+        let Err(ParseArgsError::Clap(error)) = parse_args(["cli", "jira", "issue", "--help"])
+        else {
+            panic!("expected clap display help");
+        };
+
+        assert_eq!(error.kind(), ErrorKind::DisplayHelp);
     }
 
     #[test]

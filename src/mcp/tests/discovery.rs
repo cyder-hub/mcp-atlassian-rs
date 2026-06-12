@@ -21,8 +21,9 @@ fn server_info_uses_app_context() {
     let info = server.get_info();
     let instructions = info.instructions.unwrap_or_default();
 
-    assert!(instructions.contains("TOOL_PROFILE"));
-    assert!(instructions.contains("mcp-workhub-rs exposes 85 Jira, Confluence, and GitLab"));
+    assert!(instructions.contains("MCP_TOOL_PROFILE"));
+    assert!(instructions.contains("resource CLI ignores MCP tool visibility controls"));
+    assert!(instructions.contains("workhub-rs exposes 85 Jira, Confluence, and GitLab"));
     assert!(instructions.contains("docs/support-matrix.md"));
 }
 
@@ -40,7 +41,7 @@ fn tool_discovery_uses_public_names_not_handler_method_names() {
         jira: Some(jira_config()),
         confluence: Some(confluence_config()),
         gitlab: Some(gitlab_config()),
-        enabled_toolsets: tool_registry::all_toolsets(),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
 
@@ -63,7 +64,7 @@ fn tool_discovery_uses_public_names_not_handler_method_names() {
 #[test]
 fn tool_discovery_applies_gitlab_service_profile_and_disabled_filters() {
     let unavailable = server_with_config(RuntimeConfig {
-        enabled_toolsets: tool_registry::all_toolsets(),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
     assert!(
@@ -79,7 +80,7 @@ fn tool_discovery_applies_gitlab_service_profile_and_disabled_filters() {
 
     let basic = server_with_config(RuntimeConfig {
         gitlab: Some(gitlab_config()),
-        disabled_tools: BTreeSet::from([
+        mcp_disabled_tools: BTreeSet::from([
             gitlab_tools::GITLAB_GET_MERGE_REQUEST_TOOL_NAME.to_string()
         ]),
         ..runtime_config()
@@ -104,7 +105,7 @@ fn tool_discovery_applies_gitlab_service_profile_and_disabled_filters() {
 
     let developer = server_with_config(RuntimeConfig {
         gitlab: Some(gitlab_config()),
-        enabled_toolsets: tool_registry::toolsets_for_profile("developer")
+        mcp_enabled_toolsets: tool_registry::toolsets_for_profile("developer")
             .unwrap()
             .iter()
             .map(|toolset| (*toolset).to_string())
@@ -145,12 +146,12 @@ fn tool_discovery_lists_jira_default_tools_when_configured() {
 fn tool_discovery_applies_toolsets_and_disabled_tools_to_real_jira_tools() {
     let fields_only = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_toolsets: BTreeSet::from(["jira_fields_read".to_string()]),
+        mcp_enabled_toolsets: BTreeSet::from(["jira_fields_read".to_string()]),
         ..runtime_config()
     });
     let transition_disabled = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        disabled_tools: BTreeSet::from([tools::JIRA_TRANSITION_ISSUE_TOOL_NAME.to_string()]),
+        mcp_disabled_tools: BTreeSet::from([tools::JIRA_TRANSITION_ISSUE_TOOL_NAME.to_string()]),
         ..runtime_config()
     });
 
@@ -176,7 +177,7 @@ fn tool_discovery_applies_toolsets_and_disabled_tools_to_real_jira_tools() {
 fn jira_extension_tool_discovery_uses_registered_metadata_at_mcp_boundary() {
     let agile_only = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_toolsets: BTreeSet::from(["jira_agile_boards_read".to_string()]),
+        mcp_enabled_toolsets: BTreeSet::from(["jira_agile_boards_read".to_string()]),
         ..runtime_config()
     });
     let default_profile = server_with_config(RuntimeConfig {
@@ -205,7 +206,7 @@ fn jira_extension_tool_discovery_uses_registered_metadata_at_mcp_boundary() {
 fn jira_product_dependent_tools_have_routes_and_registered_metadata() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_toolsets: tool_registry::all_toolsets(),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
     let names = current_tool_names(&server);
@@ -285,7 +286,7 @@ fn jira_product_dependent_toolsets_filter_to_expected_tools() {
     for (toolset, expected) in cases {
         let server = server_with_config(RuntimeConfig {
             jira: Some(jira_config()),
-            enabled_toolsets: BTreeSet::from([toolset.to_string()]),
+            mcp_enabled_toolsets: BTreeSet::from([toolset.to_string()]),
             ..runtime_config()
         });
         let names = current_tool_names(&server);
@@ -324,7 +325,7 @@ fn all_business_tools_have_metadata_routes_docs_and_control_plane_policy() {
         jira: Some(jira_config()),
         confluence: Some(confluence_config()),
         gitlab: Some(gitlab_config()),
-        enabled_toolsets: tool_registry::all_toolsets(),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
     let read_write_names = current_tool_names(&read_write);
@@ -403,7 +404,7 @@ fn tool_discovery_uses_registry_metadata_as_single_source() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
         confluence: Some(confluence_config()),
-        enabled_toolsets: tool_registry::all_toolsets(),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
 
@@ -445,7 +446,7 @@ fn tool_discovery_uses_registry_metadata_as_single_source() {
 fn confluence_scaffold_routes_are_discoverable_with_registered_metadata() {
     let server = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config()),
-        enabled_toolsets: tool_registry::all_toolsets(),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
     let names = current_tool_names(&server);
@@ -469,7 +470,7 @@ fn confluence_scaffold_routes_are_discoverable_with_registered_metadata() {
 fn confluence_content_toolsets_are_exact_at_mcp_boundary() {
     let read_write = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config()),
-        enabled_toolsets: BTreeSet::from([
+        mcp_enabled_toolsets: BTreeSet::from([
             "confluence_content_read".to_string(),
             "confluence_content_write".to_string(),
             "confluence_content_update".to_string(),
@@ -481,7 +482,7 @@ fn confluence_content_toolsets_are_exact_at_mcp_boundary() {
     });
     let unknown_only = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config()),
-        enabled_toolsets: BTreeSet::from(["confluence_unknown".to_string()]),
+        mcp_enabled_toolsets: BTreeSet::from(["confluence_unknown".to_string()]),
         ..runtime_config()
     });
     let read_write_names = current_tool_names(&read_write);
@@ -520,7 +521,7 @@ fn confluence_content_toolsets_are_exact_at_mcp_boundary() {
 fn confluence_attachments_toolsets_are_split_at_mcp_boundary() {
     let read_write = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config()),
-        enabled_toolsets: BTreeSet::from([
+        mcp_enabled_toolsets: BTreeSet::from([
             "confluence_attachments_read".to_string(),
             "confluence_attachments_write".to_string(),
             "confluence_attachments_delete".to_string(),
@@ -554,16 +555,16 @@ fn confluence_enabled_tools_filter_and_direct_call_guard_use_registered_metadata
     let unavailable = WorkhubMcpServer::default();
     let search_only = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config()),
-        enabled_tools: Some(BTreeSet::from([
+        mcp_enabled_tools: Some(BTreeSet::from([
             confluence_tools::CONFLUENCE_SEARCH_TOOL_NAME.to_string(),
         ])),
-        enabled_toolsets: BTreeSet::new(),
+        mcp_enabled_toolsets: BTreeSet::new(),
         ..runtime_config()
     });
     let create_disabled = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config()),
-        enabled_toolsets: tool_registry::all_toolsets(),
-        disabled_tools: BTreeSet::from([
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
+        mcp_disabled_tools: BTreeSet::from([
             confluence_tools::CONFLUENCE_CREATE_PAGE_TOOL_NAME.to_string()
         ]),
         ..runtime_config()
@@ -596,10 +597,10 @@ fn confluence_enabled_tools_filter_and_direct_call_guard_use_registered_metadata
 fn tool_discovery_applies_enabled_tools_filter_to_business_tools() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_tools: Some(BTreeSet::from(
+        mcp_enabled_tools: Some(BTreeSet::from(
             [tools::JIRA_GET_ISSUE_TOOL_NAME.to_string()],
         )),
-        enabled_toolsets: BTreeSet::new(),
+        mcp_enabled_toolsets: BTreeSet::new(),
         ..runtime_config()
     });
 
@@ -618,7 +619,7 @@ fn tool_discovery_applies_enabled_tools_filter_to_business_tools() {
 fn tool_discovery_applies_toolsets_to_business_tools() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_toolsets: BTreeSet::new(),
+        mcp_enabled_toolsets: BTreeSet::new(),
         ..runtime_config()
     });
 
@@ -647,7 +648,7 @@ fn tool_discovery_applies_future_service_and_toolset_policy_at_server_boundary()
     });
     let jira_fields_only = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_toolsets: BTreeSet::from(["jira_fields_read".to_string()]),
+        mcp_enabled_toolsets: BTreeSet::from(["jira_fields_read".to_string()]),
         ..runtime_config()
     });
 
@@ -688,12 +689,12 @@ fn tool_discovery_applies_future_service_and_toolset_policy_at_server_boundary()
 fn direct_call_guard_applies_disabled_tools_at_server_boundary() {
     let disabled_server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        disabled_tools: BTreeSet::from(["synthetic_jira_write".to_string()]),
+        mcp_disabled_tools: BTreeSet::from(["synthetic_jira_write".to_string()]),
         ..runtime_config()
     });
     let read_write_server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_toolsets: tool_registry::all_toolsets(),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
 
@@ -718,7 +719,7 @@ fn direct_call_guard_applies_disabled_tools_at_server_boundary() {
 fn jira_extension_direct_call_guard_uses_registered_metadata_at_mcp_boundary() {
     let disabled_server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        disabled_tools: BTreeSet::from(
+        mcp_disabled_tools: BTreeSet::from(
             jira_extension_write_tool_names()
                 .into_iter()
                 .map(str::to_string)
@@ -761,7 +762,7 @@ fn jira_extension_direct_call_guard_uses_registered_metadata_at_mcp_boundary() {
 fn jira_general_extension_cross_check_lists_all_names_and_routes() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_toolsets: tool_registry::all_toolsets(),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
     let names = jira_general_extension_tool_names();
@@ -782,7 +783,7 @@ fn jira_general_extension_cross_check_lists_all_names_and_routes() {
 fn jira_general_toolset_and_enabled_tools_filters_are_exact_at_mcp_boundary() {
     let projects_only = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_toolsets: BTreeSet::from([
+        mcp_enabled_toolsets: BTreeSet::from([
             "jira_projects_read".to_string(),
             "jira_projects_metadata_read".to_string(),
             "jira_project_versions_write".to_string(),
@@ -791,10 +792,10 @@ fn jira_general_toolset_and_enabled_tools_filters_are_exact_at_mcp_boundary() {
     });
     let worklog_only = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_tools: Some(BTreeSet::from([
+        mcp_enabled_tools: Some(BTreeSet::from([
             tools::JIRA_LIST_ISSUE_WORKLOGS_TOOL_NAME.to_string()
         ])),
-        enabled_toolsets: BTreeSet::new(),
+        mcp_enabled_toolsets: BTreeSet::new(),
         ..runtime_config()
     });
 

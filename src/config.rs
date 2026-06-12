@@ -12,19 +12,19 @@ pub const DEFAULT_HTTP_HOST: &str = "127.0.0.1";
 pub const DEFAULT_HTTP_PORT: u16 = 8000;
 pub const DEFAULT_HTTP_PATH: &str = "/mcp";
 
-pub const ENV_TOOL_PROFILE: &str = "TOOL_PROFILE";
-pub const ENV_ENABLED_TOOLS: &str = "ENABLED_TOOLS";
-pub const ENV_DISABLED_TOOLS: &str = "DISABLED_TOOLS";
-pub const ENV_TOOLSETS: &str = "TOOLSETS";
+pub const ENV_MCP_TOOL_PROFILE: &str = "MCP_TOOL_PROFILE";
+pub const ENV_MCP_ENABLED_TOOLS: &str = "MCP_ENABLED_TOOLS";
+pub const ENV_MCP_DISABLED_TOOLS: &str = "MCP_DISABLED_TOOLS";
+pub const ENV_MCP_TOOLSETS: &str = "MCP_TOOLSETS";
 pub const ENV_HTTP_HOST: &str = "MCP_HTTP_HOST";
 pub const ENV_HTTP_PORT: &str = "MCP_HTTP_PORT";
 pub const ENV_HTTP_PATH: &str = "MCP_HTTP_PATH";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeConfig {
-    pub enabled_tools: Option<BTreeSet<String>>,
-    pub disabled_tools: BTreeSet<String>,
-    pub enabled_toolsets: BTreeSet<String>,
+    pub mcp_enabled_tools: Option<BTreeSet<String>>,
+    pub mcp_disabled_tools: BTreeSet<String>,
+    pub mcp_enabled_toolsets: BTreeSet<String>,
     pub jira: Option<JiraConfig>,
     pub confluence: Option<ConfluenceConfig>,
     pub gitlab: Option<GitlabConfig>,
@@ -34,6 +34,10 @@ pub struct RuntimeConfig {
 impl RuntimeConfig {
     pub fn from_env() -> Result<Self, ConfigError> {
         Self::from_var_provider(|key| std::env::var(key), HttpConfigSource::Default)
+    }
+
+    pub fn from_env_for_cli() -> Result<Self, ConfigError> {
+        Self::from_var_provider_for_cli(|key| std::env::var(key))
     }
 
     pub fn from_env_with_http_overrides(
@@ -52,11 +56,12 @@ impl RuntimeConfig {
     where
         F: FnMut(&str) -> Result<String, E>,
     {
-        let tool_profile = parse_tool_profile(get_var(ENV_TOOL_PROFILE).ok().as_deref())?;
-        let enabled_tools = parse_enabled_tools(get_var(ENV_ENABLED_TOOLS).ok().as_deref());
-        let disabled_tools = parse_csv_names(get_var(ENV_DISABLED_TOOLS).ok().as_deref());
-        let enabled_toolsets =
-            parse_toolsets(&tool_profile, get_var(ENV_TOOLSETS).ok().as_deref())?;
+        let mcp_tool_profile =
+            parse_mcp_tool_profile(get_var(ENV_MCP_TOOL_PROFILE).ok().as_deref())?;
+        let mcp_enabled_tools = parse_enabled_tools(get_var(ENV_MCP_ENABLED_TOOLS).ok().as_deref());
+        let mcp_disabled_tools = parse_csv_names(get_var(ENV_MCP_DISABLED_TOOLS).ok().as_deref());
+        let mcp_enabled_toolsets =
+            parse_mcp_toolsets(&mcp_tool_profile, get_var(ENV_MCP_TOOLSETS).ok().as_deref())?;
         let jira = JiraConfig::from_var_provider(&mut get_var)?;
         let confluence = ConfluenceConfig::from_var_provider(&mut get_var)?;
         let gitlab = GitlabConfig::from_var_provider(&mut get_var)?;
@@ -68,13 +73,32 @@ impl RuntimeConfig {
         };
 
         Ok(Self {
-            enabled_tools,
-            disabled_tools,
-            enabled_toolsets,
+            mcp_enabled_tools,
+            mcp_disabled_tools,
+            mcp_enabled_toolsets,
             jira,
             confluence,
             gitlab,
             http,
+        })
+    }
+
+    pub fn from_var_provider_for_cli<F, E>(mut get_var: F) -> Result<Self, ConfigError>
+    where
+        F: FnMut(&str) -> Result<String, E>,
+    {
+        let jira = JiraConfig::from_var_provider(&mut get_var)?;
+        let confluence = ConfluenceConfig::from_var_provider(&mut get_var)?;
+        let gitlab = GitlabConfig::from_var_provider(&mut get_var)?;
+
+        Ok(Self {
+            mcp_enabled_tools: None,
+            mcp_disabled_tools: BTreeSet::new(),
+            mcp_enabled_toolsets: default_toolsets(),
+            jira,
+            confluence,
+            gitlab,
+            http: HttpConfig::default(),
         })
     }
 }
@@ -88,9 +112,9 @@ pub enum HttpConfigSource {
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            enabled_tools: None,
-            disabled_tools: BTreeSet::new(),
-            enabled_toolsets: default_toolsets(),
+            mcp_enabled_tools: None,
+            mcp_disabled_tools: BTreeSet::new(),
+            mcp_enabled_toolsets: default_toolsets(),
             jira: None,
             confluence: None,
             gitlab: None,
@@ -164,7 +188,7 @@ fn parse_enabled_tools(value: Option<&str>) -> Option<BTreeSet<String>> {
     if tools.is_empty() { None } else { Some(tools) }
 }
 
-fn parse_tool_profile(value: Option<&str>) -> Result<String, ConfigError> {
+fn parse_mcp_tool_profile(value: Option<&str>) -> Result<String, ConfigError> {
     let profile = value
         .and_then(|value| {
             let value = value.trim();
@@ -178,7 +202,7 @@ fn parse_tool_profile(value: Option<&str>) -> Result<String, ConfigError> {
 
     if toolsets_for_profile(&profile).is_none() {
         return Err(ConfigError::InvalidToolProfile {
-            variable: ENV_TOOL_PROFILE,
+            variable: ENV_MCP_TOOL_PROFILE,
             value: profile,
         });
     }
@@ -186,7 +210,7 @@ fn parse_tool_profile(value: Option<&str>) -> Result<String, ConfigError> {
     Ok(profile)
 }
 
-fn parse_toolsets(profile: &str, value: Option<&str>) -> Result<BTreeSet<String>, ConfigError> {
+fn parse_mcp_toolsets(profile: &str, value: Option<&str>) -> Result<BTreeSet<String>, ConfigError> {
     let mut result = profile_toolsets(profile);
     let tokens = parse_csv_tokens(value);
     let all = all_toolsets();
@@ -200,7 +224,7 @@ fn parse_toolsets(profile: &str, value: Option<&str>) -> Result<BTreeSet<String>
             }
             _ => {
                 return Err(ConfigError::InvalidToolset {
-                    variable: ENV_TOOLSETS,
+                    variable: ENV_MCP_TOOLSETS,
                     value: token,
                 });
             }
@@ -306,112 +330,156 @@ mod tests {
         )
     }
 
+    fn cli_config_from_pairs(pairs: &[(&str, &str)]) -> Result<RuntimeConfig, ConfigError> {
+        let vars: BTreeMap<String, String> = pairs
+            .iter()
+            .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+            .collect();
+
+        RuntimeConfig::from_var_provider_for_cli(|key| vars.get(key).cloned().ok_or(()))
+    }
+
     #[test]
     fn runtime_config_defaults_to_control_plane_values() {
         let config = config_from_pairs(&[]).unwrap();
 
-        assert_eq!(config.enabled_tools, None);
-        assert!(config.disabled_tools.is_empty());
-        assert_eq!(config.enabled_toolsets, default_toolsets());
+        assert_eq!(config.mcp_enabled_tools, None);
+        assert!(config.mcp_disabled_tools.is_empty());
+        assert_eq!(config.mcp_enabled_toolsets, default_toolsets());
         assert_eq!(config.jira, None);
         assert_eq!(config.confluence, None);
         assert_eq!(config.http, HttpConfig::default());
     }
 
     #[test]
-    fn enabled_and_disabled_tools_are_trimmed_and_empty_values_are_ignored() {
+    fn mcp_enabled_and_disabled_tools_are_trimmed_and_empty_values_are_ignored() {
         let config =
-            config_from_pairs(&[(ENV_ENABLED_TOOLS, " jira_search_issues, , get_issue ")]).unwrap();
-        let tools = config.enabled_tools.unwrap();
+            config_from_pairs(&[(ENV_MCP_ENABLED_TOOLS, " jira_search_issues, , get_issue ")])
+                .unwrap();
+        let tools = config.mcp_enabled_tools.unwrap();
 
         assert!(tools.contains("jira_search_issues"));
         assert!(tools.contains("get_issue"));
         assert_eq!(tools.len(), 2);
 
         assert_eq!(
-            config_from_pairs(&[(ENV_ENABLED_TOOLS, " , ")])
+            config_from_pairs(&[(ENV_MCP_ENABLED_TOOLS, " , ")])
                 .unwrap()
-                .enabled_tools,
+                .mcp_enabled_tools,
             None
         );
 
-        let disabled = config_from_pairs(&[(ENV_DISABLED_TOOLS, " jira_delete_issue, , typo ")])
-            .unwrap()
-            .disabled_tools;
+        let disabled =
+            config_from_pairs(&[(ENV_MCP_DISABLED_TOOLS, " jira_delete_issue, , typo ")])
+                .unwrap()
+                .mcp_disabled_tools;
         assert!(disabled.contains("jira_delete_issue"));
         assert!(disabled.contains("typo"));
         assert_eq!(disabled.len(), 2);
     }
 
     #[test]
-    fn tool_profile_defaults_to_basic_and_can_select_higher_profiles() {
+    fn legacy_unprefixed_tool_controls_are_ignored() {
+        let config = config_from_pairs(&[
+            ("TOOL_PROFILE", "full"),
+            ("TOOLSETS", "all"),
+            ("ENABLED_TOOLS", "jira_delete_issue"),
+            ("DISABLED_TOOLS", "jira_get_issue"),
+        ])
+        .unwrap();
+
+        assert_eq!(config.mcp_enabled_tools, None);
+        assert!(config.mcp_disabled_tools.is_empty());
+        assert_eq!(config.mcp_enabled_toolsets, default_toolsets());
+    }
+
+    #[test]
+    fn cli_config_ignores_mcp_tool_controls() {
+        let config = cli_config_from_pairs(&[
+            (ENV_MCP_TOOL_PROFILE, "not-a-profile"),
+            (ENV_MCP_TOOLSETS, "not-a-toolset"),
+            (ENV_MCP_ENABLED_TOOLS, "jira_delete_issue"),
+            (ENV_MCP_DISABLED_TOOLS, "jira_get_issue"),
+        ])
+        .unwrap();
+
+        assert_eq!(config.mcp_enabled_tools, None);
+        assert!(config.mcp_disabled_tools.is_empty());
+        assert_eq!(config.mcp_enabled_toolsets, default_toolsets());
+    }
+
+    #[test]
+    fn mcp_tool_profile_defaults_to_basic_and_can_select_higher_profiles() {
         assert_eq!(
-            config_from_pairs(&[]).unwrap().enabled_toolsets,
+            config_from_pairs(&[]).unwrap().mcp_enabled_toolsets,
             default_toolsets()
         );
         assert_eq!(
-            config_from_pairs(&[(ENV_TOOL_PROFILE, "developer")])
+            config_from_pairs(&[(ENV_MCP_TOOL_PROFILE, "developer")])
                 .unwrap()
-                .enabled_toolsets
+                .mcp_enabled_toolsets
                 .contains("jira_sprint_membership_write"),
             true
         );
         assert_eq!(
-            config_from_pairs(&[(ENV_TOOL_PROFILE, "manager")])
+            config_from_pairs(&[(ENV_MCP_TOOL_PROFILE, "manager")])
                 .unwrap()
-                .enabled_toolsets
+                .mcp_enabled_toolsets
                 .contains("jira_issues_delete"),
             true
         );
         assert_eq!(
-            config_from_pairs(&[(ENV_TOOL_PROFILE, "full")])
+            config_from_pairs(&[(ENV_MCP_TOOL_PROFILE, "full")])
                 .unwrap()
-                .enabled_toolsets,
+                .mcp_enabled_toolsets,
             all_toolsets()
         );
     }
 
     #[test]
-    fn unknown_tool_profile_is_rejected() {
-        let error = config_from_pairs(&[(ENV_TOOL_PROFILE, "admin")]).unwrap_err();
+    fn unknown_mcp_tool_profile_is_rejected() {
+        let error = config_from_pairs(&[(ENV_MCP_TOOL_PROFILE, "admin")]).unwrap_err();
 
         assert_eq!(
             error,
             ConfigError::InvalidToolProfile {
-                variable: ENV_TOOL_PROFILE,
+                variable: ENV_MCP_TOOL_PROFILE,
                 value: "admin".to_string(),
             }
         );
     }
 
     #[test]
-    fn toolsets_are_additive_to_profile_and_all_explicitly_enables_everything() {
-        let config = config_from_pairs(&[(ENV_TOOLSETS, "jira_sprints_write")]).unwrap();
+    fn mcp_toolsets_are_additive_to_profile_and_all_explicitly_enables_everything() {
+        let config = config_from_pairs(&[(ENV_MCP_TOOLSETS, "jira_sprints_write")]).unwrap();
         let mut expected = default_toolsets();
         expected.insert("jira_sprints_write".to_string());
 
-        assert_eq!(config.enabled_toolsets, expected);
+        assert_eq!(config.mcp_enabled_toolsets, expected);
 
         assert_eq!(
-            config_from_pairs(&[(ENV_TOOLSETS, "all")])
+            config_from_pairs(&[(ENV_MCP_TOOLSETS, "all")])
                 .unwrap()
-                .enabled_toolsets,
+                .mcp_enabled_toolsets,
             all_toolsets()
         );
     }
 
     #[test]
-    fn custom_profile_starts_empty_and_unknown_toolsets_are_rejected() {
-        let config = config_from_pairs(&[(ENV_TOOL_PROFILE, "custom")]).unwrap();
-        assert!(config.enabled_toolsets.is_empty());
+    fn custom_mcp_profile_starts_empty_and_unknown_toolsets_are_rejected() {
+        let config = config_from_pairs(&[(ENV_MCP_TOOL_PROFILE, "custom")]).unwrap();
+        assert!(config.mcp_enabled_toolsets.is_empty());
 
-        let error = config_from_pairs(&[(ENV_TOOL_PROFILE, "custom"), (ENV_TOOLSETS, "typo_name")])
-            .unwrap_err();
+        let error = config_from_pairs(&[
+            (ENV_MCP_TOOL_PROFILE, "custom"),
+            (ENV_MCP_TOOLSETS, "typo_name"),
+        ])
+        .unwrap_err();
 
         assert_eq!(
             error,
             ConfigError::InvalidToolset {
-                variable: ENV_TOOLSETS,
+                variable: ENV_MCP_TOOLSETS,
                 value: "typo_name".to_string(),
             }
         );

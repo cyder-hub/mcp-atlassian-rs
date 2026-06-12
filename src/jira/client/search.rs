@@ -1,5 +1,16 @@
 use super::*;
 
+const DEFAULT_ISSUE_SEARCH_FIELDS: &[&str] = &[
+    "key",
+    "summary",
+    "status",
+    "assignee",
+    "reporter",
+    "issuetype",
+    "priority",
+    "project",
+];
+
 impl JiraClient {
     pub async fn search(&self, request: SearchRequest) -> Result<Value, UpstreamError> {
         let limit = request.limit.unwrap_or(DEFAULT_LIMIT);
@@ -42,7 +53,7 @@ impl JiraClient {
                     "jql": jql,
                     "startAt": request.start_at.unwrap_or(0),
                     "maxResults": limit,
-                    "fields": request.fields.unwrap_or_default(),
+                    "fields": issue_search_fields_or_default(request.fields.clone()),
                     "expand": request.expand.unwrap_or_default(),
                 });
                 self.http
@@ -80,8 +91,8 @@ impl JiraClient {
         let mut body = json!({
             "jql": jql,
             "maxResults": limit,
+            "fields": issue_search_fields_or_default(request.fields.clone()),
         });
-        insert_optional(&mut body, "fields", request.fields.clone().map(Value::from));
         insert_optional(
             &mut body,
             "expand",
@@ -111,8 +122,8 @@ impl JiraClient {
             "jql": jql,
             "startAt": request.start_at.unwrap_or(0),
             "maxResults": limit,
+            "fields": issue_search_fields_or_default(request.fields.clone()),
         });
-        insert_optional(&mut body, "fields", request.fields.clone().map(Value::from));
         insert_optional(&mut body, "expand", request.expand.clone().map(Value::from));
 
         self.http
@@ -151,4 +162,13 @@ impl JiraClient {
             Ok(intersection)
         }
     }
+}
+
+fn issue_search_fields_or_default(fields: Option<Vec<String>>) -> Vec<String> {
+    fields.unwrap_or_else(|| {
+        DEFAULT_ISSUE_SEARCH_FIELDS
+            .iter()
+            .map(|field| (*field).to_string())
+            .collect()
+    })
 }

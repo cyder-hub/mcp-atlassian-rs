@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 0.4.0 - 2026-06-12
+
+### Added
+- Added the production `workhub cli` command surface for resource-oriented Jira, Confluence, and GitLab operations.
+- Added structured CLI output modes with text output by default, `--json`, `--pretty`, stdout-only success output, stderr-only errors, and documented exit-code categories.
+- Added CLI dotenv loading via `--env-file`, `ENV_FILE`, or default `.env` discovery for CLI and streamable HTTP modes.
+- Added shared operation dispatch and output rendering layers reused by MCP handlers and the CLI.
+- Added CLI documentation, support-matrix coverage, development tooling notes, smoke coverage, and a Workhub skill reference.
+
+### Changed
+- Removed legacy multi-user request-auth and session-auth paths; runtime credentials are now sourced from global service configuration only.
+- Updated Docker, Compose, CI, release, and smoke tooling to include the new CLI workflows and artifact checks.
+
+### Fixed
+- Kept successful env-file-backed CLI commands stdout-only by suppressing dotenv success diagnostics in CLI mode.
+- Rendered CLI startup configuration failures through the CLI error contract, including JSON formatting and config exit code `3`.
+
 ## 0.3.0 - 2026-06-10
 
 ### Added

@@ -273,6 +273,17 @@ pub struct JiraCreateIssueArgs {
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub components: Option<Value>,
     #[serde(default)]
+    #[schemars(description = "Issue priority name, for example High or Medium.")]
+    pub priority: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "Issue labels, as a comma-separated string or array.")]
+    #[schemars(schema_with = "string_list_or_string_schema")]
+    pub labels: Option<Value>,
+    #[serde(default)]
+    #[schemars(description = "Fix version names, as a comma-separated string or array.")]
+    #[schemars(schema_with = "string_list_or_string_schema")]
+    pub fix_versions: Option<Value>,
+    #[serde(default)]
     #[schemars(
         description = "Additional Jira field values keyed by field id or field name, such as customfield_10000."
     )]
@@ -367,6 +378,10 @@ pub struct JiraCreateProjectVersionArgs {
     pub release_date: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
+    pub released: Option<bool>,
+    #[serde(default)]
+    pub archived: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -384,7 +399,8 @@ pub struct JiraGetUserArgs {
     #[schemars(
         description = "Use me/currentuser(), a Jira Cloud accountId, or a Server/Data Center username."
     )]
-    pub user_identifier: String,
+    #[serde(default)]
+    pub user_identifier: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -490,6 +506,9 @@ pub struct JiraCreateRemoteIssueLinkArgs {
     #[schemars(description = "Icon URL shown by Jira for the remote link.")]
     pub icon_url: Option<String>,
     #[serde(default)]
+    #[schemars(description = "Optional icon title shown by Jira for the remote link.")]
+    pub icon_title: Option<String>,
+    #[serde(default)]
     #[schemars(description = "Optional Jira remote-link status object.")]
     #[schemars(schema_with = "object_schema")]
     pub status: Option<Value>,
@@ -509,6 +528,12 @@ pub struct JiraGetIssueAttachmentsArgs {
     )]
     #[schemars(schema_with = "string_list_or_string_schema")]
     pub attachment_ids: Option<Value>,
+    #[serde(default)]
+    #[schemars(description = "Optional case-insensitive filename substring filter.")]
+    pub filename_contains: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "Optional attachment media type filter, for example image/png.")]
+    pub media_type: Option<String>,
     #[serde(default)]
     #[schemars(
         description = "When true, include bounded inline attachment content in structuredContent."
@@ -539,6 +564,9 @@ pub struct JiraListAgileBoardsArgs {
     #[serde(default)]
     #[schemars(description = "Optional Jira Software board type filter, such as scrum or kanban.")]
     pub board_type: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "Optional case-insensitive board-name substring filter.")]
+    pub name: Option<String>,
     #[serde(default)]
     #[schemars(description = "Offset pagination start index for Jira Software boards.")]
     pub start_at: Option<u64>,
@@ -662,6 +690,11 @@ pub struct JiraGetServiceDeskForProjectArgs {
 pub struct JiraListServiceDeskQueuesArgs {
     #[schemars(description = "Jira Service Management service desk id.")]
     pub service_desk_id: String,
+    #[serde(default)]
+    #[schemars(
+        description = "When false, remove queue issue-count fields from the returned values."
+    )]
+    pub include_counts: Option<bool>,
     #[serde(default)]
     #[schemars(description = "Offset pagination start index for service desk queues.")]
     pub start_at: Option<u64>,

@@ -308,6 +308,9 @@ pub struct ConfluenceGetPageDiffArgs {
     pub page_id: String,
     pub from_version: u64,
     pub to_version: u64,
+    #[serde(default)]
+    #[schemars(description = "Optional number of unchanged context lines around diff hunks.")]
+    pub context_lines: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -320,6 +323,12 @@ pub struct ConfluenceGetPageViewAnalyticsArgs {
         description = "When true, include the Confluence page title in the Cloud-only analytics response."
     )]
     pub include_title: Option<bool>,
+    #[serde(default, rename = "from")]
+    #[schemars(description = "Optional analytics start date accepted by Confluence Cloud.")]
+    pub from_date: Option<String>,
+    #[serde(default, rename = "to")]
+    #[schemars(description = "Optional analytics end date accepted by Confluence Cloud.")]
+    pub to_date: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -382,6 +391,9 @@ pub struct ConfluenceDownloadAttachmentArgs {
     #[serde(deserialize_with = "string_or_number")]
     #[schemars(schema_with = "string_or_number_schema")]
     pub attachment_id: String,
+    #[serde(default)]
+    #[schemars(description = "Maximum bytes of inline content to include for this attachment.")]
+    pub max_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -389,6 +401,16 @@ pub struct ConfluenceDownloadContentAttachmentsArgs {
     #[serde(deserialize_with = "string_or_number")]
     #[schemars(schema_with = "string_or_number_schema")]
     pub content_id: String,
+    #[serde(default)]
+    pub filename: Option<String>,
+    #[serde(default)]
+    pub media_type: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "Maximum bytes of inline content to include per attachment.")]
+    pub max_bytes: Option<u64>,
+    #[serde(default)]
+    #[schemars(description = "Maximum number of attachments to download for this content.")]
+    pub limit: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -403,6 +425,9 @@ pub struct ConfluenceGetContentImageAttachmentsArgs {
     #[serde(deserialize_with = "string_or_number")]
     #[schemars(schema_with = "string_or_number_schema")]
     pub content_id: String,
+    #[serde(default)]
+    #[schemars(description = "Maximum bytes of inline content to include per image attachment.")]
+    pub max_bytes: Option<u64>,
 }
 
 #[cfg(test)]

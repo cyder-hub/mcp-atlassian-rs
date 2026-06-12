@@ -865,8 +865,7 @@ mod tests {
     }
 
     fn generate_temp_mtls_identity(name: &str) -> ClientTlsIdentityConfig {
-        let base =
-            std::env::temp_dir().join(format!("mcp-workhub-rs-{name}-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("workhub-rs-{name}-{}", std::process::id()));
         fs::create_dir_all(&base).unwrap();
         let cert_path = base.join("client.crt");
         let key_path = base.join("client.key");

@@ -1,8 +1,8 @@
-# mcp-workhub-rs
+# workhub-rs
 
-Rust-native MCP server for work systems. It currently exposes Jira, Confluence, and GitLab merge-request tools through stdio or streamable HTTP.
+Rust-native MCP server and resource-oriented CLI for work systems. It exposes Jira, Confluence, and GitLab merge-request tools through MCP stdio, streamable HTTP, and `workhub cli ...`.
 
-`mcp-workhub-rs` provides 85 business tools: 46 Jira tools, 24 Confluence tools, and 15 GitLab merge-request tools. Jira and Confluence have representative real acceptance coverage; GitLab support is currently local/mock validated only. See [docs/support-matrix.md](docs/support-matrix.md) for exact per-tool status.
+`workhub-rs` provides 85 business capabilities: 46 Jira, 24 Confluence, and 15 GitLab merge-request capabilities. The MCP surface exposes them as tools; the CLI exposes the same shared operation layer as resource commands. Jira and Confluence have representative real acceptance coverage; GitLab support is currently local/mock validated only. See [docs/support-matrix.md](docs/support-matrix.md) for exact per-tool status.
 
 ## Quick Start
 
@@ -15,10 +15,10 @@ cargo build --release
 The binary will be available at:
 
 ```text
-target/release/mcp-workhub-rs
+target/release/workhub
 ```
 
-Configure only the services you want to expose. `TOOL_PROFILE` defaults to `basic`, so the smallest setup only needs service credentials.
+Configure only the services you want to expose through MCP. `MCP_TOOL_PROFILE` defaults to `basic`, so the smallest setup only needs service credentials.
 
 Jira Cloud:
 
@@ -71,6 +71,16 @@ cargo run -- streamhttp --host 127.0.0.1 --port 8000 --path /mcp
 
 The streamable HTTP MCP endpoint is `http://127.0.0.1:8000/mcp`; the health endpoint is `http://127.0.0.1:8000/healthz`.
 
+Run a CLI command with the same environment configuration:
+
+```bash
+cargo run -- cli jira issue get ABC-1 --fields summary,status
+cargo run -- cli --json confluence page get --id 123456
+cargo run -- cli gitlab mr list group/project --state opened
+```
+
+See [docs/cli.md](docs/cli.md) for the full command reference and output contract.
+
 ## MCP stdio JSON
 
 Most desktop MCP clients accept a `mcp.json` shape like this. Use an absolute path for `command`, and remove any service block you do not need.
@@ -78,11 +88,11 @@ Most desktop MCP clients accept a `mcp.json` shape like this. Use an absolute pa
 ```json
 {
   "mcpServers": {
-    "mcp-workhub": {
-      "command": "/absolute/path/to/mcp-workhub-rs",
+    "workhub-rs": {
+      "command": "/absolute/path/to/workhub",
       "args": ["stdio"],
       "env": {
-        "TOOL_PROFILE": "basic",
+        "MCP_TOOL_PROFILE": "basic",
         "JIRA_URL": "https://your-company.atlassian.net",
         "JIRA_USERNAME": "user@example.com",
         "JIRA_API_TOKEN": "<jira-api-token>",
@@ -102,7 +112,7 @@ For GitLab read-only use, choose a token with `read_api`. For GitLab create/upda
 
 ## Tool Access
 
-Tool visibility is controlled by profiles, toolsets, exact enablement, exact disablement, and service availability. Unknown profiles or toolsets fail startup.
+MCP tool visibility is controlled by profiles, toolsets, exact enablement, exact disablement, and service availability. Unknown profiles or toolsets fail startup. These controls apply only to MCP discovery and MCP tool calls; `workhub cli ...` ignores them and exposes its full command surface for configured services.
 
 | Profile | Intended use |
 | --- | --- |
@@ -110,15 +120,17 @@ Tool visibility is controlled by profiles, toolsets, exact enablement, exact dis
 | `developer` | Adds workflow, Agile, attachment, development-info, Confluence version/attachment reads, and GitLab MR write/approval/merge tools. |
 | `manager` | Adds most Jira project, sprint, worklog, link, JSM, SLA, Forms, Confluence write, analytics, and attachment upload tools. |
 | `full` | All registered Jira, Confluence, and GitLab tools, including destructive Confluence delete toolsets. |
-| `custom` | No profile baseline; use `TOOLSETS` and/or exact tool variables. |
+| `custom` | No profile baseline; use `MCP_TOOLSETS` and/or exact tool variables. |
 
 Advanced controls:
 
-- `TOOLSETS`: add comma-separated registered toolsets to the selected profile. `all` enables every toolset.
-- `ENABLED_TOOLS`: add comma-separated exact MCP tool names.
-- `DISABLED_TOOLS`: remove comma-separated exact MCP tool names. This takes precedence over every inclusion mechanism.
+- `MCP_TOOLSETS`: add comma-separated registered toolsets to the selected profile. `all` enables every toolset.
+- `MCP_ENABLED_TOOLS`: add comma-separated exact MCP tool names.
+- `MCP_DISABLED_TOOLS`: remove comma-separated exact MCP tool names. This takes precedence over every inclusion mechanism.
 
 See [docs/configuration.md](docs/configuration.md) for the full configuration reference.
+
+The resource CLI shares service configuration and project/space filters with MCP, but it does not apply `MCP_TOOL_PROFILE`, `MCP_TOOLSETS`, `MCP_ENABLED_TOOLS`, or `MCP_DISABLED_TOOLS`.
 
 ## Origin
 
@@ -129,6 +141,7 @@ Since then, this project has diverged in a few practical ways: it uses a Rust-na
 ## Documentation
 
 - [Configuration](docs/configuration.md): service credentials, tool access, network/TLS, diagnostics, and content conversion notes.
+- [CLI reference](docs/cli.md): production resource-oriented CLI commands, output, errors, and env-file behavior.
 - [Deployment](docs/deployment.md): stdio, streamable HTTP, Docker, compose, auth, security, and unsupported deployment capabilities.
 - [Support matrix](docs/support-matrix.md): every Jira, Confluence, and GitLab tool with local/real acceptance status.
 - [Development tools](docs/development-tools.md): `xtask`, local smoke checks, and real acceptance variables.
@@ -139,7 +152,9 @@ Since then, this project has diverged in a few practical ways: it uses a Rust-na
 
 The codebase is a Rust 1.94 / edition 2024 workspace:
 
-- `src/main.rs`: CLI parsing, tracing, stdio, streamable HTTP, and `/healthz`.
+- `src/main.rs`: CLI parsing, tracing, stdio, streamable HTTP, production CLI dispatch, and `/healthz`.
+- `src/cli.rs` and `src/cli/`: resource-oriented production CLI parser and provider adapters.
+- `src/operations.rs` and `src/operations/`: shared provider operation layer used by MCP handlers and CLI adapters.
 - `src/mcp.rs` and `src/mcp/`: RMCP server glue, handlers, schema sanitization, and tool-call diagnostics.
 - `src/jira/`, `src/confluence/`, `src/gitlab/`: provider-specific config, clients, tools, models, formatting, and tests.
 - `src/upstream/`: provider-agnostic HTTP, auth, proxy, mTLS, custom headers, redaction, same-origin redirect, and error helpers.
@@ -165,6 +180,7 @@ just dev-http            # run streamable HTTP on 127.0.0.1:8000
 just check               # fmt, check, and tests
 just smoke               # all local mock smoke checks
 just smoke-gitlab        # GitLab local mock smoke
+just smoke-cli           # production CLI mock smoke
 just build               # release build
 just docker-build        # local Docker image build
 ```
@@ -176,13 +192,13 @@ Real Jira/Confluence acceptance commands require disposable test objects and dev
 Build the local image:
 
 ```bash
-docker build -t mcp-workhub-rs:local -f Dockerfile .
+docker build -t workhub-rs:local -f Dockerfile .
 ```
 
 Run the image:
 
 ```bash
-docker run --rm -p 8000:8000 mcp-workhub-rs:local
+docker run --rm -p 8000:8000 workhub-rs:local
 ```
 
 Run with compose:
@@ -197,7 +213,7 @@ The image runs as a non-root `app` user and starts streamable HTTP on container 
 
 Releases are tag-driven. A release tag must use the form `vX.Y.Z`, match `Cargo.toml` `package.version = "X.Y.Z"`, and have a matching `## X.Y.Z` entry in `CHANGELOG.md`.
 
-The release workflow builds Linux, macOS, and Windows binaries named `mcp-workhub-rs-*` with matching `.sha256` checksum files. The current release process does not publish to crates.io, GHCR, Docker Hub, or any other external registry.
+The release workflow builds Linux, macOS, and Windows binaries named `workhub-*` with matching `.sha256` checksum files. The current release process does not publish to crates.io, GHCR, Docker Hub, or any other external registry.
 
 ## License
 

@@ -61,6 +61,25 @@ impl JiraClient {
                     continue;
                 }
             }
+            if let Some(filename_contains) = options.filename_contains.as_deref() {
+                let Some(filename) = attachment.filename.as_deref() else {
+                    continue;
+                };
+                if !filename
+                    .to_ascii_lowercase()
+                    .contains(&filename_contains.to_ascii_lowercase())
+                {
+                    continue;
+                }
+            }
+            if let Some(media_type) = options.media_type.as_deref() {
+                let Some(attachment_media_type) = attachment.mime_type.as_deref() else {
+                    continue;
+                };
+                if !attachment_media_type.eq_ignore_ascii_case(media_type) {
+                    continue;
+                }
+            }
 
             let mut value = attachment.to_safe_metadata_value();
             if options.include_content {

@@ -87,7 +87,7 @@ fn high_risk_schema_baseline_covers_existing_tools_fields_and_payloads() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
         confluence: Some(confluence_config()),
-        enabled_toolsets: tool_registry::all_toolsets(),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
     let tools = server.current_tools_result().tools;
@@ -184,7 +184,7 @@ fn high_risk_output_schemas_declare_representative_payload_keys() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
         confluence: Some(confluence_config()),
-        enabled_toolsets: tool_registry::all_toolsets(),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
     let discovered_tools = server.current_tools_result().tools;
@@ -257,7 +257,7 @@ fn high_risk_output_schemas_declare_representative_payload_keys() {
 fn output_schema_sanitizer_preserves_boolean_const_literals() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_toolsets: tool_registry::all_toolsets(),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
     let discovered_tools = server.current_tools_result().tools;
@@ -292,7 +292,7 @@ fn output_schema_sanitizer_preserves_boolean_const_literals() {
 fn jira_mutation_output_schema_allows_no_content_data_null() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_toolsets: tool_registry::all_toolsets(),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
     let discovered_tools = server.current_tools_result().tools;
@@ -329,7 +329,7 @@ fn jira_mutation_output_schema_allows_no_content_data_null() {
 fn default_jira_tool_schemas_are_client_compatible() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_toolsets: BTreeSet::from([
+        mcp_enabled_toolsets: BTreeSet::from([
             "jira_issues_read".to_string(),
             "jira_issues_write".to_string(),
             "jira_fields_read".to_string(),
@@ -351,7 +351,7 @@ fn default_jira_tool_schemas_are_client_compatible() {
 fn all_jira_tool_schemas_are_client_compatible() {
     let server = server_with_config(RuntimeConfig {
         jira: Some(jira_config()),
-        enabled_toolsets: tool_registry::all_toolsets(),
+        mcp_enabled_toolsets: tool_registry::all_toolsets(),
         ..runtime_config()
     });
     let tools = server.current_tools_result().tools;
@@ -372,7 +372,7 @@ fn all_jira_tool_schemas_are_client_compatible() {
 fn confluence_content_toolsets_have_client_compatible_schemas() {
     let read_write = server_with_config(RuntimeConfig {
         confluence: Some(confluence_config()),
-        enabled_toolsets: BTreeSet::from([
+        mcp_enabled_toolsets: BTreeSet::from([
             "confluence_content_read".to_string(),
             "confluence_content_write".to_string(),
             "confluence_content_update".to_string(),
